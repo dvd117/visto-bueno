@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { ReactNode } from 'react';
+import { useId, useRef, useState } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { DecisionAction, Expediente as ExpedienteData, FlagResolution } from '../../../shared/api';
 import type { CheckResult, Flag } from '../../../shared/domain/types';
 import { StatusChip } from '../../app/StatusChip';
@@ -14,6 +14,8 @@ interface ExpedienteProps {
   onResolveFlag: (flagId: string, resolution: FlagResolution) => Promise<void>;
   onReevaluate: () => Promise<void>;
 }
+
+type DocumentMode = 'original' | 'text';
 
 function formatProbability(value: number): string {
   return value.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -194,10 +196,33 @@ export function Expediente({
   onResolveFlag,
   onReevaluate,
 }: ExpedienteProps) {
-  const [documentMode, setDocumentMode] = useState<'original' | 'text'>('text');
+  const [documentMode, setDocumentMode] = useState<DocumentMode>('text');
   const [approver, setApprover] = useState('');
   const [reason, setReason] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const documentTabsId = useId();
+  const originalTabRef = useRef<HTMLButtonElement>(null);
+  const textTabRef = useRef<HTMLButtonElement>(null);
+  const originalTabId = `${documentTabsId}-original-tab`;
+  const textTabId = `${documentTabsId}-text-tab`;
+  const originalPanelId = `${documentTabsId}-original-panel`;
+  const textPanelId = `${documentTabsId}-text-panel`;
+
+  function handleDocumentTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, current: DocumentMode) {
+    let next: DocumentMode | null = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      next = current === 'original' ? 'text' : 'original';
+    } else if (event.key === 'Home') {
+      next = 'original';
+    } else if (event.key === 'End') {
+      next = 'text';
+    }
+    if (!next) return;
+
+    event.preventDefault();
+    setDocumentMode(next);
+    (next === 'original' ? originalTabRef : textTabRef).current?.focus();
+  }
 
   if (loading) return <section className="panel expediente"><p className="record-loading">Abriendo expediente…</p></section>;
   if (error) return <section className="panel expediente"><p className="record-error">{error}</p></section>;
@@ -266,14 +291,41 @@ export function Expediente({
         <section className="record-section document-section" aria-labelledby="document-heading">
           <div className="section-heading"><h3 id="document-heading">Documento</h3></div>
           <div className="document-switch" role="tablist" aria-label="Vista del documento">
-            <button type="button" role="tab" aria-selected={documentMode === 'original'} onClick={() => setDocumentMode('original')}>
+            <button
+              ref={originalTabRef}
+              id={originalTabId}
+              type="button"
+              role="tab"
+              aria-controls={originalPanelId}
+              aria-selected={documentMode === 'original'}
+              tabIndex={documentMode === 'original' ? 0 : -1}
+              onClick={() => setDocumentMode('original')}
+              onKeyDown={(event) => handleDocumentTabKeyDown(event, 'original')}
+            >
               Documento original
             </button>
-            <button type="button" role="tab" aria-selected={documentMode === 'text'} onClick={() => setDocumentMode('text')}>
+            <button
+              ref={textTabRef}
+              id={textTabId}
+              type="button"
+              role="tab"
+              aria-controls={textPanelId}
+              aria-selected={documentMode === 'text'}
+              tabIndex={documentMode === 'text' ? 0 : -1}
+              onClick={() => setDocumentMode('text')}
+              onKeyDown={(event) => handleDocumentTabKeyDown(event, 'text')}
+            >
               Texto que leyó el agente
             </button>
           </div>
-          <div className="document-surface">
+          <div
+            id={originalPanelId}
+            role="tabpanel"
+            aria-labelledby={originalTabId}
+            className="document-surface"
+            hidden={documentMode !== 'original'}
+            tabIndex={0}
+          >
             {documentMode === 'original' ? (
               fileUrl ? (
                 row.sourceKind === 'image'
@@ -282,9 +334,21 @@ export function Expediente({
                     ? <iframe className="original-document" src={fileUrl} title={`Documento original de ${row.id}`} />
                     : <p className="quiet-note">No hay un archivo original disponible.</p>
               ) : <p className="quiet-note">No hay un archivo original disponible.</p>
-            ) : expediente.sourceText ? (
-              <pre className="document-text">{renderMarkedText(expediente.sourceText, expediente.marks)}</pre>
-            ) : <p className="quiet-note">No hay texto extraído para mostrar.</p>}
+            ) : null}
+          </div>
+          <div
+            id={textPanelId}
+            role="tabpanel"
+            aria-labelledby={textTabId}
+            className="document-surface"
+            hidden={documentMode !== 'text'}
+            tabIndex={0}
+          >
+            {documentMode === 'text' ? (
+              expediente.sourceText ? (
+                <pre className="document-text">{renderMarkedText(expediente.sourceText, expediente.marks)}</pre>
+              ) : <p className="quiet-note">No hay texto extraído para mostrar.</p>
+            ) : null}
           </div>
         </section>
 
