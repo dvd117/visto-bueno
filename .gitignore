@@ -44,3 +44,4 @@ CLAUDE.md
 # Worker scratch and local data
 .w/
 data/
+!/docs/superpowers/
