@@ -240,7 +240,7 @@ describe('verifyClaims', () => {
 
     expect(result.vendor).toEqual(vendor);
     expect(getCheck(result, 'source_payoutAccount')).toMatchObject({ passed: true, effect: 'none' });
-    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: true, effect: 'none' });
+    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
   });
 
   it('stops when the invoice contains two distinct normalized accounts', () => {
@@ -298,6 +298,43 @@ describe('verifyClaims', () => {
 
     expect(unmaskedAccountDigits(accountA)).toBe('11112228890');
     expect(unmaskedAccountDigits(accountB)).toBe('99990008890');
+    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
+  });
+
+  it.each([
+    ['Banco Andino * 11112228890', 'Banco Andino * 99990008890'],
+    ['Banco Andino ···· 11112228890', 'Banco Andino ···· 99990008890'],
+  ])('stops when mask symbols precede distinct full accounts: %s', (accountA, accountB) => {
+    expect(normalizeAccount(accountA)).toBe('');
+    expect(unmaskedAccountDigits(accountA)).toBe('11112228890');
+    expect(unmaskedAccountDigits(accountB)).toBe('99990008890');
+
+    const result = verifyClaims(extraction({
+      claims: claims({ payoutAccount: accountA, accountsFound: [accountA, accountB] }),
+      sourceKind: 'image',
+    }), [vendor]);
+    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
+  });
+
+  it.each([
+    'Cuenta de ahorros Banco Andino 11112228890 y cuenta corriente Banco Andino 99990008890',
+    'Banco Andino 11112228890 / Banco Andino 99990008890',
+  ])('stops when one candidate string contains multiple full accounts: %s', (candidate) => {
+    expect(normalizeAccount(candidate)).toBe('');
+    const result = verifyClaims(extraction({
+      claims: claims({ payoutAccount: candidate, accountsFound: [candidate] }),
+      sourceKind: 'image',
+    }), [vendor]);
+    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
+  });
+
+  it('stops when an unparseable raw account candidate contains digits', () => {
+    const candidate = 'Banco Andino 11112228890 (cuenta de pago)';
+    expect(normalizeAccount(candidate)).toBe('');
+    const result = verifyClaims(extraction({
+      claims: claims({ payoutAccount: candidate, accountsFound: [candidate] }),
+      sourceKind: 'image',
+    }), [vendor]);
     expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
   });
 

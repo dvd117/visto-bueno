@@ -16,7 +16,7 @@ const ACCOUNT_LABEL_BEFORE_ACCOUNT = new RegExp(
 interface AccountParts {
   key: string;
   digits: string;
-  masked: boolean;
+  ambiguous: boolean;
 }
 
 function parseAccount(value: string): AccountParts | null {
@@ -36,18 +36,17 @@ function parseAccount(value: string): AccountParts | null {
   let bankName = accountText.slice(0, numberMatch.index);
   if (/[0-9]/u.test(bankName)) return null;
 
-  const symbolMask = /(?:^|[\s·•*])[·•*]+[\s·•*]*$/u.exec(bankName);
-  let masked = Boolean(symbolMask);
-  if (symbolMask) {
-    bankName = bankName.slice(0, symbolMask.index);
-  } else {
-    const xMask = /(?:^|[\s·•*])(x+)([\s·•*]*)$/iu.exec(bankName);
-    if (xMask) {
-      if (digits.length >= 5) {
-        return { key: '', digits, masked: false };
-      }
-      bankName = bankName.slice(0, xMask.index);
-      masked = true;
+  const trimmedBankName = bankName.trimEnd();
+  const maskSuffix = /([\p{P}\p{S}x](?:\s*[\p{P}\p{S}x])*)$/iu.exec(trimmedBankName);
+  let ambiguous = false;
+  if (maskSuffix) {
+    const maskPrefix = trimmedBankName.slice(0, maskSuffix.index);
+    const xRunIsPartOfBankName = /^[x]+$/iu.test(maskSuffix[1])
+      && Boolean(maskPrefix)
+      && /[\p{L}\p{N}]$/u.test(maskPrefix);
+    if (!xRunIsPartOfBankName) {
+      bankName = maskPrefix;
+      ambiguous = digits.length >= 5;
     }
   }
 
@@ -55,16 +54,48 @@ function parseAccount(value: string): AccountParts | null {
   const nonInstitutionLabels = /^(?:banco|bancos|bank|banks|bancario|bancaria|bancarios|bancarias|cuentas?|deahorros?|corriente|deahorroscorriente)$/u;
   if (!normalizedBank || nonInstitutionLabels.test(normalizedBank)) return null;
 
-  return { key: `${normalizedBank}:${digits.slice(-4)}`, digits, masked };
+  return {
+    key: ambiguous ? '' : `${normalizedBank}:${digits.slice(-4)}`,
+    digits,
+    ambiguous,
+  };
 }
 
-/** Compare named bank words plus the last four digits; reject ambiguous or malformed account strings. */
-export function normalizeAccount(value: string): string {
-  return parseAccount(value)?.key ?? '';
+export interface AccountAnalysis {
+  key: string;
+  ambiguous: boolean;
+  visibleDigits: string[];
 }
 
-/** Full digits are available only when the text contains an unmasked number of at least five digits. */
-export function unmaskedAccountDigits(value: string): string | null {
+/** Resolve one account candidate, or mark it ambiguous when its account identity is unsafe. */
+export function analyzeAccount(value: string): AccountAnalysis {
+  const digitRuns = value.normalize('NFKC').match(/[0-9]+/gu) ?? [];
+  const fullDigitRuns = digitRuns.filter((digits) => digits.length >= 5);
+  if (fullDigitRuns.length >= 2) {
+    return { key: '', ambiguous: true, visibleDigits: fullDigitRuns };
+  }
+
   const account = parseAccount(value);
-  return account && !account.masked && account.digits.length >= 5 ? account.digits : null;
+  if (!account) {
+    return { key: '', ambiguous: digitRuns.length > 0, visibleDigits: fullDigitRuns };
+  }
+
+  const visibleDigits = account.digits.length >= 5 ? [account.digits] : [];
+  return {
+    key: account.ambiguous ? '' : account.key,
+    ambiguous: account.ambiguous,
+    visibleDigits,
+  };
+}
+
+/** Compare named bank words plus the last four digits; ambiguous candidates have no key. */
+export function normalizeAccount(value: string): string {
+  const account = analyzeAccount(value);
+  return account.ambiguous ? '' : account.key;
+}
+
+/** Full visible account digits are returned only when exactly one number is available. */
+export function unmaskedAccountDigits(value: string): string | null {
+  const { visibleDigits } = analyzeAccount(value);
+  return visibleDigits.length === 1 ? visibleDigits[0] : null;
 }

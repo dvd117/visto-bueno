@@ -1,6 +1,6 @@
 import { parseAmount } from '../domain/money';
 import type { CheckResult, Currency, ExtractionClaims, ExtractionResult, Money, Vendor } from '../domain/types';
-import { normalize, normalizeAccount, unmaskedAccountDigits } from './normalize';
+import { analyzeAccount, normalize, normalizeAccount } from './normalize';
 
 const CURRENCIES: readonly Currency[] = ['USD', 'COP', 'MXN'];
 
@@ -36,19 +36,18 @@ function uniqueNormalized(values: Array<string | null | undefined>): Set<string>
   return new Set(values.filter((value): value is string => Boolean(value?.trim())).map(normalize));
 }
 
-function uniqueAccounts(values: Array<string | null | undefined>): Set<string> {
+function hasSingleUnambiguousAccount(values: Array<string | null | undefined>): boolean {
   const candidates = values.filter((value): value is string => Boolean(value?.trim())).map((value) => {
-    const key = normalizeAccount(value);
-    return { key: key || `raw:${normalize(value)}`, fullDigits: unmaskedAccountDigits(value) };
+    const account = analyzeAccount(value);
+    return { value, account };
   });
-  const keys = new Set(candidates.map(({ key }) => key));
-  if (keys.size !== 1) return keys;
+  if (candidates.some(({ account }) => account.ambiguous)) return false;
 
-  const fullDigits = new Set(candidates.flatMap(({ fullDigits }) => fullDigits ? [fullDigits] : []));
-  if (fullDigits.size < 2) return keys;
+  const keys = new Set(candidates.map(({ value, account }) => account.key || `raw:${normalize(value)}`));
+  if (keys.size > 1) return false;
 
-  const [key] = keys;
-  return new Set([...fullDigits].map((digits) => `${key}:full:${digits}`));
+  const visibleDigits = new Set(candidates.flatMap(({ account }) => account.visibleDigits));
+  return visibleDigits.size < 2;
 }
 
 function uniqueTotalValues(values: Array<string | null | undefined>, currency: Currency | null): Set<string> {
@@ -135,8 +134,8 @@ export function verifyClaims(
     }
   }
 
-  const accounts = uniqueAccounts([...claims.accountsFound, claims.payoutAccount]);
-  const multipleAccounts = accounts.size > 1;
+  const singleAccount = hasSingleUnambiguousAccount([...claims.accountsFound, claims.payoutAccount]);
+  const multipleAccounts = !singleAccount;
   checks.push(check(
     'two_accounts', 'Una sola cuenta bancaria', !multipleAccounts, multipleAccounts ? 'stop' : 'none',
     multipleAccounts ? 'La factura muestra dos cuentas bancarias distintas' : 'La factura muestra como máximo una cuenta bancaria.',
