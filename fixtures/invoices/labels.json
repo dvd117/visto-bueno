@@ -6,7 +6,7 @@
   {"invoiceId":"AL-034","file":"fixtures/invoices/AL-034.pdf","sourceKind":"pdf","expected":"stopped","reasonCheck":"jev:document_type"},
   {"invoiceId":"AL-035","file":"fixtures/invoices/AL-035.pdf","sourceKind":"pdf","expected":"approval_required","reasonCheck":"R15"},
   {"invoiceId":"AL-036","file":"fixtures/invoices/AL-036.png","sourceKind":"image","expected":"approval_required","reasonCheck":"verify:image_confirmation"},
-  {"invoiceId":"AL-037","file":"fixtures/invoices/AL-037.pdf","sourceKind":"pdf","expected":"ready","reasonCheck":"R5"},
+  {"invoiceId":"AL-037","file":"fixtures/invoices/AL-037.pdf","sourceKind":"pdf","expected":"review_required","reasonCheck":"jev:scope_match"},
   {"invoiceId":"AL-038","file":"fixtures/invoices/AL-038.pdf","sourceKind":"pdf","expected":"approval_required","reasonCheck":"R6"},
   {"invoiceId":"AL-039","file":"fixtures/invoices/AL-039.pdf","sourceKind":"pdf","expected":"stopped","reasonCheck":"R1"},
   {"invoiceId":"AL-040","file":"fixtures/invoices/AL-040.pdf","sourceKind":"pdf","expected":"ready","reasonCheck":"jev:fuzzy_duplicate"},
