@@ -38,13 +38,18 @@ function CheckSource({ check }: { check: CheckResult }) {
 }
 
 function Comparison({ data }: { data: ExpedienteData }) {
-  const differenceCount = data.comparison.filter((item) => item.differs).length;
+  const differenceCount = data.comparison.filter((item) => item.differs && item.invoice !== null && item.record !== null).length;
+  const missingRecordCount = data.comparison.filter((item) => item.record === null).length;
+  const missingInvoiceCount = data.comparison.filter((item) => item.invoice === null).length;
   return (
     <>
       <div className="section-heading">
         <h3 id="comparison-heading">Comparación con tus registros</h3>
         <span className="section-note">
-          {differenceCount} {differenceCount === 1 ? 'diferencia' : 'diferencias'} · {data.comparison.length} {data.comparison.length === 1 ? 'campo' : 'campos'}
+          {differenceCount} {differenceCount === 1 ? 'diferencia' : 'diferencias'}
+          {missingRecordCount > 0 && ` · ${missingRecordCount} sin registro`}
+          {missingInvoiceCount > 0 && ` · ${missingInvoiceCount} sin dato en factura`}
+          {' · '}{data.comparison.length} {data.comparison.length === 1 ? 'campo' : 'campos'}
         </span>
       </div>
       {data.comparison.length === 0 ? <p className="quiet-note">Todavía no hay una comparación registrada.</p> : (
@@ -55,15 +60,15 @@ function Comparison({ data }: { data: ExpedienteData }) {
           <div role="columnheader">En tus registros</div>
         </div>
         {data.comparison.map((item) => (
-          <div className={`compare-row${item.differs ? ' different' : ''}`} role="row" key={item.field}>
+          <div className={`compare-row${item.differs && item.invoice !== null && item.record !== null ? ' different' : ''}`} role="row" key={item.field}>
             <div className="compare-key" role="rowheader">{item.field}</div>
             <div className="compared-value" role="cell">
               {item.invoice ?? 'Sin dato'}
-              {item.differs && <span className="difference-tag">No coincide</span>}
+              {item.differs && item.invoice !== null && item.record !== null && <span className="difference-tag">No coincide</span>}
             </div>
             <div className="compared-value" role="cell">
-              {item.record ?? 'Sin dato'}
-              {item.differs && <span className="difference-tag">No coincide</span>}
+              {item.record ?? 'Sin registro'}
+              {item.differs && item.invoice !== null && item.record !== null && <span className="difference-tag">No coincide</span>}
             </div>
           </div>
         ))}

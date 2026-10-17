@@ -92,7 +92,7 @@ export function Bandeja({
                 </span>
                 <span className="invoice-value">
                   <strong>{row.amount}</strong>
-                  {row.amountUsd && <span>US${row.amountUsd}</span>}
+                  {row.amountUsd && <span>{row.amountUsd}</span>}
                 </span>
                 <span className="invoice-state">
                   <StatusChip
