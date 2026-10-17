@@ -77,6 +77,25 @@ const accountMaskCases = ['X', 'XX', 'x', 'xx', '*', '****', '·', '····', '
     { marker, digits: '11112228890', allowed: false },
   ]);
 
+const unicodeAccountCases = [
+  { script: 'Arabic-Indic', fourDigits: '٨٨٩٠', fullDigits: '١٢٣٤٨٨٩٠' },
+  { script: 'Devanagari', fourDigits: '८८९०', fullDigits: '१२३४८८९०' },
+  { script: 'fullwidth', fourDigits: '８８９０', fullDigits: '１２３４８８９０' },
+].flatMap((digits) => ['х', 'Х', 'χ', 'Χ', 'ｘ', 'Ｘ', '×', '∗', '⁎', '＊', '●', '∙', '・']
+  .map((marker) => ({ ...digits, marker })));
+
+const unsafeAccountTextCases = [
+  ['U+200B zero-width space', 'Banco Andino\u200B'],
+  ['U+200D zero-width joiner', 'Ban\u200Dco Andino'],
+  ['U+FEFF zero-width no-break space', 'Ban\uFEFFco Andino'],
+  ['U+202E right-to-left override', 'Ban\u202Eco Andino'],
+  ['U+0000 null control', 'Banco\u0000 Andino'],
+  ['Cyrillic a', 'Bаnco Andino'],
+  ['Cyrillic o', 'Bancо Andino'],
+  ['Greek alpha', 'Bαnco Andino'],
+  ['U+0338 combining long solidus overlay', 'Banco\u0338 Andino'],
+] as const;
+
 const multiAccountCandidates = [
   'Banco Altocauce 11112228890 y Banco Altocauce 99990008890',
   'Cuenta de ahorros Banco Altocauce 11112228890 y cuenta corriente Banco Altocauce 99990008890',
@@ -137,6 +156,41 @@ describe('evaluateRules', () => {
     expectFail(result, 'R2', 'stop');
     expect(getCheck(result, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· 8890' });
   });
+
+  it('R2 fails closed when a Cyrillic x mask precedes a full account number', () => {
+    const confusableVendor = { ...vendor, payoutAccount: 'Banco Andino х ···· 8890' };
+    const result = evaluate({
+      vendor: confusableVendor,
+      claims: claims({ payoutAccount: 'Banco Andino х 1234568890' }),
+    });
+
+    expectFail(result, 'R2', 'stop');
+  });
+
+  it.each(unsafeAccountTextCases)('R2 fails closed for %s even when the bank text matches', (_name, bankText) => {
+    const registered = `${bankText} ···· 8890`;
+    const result = evaluate({
+      vendor: { ...vendor, payoutAccount: registered },
+      claims: claims({ payoutAccount: `${bankText} 1234568890` }),
+    });
+    expectFail(result, 'R2', 'stop');
+  });
+
+  it.each(['Banco Ñandú', 'Crédito Valleclaro'])('R2 matches accented Latin bank name %s', (bankName) => {
+    const result = evaluate({
+      vendor: { ...vendor, payoutAccount: `${bankName} ···· 8890` },
+      claims: claims({ payoutAccount: `${bankName} 1234568890` }),
+    });
+    expectPass(result, 'R2');
+  });
+
+  it.each(unicodeAccountCases)(
+    'R2 normalizes $script digits with mask $marker (four digits match; full account stops)',
+    ({ marker, fourDigits, fullDigits }) => {
+      expectPass(evaluate({ claims: claims({ payoutAccount: `Banco Altocauce ${marker} ${fourDigits}` }) }), 'R2');
+      expectFail(evaluate({ claims: claims({ payoutAccount: `Banco Altocauce ${marker} ${fullDigits}` }) }), 'R2', 'stop');
+    },
+  );
 
   it.each([
     'Banco Altocauce XX 11112228890',

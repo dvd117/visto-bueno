@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExtractionClaims, ExtractionResult, Vendor } from '../../src/shared/domain/types';
-import { normalize, normalizeAccount, unmaskedAccountDigits } from '../../src/shared/engine/normalize';
+import { analyzeAccount, normalize, normalizeAccount, unmaskedAccountDigits } from '../../src/shared/engine/normalize';
 import { evaluateRules } from '../../src/shared/engine/rules';
 import { verifyClaims } from '../../src/shared/engine/verify';
 
@@ -55,6 +55,18 @@ function evaluateR2(invoiceClaims: ExtractionClaims, registeredVendor: Vendor) {
   });
   return result.checks.find(({ id }) => id === 'R2')!;
 }
+
+const unsafeAccountTextCases = [
+  ['U+200B zero-width space', 'Banco Andino\u200B'],
+  ['U+200D zero-width joiner', 'Ban\u200Dco Andino'],
+  ['U+FEFF zero-width no-break space', 'Ban\uFEFFco Andino'],
+  ['U+202E right-to-left override', 'Ban\u202Eco Andino'],
+  ['U+0000 null control', 'Banco\u0000 Andino'],
+  ['Cyrillic a', 'Bаnco Andino'],
+  ['Cyrillic o', 'Bancо Andino'],
+  ['Greek alpha', 'Bαnco Andino'],
+  ['U+0338 combining long solidus overlay', 'Banco\u0338 Andino'],
+] as const;
 
 describe('verifyClaims', () => {
   it('normalizes Unicode compatibility forms, punctuation, and spaces for identifiers', () => {
@@ -278,6 +290,42 @@ describe('verifyClaims', () => {
       sourceKind: 'image',
     }), [vendor]);
     expect(getCheck(sameSuffixDifferentFullAccounts, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
+  });
+
+  it('normalizes Unicode decimal digits before checking account uniqueness', () => {
+    const candidate = 'Banco Andino ١٢٣٤٥';
+    expect(analyzeAccount(candidate)).toEqual({ key: 'bancoandino:2345', ambiguous: false, visibleDigits: ['12345'] });
+
+    const result = verifyClaims(extraction({
+      claims: claims({ payoutAccount: candidate, accountsFound: ['Banco Andino 12345'] }),
+      sourceKind: 'image',
+    }), [vendor]);
+
+    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: true, effect: 'none' });
+  });
+
+  it('treats non-decimal Unicode numbers that survive NFKC as ambiguous', () => {
+    expect(analyzeAccount('Banco Andino ፲')).toMatchObject({ key: '', ambiguous: true });
+  });
+
+  it('rejects a mixed-script bank token containing a confusable mask letter', () => {
+    expect(analyzeAccount('Banхo Andino ···· 8890')).toMatchObject({ key: '', ambiguous: true });
+  });
+
+  it.each(unsafeAccountTextCases)('fails closed for %s in R2 even when the account record matches', (_name, bankText) => {
+    const invoice = `${bankText} 1234568890`;
+    const registeredVendor = { ...vendor, payoutAccount: `${bankText} ···· 8890` };
+    expect(evaluateR2(claims({ payoutAccount: invoice }), registeredVendor)).toMatchObject({ passed: false, effect: 'stop' });
+  });
+
+  it.each(unsafeAccountTextCases)('fails closed for %s in two_accounts', (_name, bankText) => {
+    const candidate = `${bankText} 1234568890`;
+    const result = verifyClaims(extraction({
+      claims: claims({ payoutAccount: candidate, accountsFound: [candidate] }),
+      sourceKind: 'image',
+    }), [{ ...vendor, payoutAccount: `${bankText} ···· 8890` }]);
+
+    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
   });
 
   it('treats a standalone X before a full account as ambiguous and preserves its digits for conflict checks', () => {
