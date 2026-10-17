@@ -1,22 +1,41 @@
 import { useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
-import type { DecisionAction, Expediente as ExpedienteData, FlagResolution } from '../../../shared/api';
-import type { CheckResult, Flag } from '../../../shared/domain/types';
+import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow } from '../../../shared/api';
+import type { CheckResult, Flag, InvoiceStatus } from '../../../shared/domain/types';
 import { subtitleForDecision } from '../../../shared/engine/copy';
 import { StatusChip } from '../../app/StatusChip';
 
 interface ExpedienteProps {
+  rows: InvoiceRow[];
+  selectedStatus: InvoiceStatus | null;
   expediente: ExpedienteData | null;
   loading: boolean;
   error: string | null;
   busy: boolean;
+  includedInPaymentBatch: boolean;
   onApprove: (action: DecisionAction) => Promise<void>;
   onReject: (action: DecisionAction) => Promise<void>;
   onResolveFlag: (flagId: string, resolution: FlagResolution) => Promise<void>;
   onReevaluate: () => Promise<void>;
+  onSelectStatus: (status: ActionableStatus) => void;
+  onTogglePaymentBatch: (invoiceId: string) => void;
+  onOpenData: () => void;
 }
 
 type DocumentMode = 'original' | 'text';
+type ActionableStatus = Extract<InvoiceStatus, 'ready' | 'approval_required' | 'review_required' | 'stopped'>;
+
+const ACTION_STATES: Array<{ status: ActionableStatus; label: string; glyph: string }> = [
+  { status: 'ready', label: 'Lista para pagar', glyph: '✓' },
+  { status: 'approval_required', label: 'Requiere tu aprobación', glyph: '▣' },
+  { status: 'review_required', label: 'Requiere revisión', glyph: '?' },
+  { status: 'stopped', label: 'Frenada', glyph: '×' },
+];
+const CORRECTION_ONLY_FLAG_CHECKS = new Set([
+  'missing_amount', 'ambiguous_amount', 'source_amountRaw', 'source_payoutAccount', 'source_payeeTaxId',
+  'source_invoiceId', 'multiple_tax_ids', 'multiple_currencies', 'multiple_totals', 'sum_mismatch',
+  'missing_payee', 'extraction_failed', 'jev_unavailable',
+]);
 
 function formatProbability(value: number): string {
   return value.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -157,17 +176,22 @@ function FlagActions({
   flag,
   approver,
   busy,
+  canResolve,
   onResolve,
 }: {
   flag: Flag;
   approver: string;
   busy: boolean;
+  canResolve: boolean;
   onResolve: (choice: string, reason: string) => void;
 }) {
   const [choice, setChoice] = useState('');
   const [reason, setReason] = useState('');
   if (flag.resolution) {
     return <p className="resolved-flag"><span aria-hidden="true">✓</span> Resuelta por {flag.resolution.by} · {flag.resolution.reason}</p>;
+  }
+  if (!canResolve) {
+    return <p className="flag-correction-note">Corrige este dato en Preparar datos y vuelve a evaluar; esta alerta no se resuelve manualmente.</p>;
   }
   return (
     <div className="flag-action">
@@ -213,14 +237,20 @@ function safeFileUrl(value: string | null): string | null {
 }
 
 export function Expediente({
+  rows,
+  selectedStatus,
   expediente,
   loading,
   error,
   busy,
+  includedInPaymentBatch,
   onApprove,
   onReject,
   onResolveFlag,
   onReevaluate,
+  onSelectStatus,
+  onTogglePaymentBatch,
+  onOpenData,
 }: ExpedienteProps) {
   const [documentMode, setDocumentMode] = useState<DocumentMode>('text');
   const [approver, setApprover] = useState('');
@@ -234,6 +264,34 @@ export function Expediente({
   const textTabId = `${documentTabsId}-text-tab`;
   const originalPanelId = `${documentTabsId}-original-panel`;
   const textPanelId = `${documentTabsId}-text-panel`;
+  const workbenchHeading = (
+    <header className="action-workbench-heading">
+      <p className="eyebrow">02 / Expediente · Decisión trazable</p>
+      <h2>Decide según el estado</h2>
+      <p>Las facturas se resuelven según sus comprobaciones; una acción general no cambia una excepción.</p>
+    </header>
+  );
+  const actionTabs = rows.length === 0 ? null : (
+    <div className="action-tabs" role="group" aria-label="Estados de factura">
+      {ACTION_STATES.map(({ status, label, glyph }) => {
+        const count = rows.filter((row) => row.status === status).length;
+        return (
+          <button
+            key={status}
+            className={`action-tab action-tab-${status}`}
+            type="button"
+            aria-pressed={selectedStatus === status}
+            disabled={busy || count === 0}
+            onClick={() => onSelectStatus(status)}
+          >
+            <span className="status-glyph" aria-hidden="true">{glyph}</span>
+            <span>{label}</span>
+            <strong>{count}</strong>
+          </button>
+        );
+      })}
+    </div>
+  );
 
   function handleDocumentTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, current: DocumentMode) {
     let next: DocumentMode | null = null;
@@ -251,11 +309,13 @@ export function Expediente({
     (next === 'original' ? originalTabRef : textTabRef).current?.focus();
   }
 
-  if (!expediente && loading) return <section className="panel expediente"><p className="record-loading">Abriendo expediente…</p></section>;
-  if (!expediente && error) return <section className="panel expediente"><p className="record-error">{error}</p></section>;
+  if (!expediente && loading) return <section className="panel expediente">{workbenchHeading}{actionTabs}<p className="record-loading">Abriendo expediente…</p></section>;
+  if (!expediente && error) return <section className="panel expediente">{workbenchHeading}{actionTabs}<p className="record-error">{error}</p></section>;
   if (!expediente) {
     return (
       <section id="expediente" className="panel expediente" aria-labelledby="record-empty-title">
+        {workbenchHeading}
+        {actionTabs}
         <article className="record">
           <div className="record-meta">
             <span className="eyebrow">02 / Expediente · Decisión trazable</span>
@@ -280,6 +340,7 @@ export function Expediente({
   const canApprove = row.status === 'approval_required' && decision?.canApprove === true
     && (row.sourceKind !== 'image' || /^\d{4}$/.test(accountLast4));
   const canSubmitDecision = Boolean(approver.trim() && reason.trim()) && !busy;
+  const canSubmitApprovalAction = canSubmitDecision && (row.sourceKind !== 'image' || /^\d{4}$/.test(accountLast4));
   const fileUrl = safeFileUrl(expediente.fileUrl);
 
   const decisionAction = (): DecisionAction => ({
@@ -291,10 +352,11 @@ export function Expediente({
 
   return (
     <section id="expediente" className="panel expediente" aria-labelledby="record-title">
+      {workbenchHeading}
+      {actionTabs}
       {error && <p className="record-error" role="alert">{error}</p>}
       <article className="record">
         <div className="record-meta">
-          <span className="eyebrow">02 / Expediente · Decisión trazable</span>
           <span className="record-id">{row.id}{record && ` · ${dateLabel(record.createdAt)}`}</span>
         </div>
         <div className="record-lede">
@@ -311,9 +373,12 @@ export function Expediente({
               <p className="action-label">Qué hacer</p>
               <p className="action-copy">{decision?.nextStep ?? row.reason}</p>
             </div>
-            <button className="button button-secondary" type="button" disabled={busy} onClick={() => void onReevaluate()}>
-              Re-evaluar esta factura
-            </button>
+            <div className="action-buttons">
+              <button className="button button-secondary" type="button" disabled={busy} onClick={onOpenData}>Preparar datos</button>
+              <button className="button button-secondary" type="button" disabled={busy} onClick={() => void onReevaluate()}>
+                Re-evaluar esta factura
+              </button>
+            </div>
           </aside>
         )}
         {row.status === 'stale' && (
@@ -400,6 +465,23 @@ export function Expediente({
           </div>
         </section>
 
+        {row.status === 'ready' && (
+          <section className="record-section action-section" aria-labelledby="batch-inclusion-heading">
+            <div className="section-heading"><h3 id="batch-inclusion-heading">Lote de pago</h3></div>
+            <p className="action-copy">
+              {includedInPaymentBatch ? 'Esta factura está incluida en el lote elegible.' : 'Esta factura está fuera del lote.'}
+            </p>
+            <button
+              className="button button-secondary"
+              type="button"
+              disabled={busy}
+              onClick={() => onTogglePaymentBatch(row.id)}
+            >
+              {includedInPaymentBatch ? 'Retirar del lote' : 'Incluir en lote'}
+            </button>
+          </section>
+        )}
+
         {row.status === 'review_required' && (
           <section className="record-section flags-section" aria-labelledby="flags-heading">
             <div className="section-heading"><h3 id="flags-heading">Resuelve cada alerta</h3></div>
@@ -410,6 +492,7 @@ export function Expediente({
                   flag={flag}
                   approver={approver}
                   busy={busy}
+                  canResolve={!CORRECTION_ONLY_FLAG_CHECKS.has(flag.checkId)}
                   onResolve={(choice, flagReason) => void onResolveFlag(flag.id, {
                     choice,
                     reason: flagReason,
@@ -418,6 +501,33 @@ export function Expediente({
                 />
               </div>
             )) : <p className="quiet-note">El servidor no indicó alertas pendientes.</p>}
+            <div className="action-route">
+              <p>Si corriges un dato, actualízalo en Preparar datos y vuelve a evaluar.</p>
+              <div className="action-buttons">
+                <button className="button button-secondary" type="button" disabled={busy} onClick={onOpenData}>Preparar datos</button>
+                <button className="button button-secondary" type="button" disabled={busy} onClick={() => void onReevaluate()}>
+                  Re-evaluar esta factura
+                </button>
+              </div>
+            </div>
+            <label className="field-label approver-field">
+              Tu nombre: <span>identidad declarada (demo)</span>
+              <input value={approver} onChange={(event) => setApprover(event.target.value)} autoComplete="off" />
+            </label>
+            <label className="field-label">
+              Motivo de rechazo
+              <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} />
+            </label>
+            <button className="button button-secondary" type="button" disabled={!canSubmitDecision} onClick={() => void onReject(decisionAction())}>
+              Rechazar
+            </button>
+          </section>
+        )}
+
+        {row.status === 'stopped' && (
+          <section className="record-section action-section" aria-labelledby="stopped-action-heading">
+            <div className="section-heading"><h3 id="stopped-action-heading">Rechaza o corrige los datos</h3></div>
+            <p className="action-copy">Una Frenada no se puede aprobar. Puedes rechazarla o corregir los datos y volver a evaluarla.</p>
             <label className="field-label approver-field">
               Tu nombre: <span>identidad declarada (demo)</span>
               <input value={approver} onChange={(event) => setApprover(event.target.value)} autoComplete="off" />
@@ -464,7 +574,7 @@ export function Expediente({
                 disabled={!canApprove || !canSubmitDecision}
                 onClick={() => void onApprove(decisionAction())}
               >Aprobar</button>
-              <button className="button button-secondary" type="button" disabled={!canSubmitDecision} onClick={() => void onReject(decisionAction())}>
+              <button className="button button-secondary" type="button" disabled={!canSubmitApprovalAction} onClick={() => void onReject(decisionAction())}>
                 Rechazar
               </button>
             </div>

@@ -13,10 +13,15 @@ export interface PaymentExportItem {
 }
 
 const PAYMENT_HEADER = 'vendor_tax_id,payout_account,payout_currency,amount_original,amount_usd,fx_date,decision_id,authorized_by,seal';
+const RECONCILIATION_HEADER = 'invoice_id,status,decision_reason,check_reasons,vendor_tax_id,payout_account,payout_currency,amount_original,currency_original,amount_usd,rules_version,vendor_version,contract_version,fx_date,authorized_by,decision_id,seal';
 const LOG_HEADER = 'at,invoice_id,status,headline,by,seal';
 
 function csvCell(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+  // Spreadsheet apps may execute formula prefixes even inside quoted CSV cells.
+  const safeValue = /^[\s\u0000-\u001f\u007f]*[=+\-@]/u.test(value) || /^[\t\r\n]/u.test(value)
+    ? `'${value}`
+    : value;
+  return /[",\r\n\t]/.test(safeValue) ? `"${safeValue.replaceAll('"', '""')}"` : safeValue;
 }
 
 function csvRow(values: string[]): string {
@@ -40,22 +45,49 @@ function chronological<T extends { at: string }>(records: T[]): T[] {
     .map(({ record }) => record);
 }
 
-export function paymentsCsv(items: PaymentExportItem[]): string {
-  const rows = items
-    .filter((item) => item.status === 'ready' || item.status === 'approved')
-    .map(({ record, vendor, amountOriginal, amountUsd, authorizedBy }) => csvRow([
-      vendor.taxId,
-      vendor.payoutAccount,
-      vendor.payoutCurrency,
-      amountText(amountOriginal),
-      amountText(amountUsd),
-      amountOriginal.currency === 'USD' ? '' : record.dataVersions.fxDate,
-      record.id,
-      authorizedBy ?? '',
-      record.seal,
-    ]));
+function eligiblePayments(items: PaymentExportItem[], includedReadyIds?: ReadonlySet<string>): PaymentExportItem[] {
+  return items.filter((item) => item.status === 'approved'
+    || (item.status === 'ready' && (!includedReadyIds || includedReadyIds.has(item.record.invoiceId))));
+}
+
+export function paymentsCsv(items: PaymentExportItem[], includedReadyIds?: ReadonlySet<string>): string {
+  const rows = eligiblePayments(items, includedReadyIds).map(({ record, vendor, amountOriginal, amountUsd, authorizedBy }) => csvRow([
+    vendor.taxId,
+    vendor.payoutAccount,
+    vendor.payoutCurrency,
+    amountText(amountOriginal),
+    amountText(amountUsd),
+    amountOriginal.currency === 'USD' ? '' : record.dataVersions.fxDate,
+    record.id,
+    authorizedBy ?? '',
+    record.seal,
+  ]));
 
   return [PAYMENT_HEADER, ...rows].join('\n');
+}
+
+export function reconciliationCsv(items: PaymentExportItem[], includedReadyIds?: ReadonlySet<string>): string {
+  const rows = eligiblePayments(items, includedReadyIds).map(({ record, status, vendor, amountOriginal, amountUsd, authorizedBy }) => csvRow([
+    record.invoiceId,
+    status,
+    record.decision.headline,
+    record.decision.checks.map((check) => `${check.id} (${check.outcome}) ${check.reason}`).join('; '),
+    vendor.taxId,
+    vendor.payoutAccount,
+    vendor.payoutCurrency,
+    amountText(amountOriginal),
+    amountOriginal.currency,
+    amountText(amountUsd),
+    String(record.rulesSnapshot.version),
+    record.dataVersions.vendor === undefined ? '' : String(record.dataVersions.vendor),
+    record.dataVersions.contract === undefined ? '' : String(record.dataVersions.contract),
+    record.dataVersions.fxDate,
+    authorizedBy ?? '',
+    record.id,
+    record.seal,
+  ]));
+
+  return [RECONCILIATION_HEADER, ...rows].join('\n');
 }
 
 export function logCsv(records: LogEntry[]): string {

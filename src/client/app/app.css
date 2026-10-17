@@ -1274,3 +1274,157 @@ textarea {
     transition: none !important;
   }
 }
+
+.action-workbench-heading {
+  margin-bottom: 14px;
+  border-top: 3px solid var(--line-bold);
+  padding-top: 11px;
+}
+
+.action-workbench-heading h2 {
+  margin: 0 0 5px;
+  font-size: 23px;
+  font-weight: 790;
+  letter-spacing: -0.05em;
+  line-height: 1.1;
+}
+
+.action-workbench-heading > p:last-child {
+  margin: 0;
+  color: var(--soft);
+  font-size: 11px;
+}
+
+.action-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 3px solid var(--line-bold);
+  border-bottom: 1px solid var(--line-bold);
+}
+
+.action-tab {
+  display: flex;
+  min-width: 0;
+  min-height: 43px;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--page);
+  padding: 8px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.action-tab:last-child { border-right: 0; }
+.action-tab[aria-pressed="true"] { background: var(--wash); }
+.action-tab:disabled { color: var(--faint); cursor: not-allowed; }
+.action-tab .status-glyph { color: var(--tone); }
+.action-tab-ready { --tone: var(--ready); }
+.action-tab-approval_required { --tone: var(--approval); }
+.action-tab-review_required { --tone: var(--review); }
+.action-tab-stopped { --tone: var(--stopped); }
+
+.action-tab > span:nth-child(2) { min-width: 0; }
+
+.action-tab strong {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.action-section {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.action-section > .action-copy,
+.action-route > p {
+  margin: 0 0 9px;
+  color: var(--soft);
+  font-size: 11px;
+}
+
+.flag-correction-note {
+  margin: 0;
+  color: var(--soft);
+  font-size: 10px;
+}
+
+.action-route {
+  margin: 12px 0;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.action-route .action-buttons,
+.action-box .action-buttons { margin-top: 0; }
+
+.action-bar {
+  position: fixed;
+  z-index: 5;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 3px solid var(--line-bold);
+  background: var(--page);
+  padding: 10px max(14px, calc((100vw - 1460px) / 2 + 24px));
+}
+
+.action-bar-summary {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.action-bar-summary strong { font-size: 12px; }
+.action-bar-summary > span { color: var(--soft); font-size: 9px; }
+.action-bar-summary .action-bar-error { color: var(--stopped); font-size: 10px; }
+
+.action-bar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.action-bar-actions .button { flex: 0 0 auto; }
+
+@media (min-width: 1131px) {
+  .frame-with-action-bar .workspace .panel-inbox,
+  .frame-with-action-bar .workspace .expediente { padding-bottom: 96px; }
+}
+
+@media (max-width: 1130px) {
+  .frame.frame-with-action-bar { padding-bottom: 88px; }
+}
+
+@media (max-width: 760px) {
+  .action-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .action-tab:nth-child(2) { border-right: 0; }
+  .action-bar { align-items: stretch; flex-direction: column; gap: 7px; }
+  .action-bar-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .action-bar-actions .button { min-height: 34px; padding: 7px; font-size: 9px; }
+  .frame.frame-with-action-bar { padding-bottom: 132px; }
+}
+
+@media (max-width: 480px) {
+  .frame.frame-with-action-bar { padding-bottom: 170px; }
+  .action-tab { min-height: 40px; gap: 5px; padding: 7px 5px; font-size: 9px; }
+  .action-tab strong { font-size: 13px; }
+  .action-bar { gap: 6px; padding: 8px 12px; }
+  .action-bar-actions { grid-template-columns: minmax(0, 1fr); }
+  .action-bar-actions .button { min-height: 32px; }
+  .action-bar-summary strong { font-size: 11px; }
+  .action-bar-summary > span { font-size: 8px; }
+  .action-box .action-buttons { width: 100%; }
+  .action-box .action-buttons .button { flex: 1 1 auto; }
+}
