@@ -56,7 +56,7 @@ export interface ProcessRequest { ids?: string[]; mode?: 'replay' | 'live'; exam
 export interface NewInvoiceText { text: string }
 
 /** POST /api/invoices/:id/approve and /reject. 409 returns ConflictResponse. */
-export interface DecisionAction { approver: string; reason: string; idempotencyKey: string }
+export interface DecisionAction { approver: string; reason: string; idempotencyKey: string; accountLast4?: string }
 
 /** POST /api/invoices/:id/flags/:flagId/resolve */
 export interface FlagResolution { choice: string; reason: string; approver: string }

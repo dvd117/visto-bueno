@@ -163,6 +163,19 @@ describe('verifyClaims', () => {
     expect(result.checks.every((check) => check.effect === 'none')).toBe(true);
   });
 
+  it('never treats image-extracted amount, account, or tax ID as source-verified', () => {
+    const result = verifyClaims(extraction({ sourceKind: 'image' }), [vendor]);
+
+    for (const id of ['source_amountRaw', 'source_payoutAccount', 'source_payeeTaxId']) {
+      expect(result.checks.find((item) => item.id === id)).toMatchObject({
+        passed: false,
+        effect: 'approval',
+        reason: expect.stringContaining('No verificable en imagen'),
+      });
+    }
+    expect(getCheck(result, 'source_payoutAccount').label).toBe('Fuente de la cuenta bancaria');
+  });
+
   it('does not fall back to account matching when an extracted tax id is unknown', () => {
     const result = verifyClaims(extraction({
       claims: claims({ payeeTaxId: '999.999.999-9', taxIdsFound: ['999.999.999-9'] }),
@@ -399,7 +412,10 @@ describe('verifyClaims', () => {
   it('adds an approval check for image-only sources', () => {
     const result = verifyClaims(extraction({ sourceKind: 'image' }), [vendor]);
     expect(getCheck(result, 'image_confirmation')).toMatchObject({ passed: true, effect: 'approval' });
-    expect(result.checks.some((check) => check.id.startsWith('source_'))).toBe(false);
+    expect(result.checks.filter((check) => check.id.startsWith('source_'))).toHaveLength(4);
+    expect(result.checks.filter((check) => check.id.startsWith('source_')).every((check) => (
+      !check.passed && check.effect === 'approval' && check.reason === 'No verificable en imagen.'
+    ))).toBe(true);
   });
 
   it('reviews a JEV extraction failure with its specific safe reason', () => {

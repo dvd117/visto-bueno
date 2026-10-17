@@ -4,7 +4,10 @@ import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, LogE
 import { Bitacora, type BitacoraApi } from '../../src/client/features/bitacora/Bitacora';
 import { Expediente } from '../../src/client/features/expediente/Expediente';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function makeExpediente(): ExpedienteData {
   return {
@@ -173,6 +176,50 @@ describe('QA: Expediente document tabs', () => {
     fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Confirmé el cambio' } });
     expect((approve as HTMLButtonElement).disabled).toBe(false);
     expect((reject as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('requires and submits the image account last four digits before approval', () => {
+    const expediente = makeExpediente();
+    expediente.row.status = 'approval_required';
+    expediente.row.sourceKind = 'image';
+    expediente.record = {
+      id: 'record-image',
+      invoiceId: expediente.row.id,
+      decision: {
+        status: 'approval_required', checks: [], flags: [], canApprove: true,
+        headline: 'Requiere tu aprobación.', nextStep: null, amountUsdMinor: 85000,
+        contractId: 'contract-1', costCenter: 'operaciones',
+      },
+      rulesSnapshot: {
+        version: 3, perPaymentLimitUsdMinor: 1000000, monthlyLimitUsdMinor: 5000000,
+        approvalThresholdUsdMinor: 300000, fuzzyDuplicateWindowDays: 60, preset: 'equilibrado',
+      },
+      dataVersions: { vendor: 1, contract: 1, fxDate: '2026-10-16' },
+      jev: { ok: true, answers: {}, latencyMs: 0, recorded: true, inputTokens: 1 },
+      seal: '8f3a1c', createdAt: '2026-10-16T21:14:00.000Z',
+    };
+    const onApprove = vi.fn(async () => undefined);
+    vi.stubGlobal('crypto', { randomUUID: () => 'image-approval-key' });
+    render(
+      <Expediente
+        expediente={expediente} loading={false} error={null} busy={false}
+        onApprove={onApprove} onReject={async () => undefined}
+        onResolveFlag={async () => undefined} onReevaluate={async () => undefined}
+      />,
+    );
+
+    const approve = screen.getByRole('button', { name: 'Aprobar' }) as HTMLButtonElement;
+    const accountDigits = screen.getByLabelText(/Últimos 4 dígitos de la cuenta visible en la imagen/);
+    expect(approve.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Tu nombre/), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Revisé la imagen' } });
+    fireEvent.change(accountDigits, { target: { value: '889' } });
+    expect(approve.disabled).toBe(true);
+    fireEvent.change(accountDigits, { target: { value: '8890' } });
+    expect(approve.disabled).toBe(false);
+
+    fireEvent.click(approve);
+    expect(onApprove).toHaveBeenCalledWith(expect.objectContaining({ accountLast4: '8890' }));
   });
 });
 

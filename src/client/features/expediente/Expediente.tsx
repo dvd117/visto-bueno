@@ -113,10 +113,11 @@ function DecisionTrail({ checks }: { checks: CheckResult[] }) {
   return (
     <ul className="trail-list">
       {checks.map((check) => {
-        const alert = check.effect === 'review';
+        const unverifiable = check.effect === 'approval' && !check.passed;
+        const alert = check.effect === 'review' || unverifiable;
         const passed = check.passed && !alert;
         const glyph = alert ? '!' : passed ? '✓' : '×';
-        const stateLabel = alert ? 'Alerta' : passed ? 'Cumple' : 'No cumple';
+        const stateLabel = unverifiable ? 'No verificable en imagen' : alert ? 'Alerta' : passed ? 'Cumple' : 'No cumple';
         return (
           <li className={`trail-row${alert ? ' trail-alert' : passed ? ' trail-pass' : ' trail-fail'}`} key={check.id}>
             <span className="trail-glyph" aria-label={stateLabel}>{glyph}</span>
@@ -204,6 +205,7 @@ export function Expediente({
   const [documentMode, setDocumentMode] = useState<DocumentMode>('text');
   const [approver, setApprover] = useState('');
   const [reason, setReason] = useState('');
+  const [accountConfirmation, setAccountConfirmation] = useState({ invoiceId: expediente?.row.id ?? '', digits: '' });
   const [showHistory, setShowHistory] = useState(false);
   const documentTabsId = useId();
   const originalTabRef = useRef<HTMLButtonElement>(null);
@@ -253,7 +255,9 @@ export function Expediente({
 
   const { row, record } = expediente;
   const decision = record?.decision;
-  const canApprove = row.status === 'approval_required' && decision?.canApprove === true;
+  const accountLast4 = accountConfirmation.invoiceId === row.id ? accountConfirmation.digits : '';
+  const canApprove = row.status === 'approval_required' && decision?.canApprove === true
+    && (row.sourceKind !== 'image' || /^\d{4}$/.test(accountLast4));
   const canSubmitDecision = Boolean(approver.trim() && reason.trim()) && !busy;
   const fileUrl = safeFileUrl(expediente.fileUrl);
 
@@ -261,6 +265,7 @@ export function Expediente({
     approver: approver.trim(),
     reason: reason.trim(),
     idempotencyKey: crypto.randomUUID(),
+    ...(row.sourceKind === 'image' ? { accountLast4 } : {}),
   });
 
   return (
@@ -416,6 +421,19 @@ export function Expediente({
               Motivo
               <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} />
             </label>
+            {row.sourceKind === 'image' && (
+              <label className="field-label">
+                Últimos 4 dígitos de la cuenta visible en la imagen
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  autoComplete="off"
+                  value={accountLast4}
+                  onChange={(event) => setAccountConfirmation({ invoiceId: row.id, digits: event.target.value.replace(/\D/gu, '').slice(0, 4) })}
+                />
+              </label>
+            )}
             {!decision?.canApprove && <p className="safety-note">Aprobar no está disponible: las comprobaciones determinísticas no lo permiten.</p>}
             <div className="action-buttons">
               <button

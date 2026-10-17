@@ -176,15 +176,16 @@ function createLedger(
 function assertDecisionSafety(decision: Decision, invoiceId: string): void {
   const hasStop = decision.checks.some((check) => check.effect === 'stop');
   const hasUnresolvedCheck = decision.checks.some((check) => check.effect === 'review');
+  const requiresApproval = decision.checks.some((check) => check.effect === 'approval');
   const failedDeterministicCheck = decision.checks.some((check) => (
-    (check.kind === 'verify' || check.kind === 'rule') && !check.passed
+    (check.kind === 'verify' || check.kind === 'rule') && !check.passed && check.effect !== 'approval'
   ));
   const authorized = decision.status === 'ready' || (decision.status as string) === 'approved';
 
   if (decision.canApprove && (hasStop || hasUnresolvedCheck || failedDeterministicCheck)) {
     throw new Error(`Engine invariant violated for ${invoiceId}: canApprove conflicts with checks`);
   }
-  if (authorized && (hasStop || hasUnresolvedCheck || failedDeterministicCheck || !decision.canApprove)) {
+  if (authorized && (hasStop || hasUnresolvedCheck || requiresApproval || failedDeterministicCheck || !decision.canApprove)) {
     throw new Error(`Engine invariant violated for ${invoiceId}: unsafe authorization`);
   }
 }
@@ -220,6 +221,7 @@ function simulateUnderRules(input: SimulationInput, rules: Rules, today: string)
       contracts: [...input.contracts],
       money: verified.money,
       claims: extraction.claims,
+      sourceKind: extraction.sourceKind,
       treasury: { ...input.treasury, fx: [...input.treasury.fx] },
       budgets: [...input.budgets],
       rules,

@@ -27,6 +27,7 @@ const actionSchema = z.object({
   approver: z.string().trim().min(1).max(120),
   reason: z.string().trim().min(1).max(500),
   idempotencyKey: z.string().trim().min(1).max(120),
+  accountLast4: z.string().max(32).optional(),
 }).strict();
 const resolutionSchema = z.object({
   choice: z.string().trim().min(1).max(120),

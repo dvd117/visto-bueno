@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Decision, DecisionRecord, ExtractionResult, InvoiceStatus, JevAnswers } from '../../shared/domain/types';
 import { combine } from '../../shared/engine/combine';
 import { mapJev } from '../../shared/engine/jev-map';
-import { normalize } from '../../shared/engine/normalize';
+import { normalize, normalizeAccount } from '../../shared/engine/normalize';
 import { evaluateRules } from '../../shared/engine/rules';
 import { verifyClaims } from '../../shared/engine/verify';
 import { buildRecord } from '../engine/record';
@@ -24,6 +24,7 @@ export interface InvoiceAction {
   approver: string;
   reason: string;
   idempotencyKey: string;
+  accountLast4?: string;
 }
 
 export interface FlagResolutionInput {
@@ -114,6 +115,7 @@ function evaluate(db: Db, workspaceId: string, invoice: StoredInvoice, inputs: D
         contracts: data.contracts,
         money: verified.money,
         claims: extraction.claims,
+        sourceKind: invoice.sourceKind,
         treasury: data.treasury,
         budgets: data.budgets,
         rules: data.rules,
@@ -339,6 +341,13 @@ function idempotencyExists(db: Db, workspaceId: string, key: string): boolean {
     .get(workspaceId, key) !== undefined;
 }
 
+function imageAccountConfirmationMatches(db: Db, workspaceId: string, invoice: StoredInvoice, accountLast4?: string): boolean {
+  if (!/^\d{4}$/.test(accountLast4 ?? '') || !invoice.vendorId) return false;
+  const vendor = getWorkspaceData(db, workspaceId).vendors.find(({ id }) => id === invoice.vendorId);
+  const registeredLast4 = vendor ? /:([0-9]{4})$/u.exec(normalizeAccount(vendor.payoutAccount))?.[1] : undefined;
+  return registeredLast4 !== undefined && registeredLast4 === accountLast4;
+}
+
 function recordIdempotency(db: Db, workspaceId: string, invoiceId: string, recordId: string, action: 'approved' | 'rejected', key: string): void {
   db.prepare(`INSERT INTO idempotency_keys(workspace_id, idempotency_key, invoice_id, record_id, action, created_at)
     VALUES (?, ?, ?, ?, ?, ?)`)
@@ -401,6 +410,9 @@ export function approveInvoice(
         'La evaluación JEV no se completó; no se puede aprobar esta factura.', undefined, by,
       );
       return conflictingRecord(stopped);
+    }
+    if (invoice.sourceKind === 'image' && !imageAccountConfirmationMatches(db, workspaceId, invoice, by.accountLast4)) {
+      return conflictingRecord(previous);
     }
     if (jevUnavailable && idempotencyExists(db, workspaceId, by.idempotencyKey)) return conflictingRecord(previous);
 
