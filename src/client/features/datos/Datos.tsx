@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Decimal from 'decimal.js';
 import type { Budget, Contract, CostCenter, Currency, FxRate, Treasury, Vendor } from '../../../shared/domain/types';
 import type {
@@ -72,30 +72,53 @@ function EditableTable<T>({
   columns: Column<T>[];
   onSave(row: T, original: T): Promise<void>;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return undefined;
+
+    const updateOverflow = () => setHasOverflow(scroller.scrollWidth > scroller.clientWidth);
+    updateOverflow();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateOverflow);
+    observer?.observe(scroller);
+    const table = scroller.querySelector('table');
+    if (table) observer?.observe(table);
+    window.addEventListener('resize', updateOverflow);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateOverflow);
+    };
+  }, [rows]);
+
   return (
-    <div className="datos-table-scroll overflow-x-auto">
-      <table aria-label={label} className="datos-table w-full min-w-[760px] border-collapse text-left text-xs">
-        <thead className="border-y-[3px] border-line-bold bg-wash text-[10px] font-bold uppercase tracking-[0.12em] text-soft">
-          <tr>
-            {columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3">{column.label}</th>)}
-            <th scope="col" className="px-3 py-3">Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr><td colSpan={columns.length + 1} className="border-b border-line px-3 py-5 text-soft">No hay registros todavía.</td></tr>
-          ) : rows.map((row) => (
-            <EditableRow
-              key={rowKey(row)}
-              row={row}
-              label={rowLabel(row)}
-              columns={columns}
-              onSave={onSave}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div ref={scrollRef} className="datos-table-scroll overflow-x-auto" data-overflowing={hasOverflow ? 'true' : undefined}>
+        <table aria-label={label} className="datos-table w-full min-w-[760px] border-collapse text-left text-xs">
+          <thead className="border-y-[3px] border-line-bold bg-wash text-[10px] font-bold uppercase tracking-[0.12em] text-soft">
+            <tr>
+              {columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3">{column.label}</th>)}
+              <th scope="col" className="px-3 py-3">Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={columns.length + 1} className="border-b border-line px-3 py-5 text-soft">No hay registros todavía.</td></tr>
+            ) : rows.map((row) => (
+              <EditableRow
+                key={rowKey(row)}
+                row={row}
+                label={rowLabel(row)}
+                columns={columns}
+                onSave={onSave}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hasOverflow && <p className="datos-scroll-hint" role="note">Desliza para ver más columnas</p>}
+    </>
   );
 }
 

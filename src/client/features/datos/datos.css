@@ -23,7 +23,23 @@
 }
 
 .datos-table-scroll {
+  position: relative;
   max-width: 100%;
   overflow-x: auto;
   overscroll-behavior-x: contain;
+}
+
+.datos-table-scroll[data-overflowing='true']::after {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 14px;
+  border-right: 2px solid #191919;
+  content: '';
+  pointer-events: none;
+}
+
+.datos-scroll-hint {
+  margin-top: 6px;
+  color: #555555;
+  font-size: 11px;
 }
