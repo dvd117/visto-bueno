@@ -39,7 +39,7 @@ function uniqueNormalized(values: Array<string | null | undefined>): Set<string>
 function uniqueAccounts(values: Array<string | null | undefined>): Set<string> {
   const candidates = values.filter((value): value is string => Boolean(value?.trim())).map((value) => {
     const key = normalizeAccount(value);
-    return { key: key || `raw:${normalize(value)}`, fullDigits: key ? unmaskedAccountDigits(value) : null };
+    return { key: key || `raw:${normalize(value)}`, fullDigits: unmaskedAccountDigits(value) };
   });
   const keys = new Set(candidates.map(({ key }) => key));
   if (keys.size !== 1) return keys;

@@ -109,6 +109,12 @@ describe('evaluateRules', () => {
     expectFail(evaluate({ claims: claims({ payoutAccount: null }) }), 'R2', 'stop');
   });
 
+  it('R2 fails closed when a standalone X is ambiguous before a full account number', () => {
+    const result = evaluate({ claims: claims({ payoutAccount: 'Banco Andino X 11112228890' }) });
+    expectFail(result, 'R2', 'stop');
+    expect(getCheck(result, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· 8890' });
+  });
+
   it('R3 stops when there is no active contract or multiple overlapping contracts', () => {
     expectPass(evaluate(), 'R3');
     const none = evaluate({ contracts: [] });

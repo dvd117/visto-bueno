@@ -36,14 +36,27 @@ function parseAccount(value: string): AccountParts | null {
   let bankName = accountText.slice(0, numberMatch.index);
   if (/[0-9]/u.test(bankName)) return null;
 
-  const mask = /(?:^|[\s·•*])(?:[·•*]+|x+)[\s·•*]*$/iu.exec(bankName);
-  if (mask) bankName = bankName.slice(0, mask.index);
+  const symbolMask = /(?:^|[\s·•*])[·•*]+[\s·•*]*$/u.exec(bankName);
+  let masked = Boolean(symbolMask);
+  if (symbolMask) {
+    bankName = bankName.slice(0, symbolMask.index);
+  } else {
+    const xMask = /(?:^|[\s·•*])(x+)([\s·•*]*)$/iu.exec(bankName);
+    if (xMask) {
+      const [run, trailingGap] = [xMask[1], xMask[2]];
+      if (run.length === 1 && trailingGap.length > 0) {
+        return { key: '', digits, masked: false };
+      }
+      bankName = bankName.slice(0, xMask.index);
+      masked = true;
+    }
+  }
 
   const normalizedBank = normalize(bankName);
   const nonInstitutionLabels = /^(?:banco|bancos|bank|banks|bancario|bancaria|bancarios|bancarias|cuentas?|deahorros?|corriente|deahorroscorriente)$/u;
   if (!normalizedBank || nonInstitutionLabels.test(normalizedBank)) return null;
 
-  return { key: `${normalizedBank}:${digits.slice(-4)}`, digits, masked: Boolean(mask) };
+  return { key: `${normalizedBank}:${digits.slice(-4)}`, digits, masked };
 }
 
 /** Compare named bank words plus the last four digits; reject ambiguous or malformed account strings. */

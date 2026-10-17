@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExtractionClaims, ExtractionResult, Vendor } from '../../src/shared/domain/types';
-import { normalize, normalizeAccount } from '../../src/shared/engine/normalize';
+import { normalize, normalizeAccount, unmaskedAccountDigits } from '../../src/shared/engine/normalize';
 import { evaluateRules } from '../../src/shared/engine/rules';
 import { verifyClaims } from '../../src/shared/engine/verify';
 
@@ -263,6 +263,19 @@ describe('verifyClaims', () => {
       sourceKind: 'image',
     }), [vendor]);
     expect(getCheck(sameSuffixDifferentFullAccounts, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
+  });
+
+  it('treats a standalone X before a full account as ambiguous and preserves its digits for conflict checks', () => {
+    const accountA = 'Cuenta de ahorros Banco Andino X 11112228890';
+    const accountB = 'Cuenta corriente Banco Andino X 99990008890';
+    expect(normalizeAccount(accountA)).toBe('');
+    expect(unmaskedAccountDigits(accountA)).toBe('11112228890');
+
+    const result = verifyClaims(extraction({
+      claims: claims({ payoutAccount: accountA, accountsFound: [accountA, accountB] }),
+      sourceKind: 'image',
+    }), [vendor]);
+    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
   });
 
   it('reviews multiple tax ids, totals, or currencies', () => {
