@@ -1,0 +1,39 @@
+{
+  "status": "available",
+  "report": {
+    "regression": {
+      "tests": 30,
+      "unsafeApprovals": 0
+    },
+    "labeled": {
+      "total": 20,
+      "correct": 20,
+      "autonomyPct": 75,
+      "falseEscalations": 0,
+      "mode": "replay"
+    }
+  },
+  "regression": {
+    "status": "available",
+    "tests": 30,
+    "unsafeApprovals": 0,
+    "source": "Local Vitest run: tests/server/adversarial.test.ts",
+    "safetyGate": "passed"
+  },
+  "labeled": {
+    "status": "available",
+    "mode": "replay",
+    "total": 20,
+    "correct": 20,
+    "falseEscalations": 0,
+    "autonomyPct": 75,
+    "unsafeApprovals": 0,
+    "unsafeInvoiceIds": [],
+    "safetyGate": "passed"
+  },
+  "live": {
+    "status": "unavailable",
+    "reason": "sample_not_supplied"
+  },
+  "safetyGate": "passed"
+}

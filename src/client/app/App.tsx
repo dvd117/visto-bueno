@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EvaluationResult } from '../../server/eval/run';
+import type { EvaluationResult } from '../lib/api-types';
 import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow, ProcessEvent, ProcessRequest, WorkspaceSummary } from '../../shared/api';
 import {
   ApiRequestError,

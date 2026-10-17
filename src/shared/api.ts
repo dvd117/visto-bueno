@@ -1,4 +1,5 @@
 // API request/response types (plan Task 11). Routes live under /api, scoped to the workspace cookie.
+import { z } from 'zod';
 import type { DecisionRecord, InvoiceStatus, Rules, SourceKind } from './domain/types';
 
 export interface InvoiceRow {
@@ -40,6 +41,131 @@ export interface EvalReport {
   labeled: { total: number; correct: number; autonomyPct: number; falseEscalations: number; mode: 'replay' | 'live' };
   live?: { sample: number; p50Ms: number; costUsd: string; failures: number };
 }
+
+const safeInteger = z.number().int().refine(Number.isSafeInteger);
+const nonNegativeInteger = safeInteger.min(0);
+const evalRegressionAvailableSchema = z.object({
+  status: z.literal('available'),
+  tests: nonNegativeInteger,
+  unsafeApprovals: nonNegativeInteger,
+  source: z.string().min(1),
+  safetyGate: z.enum(['passed', 'failed']),
+}).strict();
+const evalRegressionSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('unavailable'), reason: z.enum(['evidence_not_supplied', 'invalid_evidence']) }).strict(),
+  evalRegressionAvailableSchema,
+]);
+const evalLabeledAvailableSchema = z.object({
+  status: z.literal('available'),
+  mode: z.literal('replay'),
+  total: nonNegativeInteger,
+  correct: nonNegativeInteger,
+  falseEscalations: nonNegativeInteger,
+  autonomyPct: z.number().finite().min(0).max(100),
+  unsafeApprovals: nonNegativeInteger,
+  unsafeInvoiceIds: z.array(z.string()),
+  safetyGate: z.enum(['passed', 'failed']),
+}).strict();
+const evalLabeledSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('unavailable'),
+    reason: z.enum([
+      'empty_labeled_set', 'invalid_labeled_set', 'runner_unavailable', 'missing_recording',
+      'incomplete_set', 'runner_failed', 'not_replay', 'invalid_decision',
+    ]),
+    invoiceId: z.string().optional(),
+  }).strict(),
+  evalLabeledAvailableSchema,
+]);
+const evalLiveSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('unavailable'),
+    reason: z.enum(['sample_not_supplied', 'empty_sample', 'invalid_sample']),
+  }).strict(),
+  z.object({
+    status: z.literal('available'),
+    mode: z.literal('live'),
+    sample: nonNegativeInteger,
+    p50Ms: z.number().finite().nonnegative(),
+    costUsd: z.string().regex(/^\d+(?:\.\d+)?$/),
+    failures: nonNegativeInteger,
+  }).strict(),
+]);
+const evalReportSchema = z.object({
+  regression: z.object({ tests: nonNegativeInteger, unsafeApprovals: nonNegativeInteger }).strict(),
+  labeled: z.object({
+    total: nonNegativeInteger,
+    correct: nonNegativeInteger,
+    autonomyPct: z.number().finite().min(0).max(100),
+    falseEscalations: nonNegativeInteger,
+    mode: z.enum(['replay', 'live']),
+  }).strict(),
+  live: z.object({
+    sample: nonNegativeInteger,
+    p50Ms: z.number().finite().nonnegative(),
+    costUsd: z.string().regex(/^\d+(?:\.\d+)?$/),
+    failures: nonNegativeInteger,
+  }).strict().optional(),
+}).strict();
+
+const evaluationResultUnionSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('blocked'),
+    regression: evalRegressionSchema,
+    labeled: evalLabeledSchema,
+    live: evalLiveSchema,
+  }).strict(),
+  z.object({
+    status: z.literal('available'),
+    report: evalReportSchema,
+    regression: evalRegressionAvailableSchema,
+    labeled: evalLabeledAvailableSchema,
+    live: evalLiveSchema,
+    safetyGate: z.enum(['passed', 'failed']),
+  }).strict(),
+]);
+
+export const evaluationResultSchema = evaluationResultUnionSchema.superRefine((result, context) => {
+  if (result.status !== 'available') return;
+  const issue = (path: Array<string | number>, message: string) => {
+    context.addIssue({ code: 'custom', path, message });
+  };
+  if (result.regression.tests === 0 || result.regression.unsafeApprovals > result.regression.tests) {
+    issue(['regression'], 'La evidencia de regresión no es consistente.');
+  }
+  if (result.labeled.total === 0 || result.labeled.correct > result.labeled.total
+    || result.labeled.falseEscalations > result.labeled.total
+    || result.labeled.unsafeApprovals > result.labeled.total
+    || result.labeled.unsafeInvoiceIds.length !== result.labeled.unsafeApprovals) {
+    issue(['labeled'], 'Los resultados etiquetados no son consistentes.');
+  }
+  if (result.regression.safetyGate !== (result.regression.unsafeApprovals === 0 ? 'passed' : 'failed')
+    || result.labeled.safetyGate !== (result.labeled.unsafeApprovals === 0 ? 'passed' : 'failed')
+    || result.safetyGate !== (result.regression.unsafeApprovals === 0 && result.labeled.unsafeApprovals === 0 ? 'passed' : 'failed')) {
+    issue(['safetyGate'], 'Los estados de seguridad no coinciden con las mediciones.');
+  }
+  if (result.report.regression.tests !== result.regression.tests
+    || result.report.regression.unsafeApprovals !== result.regression.unsafeApprovals
+    || result.report.labeled.total !== result.labeled.total
+    || result.report.labeled.correct !== result.labeled.correct
+    || result.report.labeled.falseEscalations !== result.labeled.falseEscalations
+    || result.report.labeled.autonomyPct !== result.labeled.autonomyPct
+    || result.report.labeled.mode !== result.labeled.mode) {
+    issue(['report'], 'El resumen no coincide con las secciones de evidencia.');
+  }
+  if (result.live.status === 'available') {
+    if (result.live.sample === 0 || result.live.failures > result.live.sample
+      || !result.report.live || result.report.live.sample !== result.live.sample
+      || result.report.live.p50Ms !== result.live.p50Ms || result.report.live.costUsd !== result.live.costUsd
+      || result.report.live.failures !== result.live.failures) {
+      issue(['live'], 'La muestra en vivo no coincide con el resumen.');
+    }
+  } else if (result.report.live !== undefined) {
+    issue(['report', 'live'], 'El resumen no puede inventar una muestra en vivo.');
+  }
+});
+
+export type ApiEvaluationResult = z.infer<typeof evaluationResultSchema>;
 
 // Request bodies and smaller responses for the routes listed in plan Task 11.
 

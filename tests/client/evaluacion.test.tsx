@@ -51,21 +51,28 @@ function makeBlockedResult(): EvaluationResult {
 }
 
 describe('Evaluacion', () => {
-  it('explains blocked evidence without rendering metrics', () => {
+  it('keeps the three evidence claims separate when results are blocked', () => {
     render(<Evaluacion result={makeBlockedResult()} />);
 
-    expect(screen.getByRole('heading', { name: 'Evaluación no disponible' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Seguridad de regresión' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Conjunto etiquetado' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Muestra en vivo' })).toBeTruthy();
     expect(screen.getByText('No se aportó evidencia verificada de pruebas de seguridad.')).toBeTruthy();
     expect(screen.getByText('Faltan respuestas grabadas completas para el conjunto etiquetado.')).toBeTruthy();
+    expect(screen.getByText('Sin muestra en vivo')).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByText(/aprobaciones indebidas en \d+ pruebas/i)).toBeNull();
   });
 
-  it('shows an unavailable state when no result exists', () => {
+  it('shows three separate unavailable claims when no result exists', () => {
     render(<Evaluacion result={null} />);
 
-    expect(screen.getByRole('heading', { name: 'Evaluación no disponible' })).toBeTruthy();
-    expect(screen.getByText('Aún no hay un resultado de evaluación para mostrar.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Seguridad de regresión' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Conjunto etiquetado' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Muestra en vivo' })).toBeTruthy();
+    expect(screen.getByText('Aún no hay evidencia de regresión para mostrar.')).toBeTruthy();
+    expect(screen.getByText('Aún no hay resultados del conjunto etiquetado para mostrar.')).toBeTruthy();
+    expect(screen.getByText('Sin muestra en vivo')).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
   });
 
@@ -88,9 +95,9 @@ describe('Evaluacion', () => {
 
     render(<Evaluacion result={result} />);
 
-    expect(screen.getByRole('alert').textContent).toContain('1 aprobación indebida');
+    expect(screen.getByRole('alert').textContent).toContain('Seguridad de regresión');
     expect(screen.getByRole('alert').getAttribute('data-state')).toBe('error');
-    expect(document.querySelector('[data-overall-safety="passed"]')).toBeNull();
+    expect(document.querySelector('[aria-labelledby="eval-regression-title"]')?.getAttribute('data-state')).toBe('error');
   });
 
   it('treats an unsafe labeled replay result as an error too', () => {
@@ -101,15 +108,15 @@ describe('Evaluacion', () => {
 
     render(<Evaluacion result={result} />);
 
-    expect(screen.getByRole('alert').textContent).toContain('2 aprobaciones indebidas en el conjunto etiquetado.');
-    expect(document.querySelector('[data-overall-safety="passed"]')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('Conjunto etiquetado: se detectaron 2 aprobaciones indebidas.');
+    expect(document.querySelector('[aria-labelledby="eval-labeled-title"]')?.getAttribute('data-state')).toBe('error');
   });
 
   it('labels live measurements unavailable without inventing zero values', () => {
     render(<Evaluacion result={makeAvailableResult()} />);
     const live = screen.getByRole('region', { name: 'Muestra en vivo' });
 
-    expect(within(live).getByText('Sin medición en vivo')).toBeTruthy();
+    expect(within(live).getByText('Sin muestra en vivo')).toBeTruthy();
     expect(live.textContent).not.toMatch(/\b0\b|ms|US\$/);
     expect(within(live).queryByRole('table')).toBeNull();
   });
@@ -131,6 +138,7 @@ describe('Evaluacion', () => {
 
     expect(within(live).getByText('923 ms')).toBeTruthy();
     expect(within(live).getByText('US$0.0034')).toBeTruthy();
+    expect(within(live).getByText('3')).toBeTruthy();
     expect(within(live).getByText('1')).toBeTruthy();
     expect(screen.getByText('Modo demostración · respuestas grabadas')).toBeTruthy();
   });

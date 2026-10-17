@@ -5,7 +5,7 @@ import Decimal from 'decimal.js';
 import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
-import type { ApiError, DecisionAction, FlagResolution } from '../../shared/api';
+import { evaluationResultSchema, type ApiError, type DecisionAction, type FlagResolution } from '../../shared/api';
 import type { Budget, Contract, FxRate, Treasury, Vendor } from '../../shared/domain/types';
 import {
   approveInvoice, markStale, rejectInvoice, resolveFlag,
@@ -96,6 +96,7 @@ type ApiContext = Context<ServerEnv>;
 
 export interface ApiRouteOptions extends PipelineOptions {
   uploadDirectory: string;
+  evaluationReportPath?: string;
   lastRuns: Map<string, { invoices: number; ms: number; costUsd: string; mode: 'replay' | 'live' }>;
 }
 
@@ -461,6 +462,16 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
     }
   });
 
-  router.get('/eval', (c) => jsonFailure(c, 503, 'La evaluación todavía no está disponible.', 'unavailable'));
+  router.get('/eval', async (c) => {
+    try {
+      const reportPath = resolve(options.evaluationReportPath ?? 'src/server/eval/report.json');
+      const report: unknown = JSON.parse(await readFile(reportPath, 'utf8'));
+      const parsed = evaluationResultSchema.safeParse(report);
+      if (parsed.success) return c.json(parsed.data);
+    } catch {
+      // Missing or malformed report artifacts remain unavailable.
+    }
+    return jsonFailure(c, 503, 'La evaluación todavía no está disponible.', 'unavailable');
+  });
   return router;
 }

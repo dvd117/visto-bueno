@@ -1,7 +1,7 @@
 import type { ApiError, LogEntry, SimulationResult } from '../../shared/api';
 import type { Budget, Contract, Rules, Treasury, Vendor } from '../../shared/domain/types';
 
-export type { EvaluationResult } from '../../server/eval/run';
+export type { ApiEvaluationResult as EvaluationResult } from '../../shared/api';
 
 export type DataTable = 'vendors' | 'contracts' | 'budgets' | 'treasury';
 export type CsvTable = 'vendors' | 'contracts' | 'budgets' | 'fx';
