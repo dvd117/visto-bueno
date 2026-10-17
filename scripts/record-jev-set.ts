@@ -15,6 +15,10 @@ async function recordJevSet(): Promise<void> {
   try {
     const workspaceId = 'jev-recording';
     const fixtures = readExampleFixtures();
+    const recordOnly = process.env.RECORD_ONLY;
+    const selectedFixtures = recordOnly === undefined
+      ? fixtures
+      : selectFixtures(fixtures, recordOnly);
     ensureWorkspace(db, workspaceId);
     ensureExampleInvoices(db, workspaceId);
 
@@ -22,7 +26,7 @@ async function recordJevSet(): Promise<void> {
     let failed = false;
     await processBatch({ db }, {
       workspaceId,
-      ids: fixtures.map(({ invoiceId }) => invoiceId),
+      ids: selectedFixtures.map(({ invoiceId }) => invoiceId),
       mode: 'live',
       extractMode: 'replay',
       jevMode: 'record',
@@ -33,17 +37,36 @@ async function recordJevSet(): Promise<void> {
       },
     });
 
-    const recorded = fixtures.filter(({ invoiceId }) => {
+    const recorded = selectedFixtures.filter(({ invoiceId }) => {
       const answer = getInvoice(db, workspaceId, invoiceId)?.latestRecord?.jev;
       return answer?.ok === true && answer.recorded === true;
     }).length;
-    if (failed || decided !== fixtures.length || recorded !== fixtures.length) {
-      throw new Error(`JEV recording incomplete: ${recorded}/${fixtures.length} responses recorded.`);
+    if (failed || decided !== selectedFixtures.length || recorded !== selectedFixtures.length) {
+      throw new Error(`JEV recording incomplete: ${recorded}/${selectedFixtures.length} responses recorded.`);
     }
-    console.log(`Recorded genuine JEV responses: ${recorded}/${fixtures.length}. Run the labeled replay test next.`);
+    console.log(`Recorded genuine JEV responses: ${recorded}/${selectedFixtures.length}. Run the labeled replay test next.`);
   } finally {
     db.close();
   }
+}
+
+function selectFixtures(
+  fixtures: ReturnType<typeof readExampleFixtures>,
+  selection: string,
+): typeof fixtures {
+  const requestedIds = selection.split(',').map((invoiceId) => invoiceId.trim()).filter(Boolean);
+  if (requestedIds.length === 0) {
+    throw new Error('RECORD_ONLY must contain a comma-separated list of fixture invoice IDs.');
+  }
+
+  const knownIds = new Set(fixtures.map(({ invoiceId }) => invoiceId));
+  const unknownIds = [...new Set(requestedIds.filter((invoiceId) => !knownIds.has(invoiceId)))];
+  if (unknownIds.length > 0) {
+    throw new Error(`RECORD_ONLY contains unknown invoice IDs: ${unknownIds.join(', ')}.`);
+  }
+
+  const selectedIds = new Set(requestedIds);
+  return fixtures.filter(({ invoiceId }) => selectedIds.has(invoiceId));
 }
 
 recordJevSet().catch(() => {
