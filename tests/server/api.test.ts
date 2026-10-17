@@ -1,8 +1,8 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { evaluationResultSchema } from '../../src/shared/api';
-import { getInvoice, openDb } from '../../src/server/db/db';
+import { getInvoice, getWorkspaceData, openDb, putRules } from '../../src/server/db/db';
 import { createServerApp, serverRuntime } from '../../src/server/app';
 import { readExampleFixtures } from '../../src/server/fixtures';
 import { createLiveCallLimiter } from '../../src/server/middleware/limits';
@@ -24,6 +24,7 @@ function makeRuntime(options: Partial<Parameters<typeof createServerApp>[0]> = {
 afterEach(() => {
   for (const runtime of runtimes.splice(0)) runtime.dispose();
   rmSync(resolve('.w', 'api-image-approval'), { recursive: true, force: true });
+  rmSync(resolve('.w', 'api-reset'), { recursive: true, force: true });
   rmSync(resolve('.w', 'api-eval'), { recursive: true, force: true });
   vi.unstubAllEnvs();
 });
@@ -35,6 +36,161 @@ function assertLabeledReplayEvidenceAvailable(complete: boolean, required: boole
 }
 
 describe('T11 API', () => {
+  it('purges uploaded invoices and their history on reset without touching another workspace', async () => {
+    const uploadDirectory = resolve('.w', 'api-reset');
+    const sources = new Map<string, { vendorId: string; reference: string; amount: string; description: string }>();
+    let db: ReturnType<typeof openDb>;
+    let workspaceA = '';
+    const jev: JevAnswers = {
+      ok: true,
+      answers: {
+        instructs_agent: { type: 'noul', noul: 0 },
+        artificial_urgency: { type: 'noul', noul: 0 },
+        scope_match: { type: 'score', score: 0, probabilities: { '0': 1, '1': 0, '2': 0 }, confidence: 1 },
+        document_type: { type: 'choice', choice: 'factura', probabilities: { factura: 1 }, confidence: 1 },
+      },
+      latencyMs: 0, recorded: true, inputTokens: 1,
+    };
+    const runtime = makeRuntime({
+      uploadDirectory,
+      seedExamples: false,
+      extractProvider: async (input) => {
+        const source = input.invoiceId ? sources.get(input.invoiceId) : undefined;
+        if (!source) return { ok: false, error: 'unreadable', sourceKind: input.kind };
+        const vendor = getWorkspaceData(db, workspaceA).vendors.find(({ id }) => id === source.vendorId)!;
+        const account = vendor.payoutAccount;
+        const amount = `USD ${source.amount}`;
+        const sourceText = [source.reference, vendor.name, vendor.taxId, account, amount].join('\n');
+        return {
+          ok: true,
+          sourceKind: input.kind,
+          sourceText,
+          claims: {
+            amountsFound: [amount], accountsFound: [account], taxIdsFound: [vendor.taxId],
+            invoiceIdsFound: [source.reference], currenciesFound: ['USD'], payeeName: vendor.name,
+            payeeTaxId: vendor.taxId, payoutAccount: account, invoiceId: source.reference,
+            invoiceDate: '2026-10-16', dueDate: '2026-10-31', currency: 'USD', amountRaw: amount,
+            subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null,
+            description: source.description, documentTypeHint: 'factura', hasMultipleCurrenciesShown: false,
+            evidenceQuotes: { amountRaw: amount, payoutAccount: account, payeeTaxId: vendor.taxId, invoiceId: source.reference },
+            suspiciousPassages: [],
+          },
+        };
+      },
+      jevProvider: async (input) => (input.state as { claims: { invoiceId: string } }).claims.invoiceId === 'RESET-IMAGE-001'
+        ? { ...jev, answers: { ...jev.answers, artificial_urgency: { type: 'noul', noul: 0.4 } } }
+        : jev,
+    });
+    const { app } = runtime;
+    db = runtime.db;
+
+    const firstWorkspace = await app.request('/api/invoices');
+    const cookieA = firstWorkspace.headers.get('set-cookie')?.split(';')[0] ?? '';
+    workspaceA = cookieA.slice('workspace_id='.length);
+    const secondWorkspace = await app.request('/api/invoices');
+    const cookieB = secondWorkspace.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const workspaceB = cookieB.slice('workspace_id='.length);
+    expect(workspaceB).not.toBe(workspaceA);
+    putRules(db, workspaceA, { ...getWorkspaceData(db, workspaceA).rules, approvalThresholdUsdMinor: 0 });
+
+    const createText = await app.request('/api/invoices', {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: cookieA },
+      body: JSON.stringify({ text: 'RESET-TEXT-001\nImprenta Caribe C.A.\nFactura de prueba' }),
+    });
+    const textInvoice = await createText.json() as { id: string };
+    sources.set(textInvoice.id, {
+      vendorId: 'imprenta-caribe', reference: 'RESET-TEXT-001',
+      amount: '500.00', description: 'Reimpresión puntual de afiches',
+    });
+
+    const createFile = async (cookie: string, name: string, type: string, bytes: Uint8Array, source?: {
+      vendorId: string; reference: string; amount: string; description: string;
+    }) => {
+      const form = new FormData();
+      form.set('file', new File([bytes], name, { type }));
+      const response = await app.request('/api/invoices', { method: 'POST', headers: { cookie }, body: form });
+      const invoice = await response.json() as { id: string };
+      if (source) sources.set(invoice.id, source);
+      return invoice;
+    };
+    const pdfInvoice = await createFile(cookieA, 'reset.pdf', 'application/pdf', new TextEncoder().encode('%PDF-1.7\n'), {
+      vendorId: 'estacion-solar', reference: 'RESET-PDF-001', amount: '430.00', description: 'Mantenimiento de equipos de energía',
+    });
+    const imageInvoice = await createFile(cookieA, 'reset.png', 'image/png', Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]), {
+      vendorId: 'taller-lumbre', reference: 'RESET-IMAGE-001', amount: '450.00', description: 'Revisión puntual de plataforma y equipos',
+    });
+    const otherInvoice = await createFile(cookieB, 'other.png', 'image/png', Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const resetIds = [textInvoice.id, pdfInvoice.id, imageInvoice.id];
+
+    const processResponse = await app.request('/api/process', {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: cookieA },
+      body: JSON.stringify({ ids: resetIds, mode: 'replay' }),
+    });
+    expect(await processResponse.text()).toContain('approval_required');
+    expect(getInvoice(db, workspaceA, textInvoice.id)?.status).toBe('approval_required');
+    const pdfPath = getInvoice(db, workspaceA, pdfInvoice.id)!.filePath!;
+    const imagePath = getInvoice(db, workspaceA, imageInvoice.id)!.filePath!;
+    expect(getInvoice(db, workspaceA, pdfInvoice.id)?.status).toBe('approval_required');
+    expect(getInvoice(db, workspaceA, imageInvoice.id)?.status).toBe('review_required');
+
+    const approval = await app.request(`/api/invoices/${pdfInvoice.id}/approve`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: cookieA },
+      body: JSON.stringify({ approver: 'Demo', reason: 'Verificada', idempotencyKey: 'reset-approval' }),
+    });
+    expect(approval.status).toBe(200);
+    const rejection = await app.request(`/api/invoices/${textInvoice.id}/reject`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: cookieA },
+      body: JSON.stringify({ approver: 'Demo', reason: 'No corresponde', idempotencyKey: 'reset-rejection' }),
+    });
+    expect(rejection.status).toBe(200);
+    const resolution = await app.request(`/api/invoices/${imageInvoice.id}/flags/artificial_urgency/resolve`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: cookieA },
+      body: JSON.stringify({ choice: 'not_applicable', approver: 'Demo', reason: 'No hay urgencia artificial' }),
+    });
+    expect(resolution.status).toBe(200);
+    const rejectResolvedImage = await app.request(`/api/invoices/${imageInvoice.id}/reject`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: cookieA },
+      body: JSON.stringify({ approver: 'Demo', reason: 'No corresponde', idempotencyKey: 'reset-image-rejection' }),
+    });
+    expect(rejectResolvedImage.status).toBe(200);
+    expect(getInvoice(db, workspaceA, textInvoice.id)?.status).toBe('rejected');
+    expect(getInvoice(db, workspaceA, pdfInvoice.id)?.status).toBe('approved');
+    expect(getInvoice(db, workspaceA, imageInvoice.id)?.status).toBe('rejected');
+    expect(db.prepare('SELECT COUNT(*) AS count FROM decision_records WHERE workspace_id = ? AND invoice_id IN (?, ?, ?)')
+      .get(workspaceA, ...resetIds)).toMatchObject({ count: 5 });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM audit_events WHERE workspace_id = ? AND invoice_id IN (?, ?, ?)')
+      .get(workspaceA, ...resetIds)).toMatchObject({ count: 7 });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM commitments WHERE workspace_id = ? AND invoice_id IN (?, ?, ?)')
+      .get(workspaceA, ...resetIds)).toMatchObject({ count: 1 });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM idempotency_keys WHERE workspace_id = ? AND invoice_id IN (?, ?, ?)')
+      .get(workspaceA, ...resetIds)).toMatchObject({ count: 3 });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM flag_resolutions WHERE workspace_id = ? AND invoice_id = ?')
+      .get(workspaceA, imageInvoice.id)).toMatchObject({ count: 1 });
+
+    expect(existsSync(resolve(uploadDirectory, pdfPath.replace(/^uploads\//, '')))).toBe(true);
+    expect(existsSync(resolve(uploadDirectory, imagePath.replace(/^uploads\//, '')))).toBe(true);
+    const reset = await app.request('/api/workspace/reset', { method: 'POST', headers: { cookie: cookieA } });
+
+    expect(reset.status).toBe(200);
+    expect(await reset.json()).toEqual({ ok: true });
+    const seededInvoicesResponse = await app.request('/api/invoices', { headers: { cookie: cookieA } });
+    expect(await seededInvoicesResponse.json()).toHaveLength(20);
+    for (const id of resetIds) {
+      for (const [table, idColumn] of [
+        ['invoices', 'id'], ['decision_records', 'invoice_id'], ['commitments', 'invoice_id'],
+        ['audit_events', 'invoice_id'], ['idempotency_keys', 'invoice_id'], ['flag_resolutions', 'invoice_id'],
+      ]) {
+        expect(db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE workspace_id = ? AND ${idColumn} = ?`)
+          .get(workspaceA, id)).toMatchObject({ count: 0 });
+      }
+    }
+    expect(existsSync(resolve(uploadDirectory, pdfPath.replace(/^uploads\//, '')))).toBe(false);
+    expect(existsSync(resolve(uploadDirectory, imagePath.replace(/^uploads\//, '')))).toBe(false);
+    expect(getInvoice(db, workspaceB, otherInvoice.id)?.filePath).toMatch(/^uploads\//);
+    const otherPath = getInvoice(db, workspaceB, otherInvoice.id)!.filePath!;
+    expect(existsSync(resolve(uploadDirectory, otherPath.replace(/^uploads\//, '')))).toBe(true);
+  });
+
   it('sets an isolated workspace cookie and lists the 20 queued examples', async () => {
     const { app } = makeRuntime();
     const response = await app.request('/api/invoices');

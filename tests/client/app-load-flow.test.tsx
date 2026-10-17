@@ -37,8 +37,8 @@ const refreshedExpediente: Expediente = {
   ...expediente, row: readyRow,
 };
 
-function json(value: unknown): Response {
-  return new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' } });
+function json(value: unknown, status = 200): Response {
+  return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 }
 
 afterEach(() => {
@@ -47,6 +47,56 @@ afterEach(() => {
 });
 
 describe('App load flow', () => {
+  it('clears an uploaded selection before loading the reset workspace', async () => {
+    const uploadedRow: InvoiceRow = { ...queuedRow, id: 'CUSTOM-UPLOADED-001', payee: 'Factura subida' };
+    const seededRow: InvoiceRow = { ...readyRow, id: 'AL-001', payee: 'Proveedor semilla' };
+    const uploadedExpediente: Expediente = { ...expediente, row: uploadedRow };
+    const seededExpediente: Expediente = { ...refreshedExpediente, row: seededRow };
+    let invoiceReads = 0;
+    let resetRequested = false;
+    let staleDetailReadsAfterReset = 0;
+    let resolveResetInvoices!: (response: Response) => void;
+    const resetInvoices = new Promise<Response>((resolve) => { resolveResetInvoices = resolve; });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), window.location.href).pathname;
+      if (path === '/api/workspace') return json({
+        company: { name: 'Andina Labs Inc.', fictional: true }, rules, counters, lastRun: null,
+      });
+      if (path === '/api/invoices') {
+        invoiceReads += 1;
+        return invoiceReads === 1 ? json([uploadedRow]) : resetInvoices;
+      }
+      if (path === '/api/workspace/reset' && init?.method === 'POST') {
+        resetRequested = true;
+        return json({ ok: true });
+      }
+      if (path === `/api/invoices/${uploadedRow.id}`) {
+        if (resetRequested) {
+          staleDetailReadsAfterReset += 1;
+          return json({ error: 'not_found', message: 'No encontré esta factura.' }, 404);
+        }
+        return json(uploadedExpediente);
+      }
+      if (path === `/api/invoices/${seededRow.id}`) return json(seededExpediente);
+      throw new Error(`Unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Factura subida' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reiniciar demo' }));
+
+    expect(await screen.findByText('Conectando con el servidor…')).toBeTruthy();
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    const staleReads = staleDetailReadsAfterReset;
+    resolveResetInvoices(json([seededRow]));
+    expect(await screen.findByRole('heading', { name: 'Proveedor semilla' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /AL-001/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByText('No encontré esta factura.')).toBeNull();
+    expect(staleReads).toBe(0);
+  });
+
   it('keeps the last expediente visible while a streamed result is being refetched', async () => {
     let resolveRefresh!: (response: Response) => void;
     const refreshResponse = new Promise<Response>((resolve) => { resolveRefresh = resolve; });

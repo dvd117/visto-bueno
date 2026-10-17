@@ -245,6 +245,7 @@ export default function App() {
     try {
       await resetWorkspace();
       setActiveSection('inbox');
+      setSelectedId(null);
       setExpediente(null);
       setDetailFailure(null);
       setDetailRevision((current) => current + 1);
