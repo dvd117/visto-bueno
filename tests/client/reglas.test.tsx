@@ -1,7 +1,7 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SimulationResult } from '../../src/shared/api';
-import type { Rules } from '../../src/shared/domain/types';
+import type { Rules, Vendor } from '../../src/shared/domain/types';
 import { Reglas, type ReglasApi } from '../../src/client/features/reglas/Reglas';
 
 const initialRules: Rules = {
@@ -19,11 +19,36 @@ const safeSimulation: SimulationResult = {
   unsafeApprovals: 0,
 };
 
+const initialVendors: Vendor[] = [
+  {
+    id: 'nube-andina',
+    name: 'Nube Andina Tecnología S. de R.L.',
+    taxId: 'NAT010101AB6',
+    country: 'MX',
+    payoutCurrency: 'USD',
+    payoutAccount: 'Banco Ventaluz ···· 1234 5678 8890',
+    status: 'allowed',
+    version: 7,
+  },
+  {
+    id: 'pixel-patio',
+    name: 'Pixel Patio S.A.S.',
+    taxId: '900.000.101-3',
+    country: 'CO',
+    payoutCurrency: 'COP',
+    payoutAccount: 'Banco Altocauce ···· 1184',
+    status: 'blocked',
+    version: 3,
+  },
+];
+
 function createApi(overrides: Partial<ReglasApi> = {}): ReglasApi {
   return {
     getRules: vi.fn(async () => initialRules),
     saveRules: vi.fn(async (rules: Rules) => ({ ...rules, version: 2 })),
     simulate: vi.fn(async (_rules: Rules) => safeSimulation),
+    getVendors: vi.fn(async () => initialVendors),
+    saveVendor: vi.fn(async (vendor: Vendor) => vendor),
     ...overrides,
   };
 }
@@ -52,6 +77,57 @@ afterEach(() => {
 });
 
 describe('Reglas', () => {
+  it('renders every vendor with masked payout accounts and text status', async () => {
+    renderReglas();
+
+    expect(await screen.findByRole('heading', { name: 'Beneficiarios permitidos' })).toBeTruthy();
+    expect(screen.getByText('Nube Andina Tecnología S. de R.L.')).toBeTruthy();
+    expect(screen.getByText('Pixel Patio S.A.S.')).toBeTruthy();
+    expect(screen.getByText('México')).toBeTruthy();
+    expect(screen.getByText('NAT010101AB6')).toBeTruthy();
+    expect(screen.getByText('USD')).toBeTruthy();
+    expect(screen.getByText('•••• 8890')).toBeTruthy();
+    expect(screen.getByText('•••• 1184')).toBeTruthy();
+    expect(screen.queryByText('Banco Ventaluz ···· 1234 5678 8890')).toBeNull();
+    expect(screen.getByText('Permitido', { exact: true })).toBeTruthy();
+    expect(screen.getByText('Bloqueado', { exact: true })).toBeTruthy();
+    expect(screen.getByText('✓')).toBeTruthy();
+    expect(screen.getByText('×')).toBeTruthy();
+  });
+
+  it('saves the full vendor row with its current version and adopts the response', async () => {
+    const savedVendor = { ...initialVendors[0], status: 'blocked' as const, version: 8 };
+    const api = renderReglas(createApi({ saveVendor: vi.fn(async () => savedVendor) }));
+
+    fireEvent.click(await screen.findByRole('button', { name: `Bloquear a ${initialVendors[0].name}` }));
+
+    await waitFor(() => expect(api.saveVendor).toHaveBeenCalledWith({
+      ...initialVendors[0],
+      status: 'blocked',
+    }));
+    const vendorRow = screen.getByText(initialVendors[0].name).closest('li');
+    expect(vendorRow).toBeTruthy();
+    expect(within(vendorRow as HTMLElement).getByText('Bloqueado', { exact: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `Permitir a ${initialVendors[0].name}` })).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByRole('status').map((item) => item.textContent).join(' '))
+      .toContain('Este cambio desactualiza'));
+  });
+
+  it('disables the vendor control while saving and keeps the old state on failure', async () => {
+    const save = deferred<Vendor>();
+    const api = renderReglas(createApi({ saveVendor: vi.fn(() => save.promise) }));
+    const toggle = await screen.findByRole('button', { name: `Bloquear a ${initialVendors[0].name}` });
+
+    fireEvent.click(toggle);
+
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => save.reject(new Error('No pude completar la solicitud.')));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('El estado anterior se conserva.');
+    expect(screen.getByText('Permitido', { exact: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `Bloquear a ${initialVendors[0].name}` })).toBeTruthy();
+  });
+
   it('loads editable rules, presets, help, and locked safety checks without toggles', async () => {
     renderReglas();
     await waitForLoadedControls();
