@@ -6,7 +6,7 @@ Una factura llega por correo, PDF o chat; un cambio de cuenta puede desviar un p
 
 [visto-bueno.aragort.com](https://visto-bueno.aragort.com) — demo de **Andina Labs Inc.**, con datos ficticios. No se ejecutan pagos reales.
 
-> **Estado de implementación — confirmar antes de presentar:** en este checkout, `src/server/app.ts` solo expone `GET /health`; el flujo de facturas aún no está conectado a una API. Este borrador describe el comportamiento previsto, no certifica lo que ya funciona en la URL de demo. Quita esta nota solo después de verificar el recorrido desplegado y sus controles.
+> **Estado de implementación (checkout local):** el flujo de facturas, sus controles, reglas, datos y bitácora están integrados. `EXTRACT_MODE=replay` y `JEV_MODE=replay` permiten probar sin llamadas externas. El panel Evaluación aún no presenta métricas (`GET /api/eval` responde 503). La disponibilidad de la URL desplegada debe verificarse por separado.
 
 ## Cómo decide
 
@@ -54,7 +54,7 @@ npm run build
 npm run dev
 ```
 
-`npm run dev` levanta Vite en `127.0.0.1:5173` y el servidor en `127.0.0.1:3000`. Para arrancar el servidor con la compilación de producción: `npm run build && npm start` (puerto predeterminado `3000`). En el checkout de este borrador, el servidor aún expone solo `/health`; por eso los comandos no implican que el recorrido de facturas esté integrado.
+`npm run dev` levanta Vite en `127.0.0.1:5173` y el servidor en `127.0.0.1:3000`. Para arrancar el servidor con la compilación de producción: `npm run build && npm start` (puerto predeterminado `3000`).
 
 Variables relevantes de `.env.example` (los secretos se quedan vacíos; no pongas llaves en el repositorio):
 
