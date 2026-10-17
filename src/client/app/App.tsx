@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { EvaluationResult } from '../../server/eval/run';
 import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow, ProcessEvent, ProcessRequest, WorkspaceSummary } from '../../shared/api';
 import {
   ApiRequestError,
@@ -7,6 +8,7 @@ import {
   createInvoice,
   datosApi,
   getExpediente,
+  getEvaluation,
   getInvoices,
   getWorkspace,
   processInvoiceEvents,
@@ -20,10 +22,22 @@ import {
 import { Bandeja } from '../features/bandeja/Bandeja';
 import { Counters } from '../features/bandeja/Counters';
 import { Expediente } from '../features/expediente/Expediente';
+import { Evaluacion } from '../features/evaluacion/Evaluacion';
+import { FirstRunHint } from '../features/ayuda/FirstRunHint';
 import type { RecibirApi } from '../features/recibir/RecibirPanel';
 import './app.css';
 
-type AppSection = 'inbox' | 'reglas' | 'datos' | 'bitacora';
+type AppSection = 'inbox' | 'reglas' | 'datos' | 'bitacora' | 'evaluacion';
+
+const FIRST_RUN_DISMISSED_KEY = 'visto-bueno:first-run-dismissed';
+
+function shouldShowFirstRunHint(): boolean {
+  try {
+    return window.localStorage.getItem(FIRST_RUN_DISMISSED_KEY) !== 'true';
+  } catch {
+    return true;
+  }
+}
 
 const Bitacora = lazy(async () => ({ default: (await import('../features/bitacora/Bitacora')).Bitacora }));
 const Datos = lazy(() => import('../features/datos/Datos'));
@@ -52,6 +66,10 @@ export default function App() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [detailFailure, setDetailFailure] = useState<{ key: string; message: string } | null>(null);
   const [detailRevision, setDetailRevision] = useState(0);
+  const [evaluationResult, setEvaluationResult] = useState<EvaluationResult | null>(null);
+  const [evaluationLoading, setEvaluationLoading] = useState(false);
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
+  const [firstRunOpen, setFirstRunOpen] = useState(shouldShowFirstRunHint);
   const [processing, setProcessing] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<AppSection>('inbox');
@@ -87,6 +105,33 @@ export default function App() {
       setLoading(false);
     }
   }, []);
+
+  const openEvaluation = useCallback(() => {
+    setActiveSection('evaluacion');
+    setEvaluationLoading(true);
+    setEvaluationError(null);
+    void getEvaluation()
+      .then(setEvaluationResult)
+      .catch((error: unknown) => setEvaluationError(errorMessage(error)))
+      .finally(() => setEvaluationLoading(false));
+  }, []);
+
+  const dismissFirstRun = useCallback(() => {
+    setFirstRunOpen(false);
+    try {
+      window.localStorage.setItem(FIRST_RUN_DISMISSED_KEY, 'true');
+    } catch {
+      // Keep the in-memory dismissal even when browser storage is unavailable.
+    }
+  }, []);
+
+  const openReceive = useCallback(() => setReceiveOpen(true), []);
+  const openHelp = useCallback(() => setHelpOpen(true), []);
+  const openData = useCallback(() => {
+    setActiveSection('datos');
+    void loadWorkspace(false);
+  }, [loadWorkspace]);
+  const openRules = useCallback(() => setActiveSection('reglas'), []);
 
   useEffect(() => {
     void loadWorkspace(false);
@@ -276,12 +321,15 @@ export default function App() {
             <a href="#bitacora" aria-current={activeSection === 'bitacora' ? 'page' : undefined} onClick={(event) => {
               event.preventDefault(); setActiveSection('bitacora'); void loadWorkspace(false);
             }}>Bitácora</a>
+            <a href="#evaluacion" aria-current={activeSection === 'evaluacion' ? 'page' : undefined} onClick={(event) => {
+              event.preventDefault(); openEvaluation();
+            }}>Evaluación</a>
           </nav>
           <div className="header-actions">
-            <button className="button button-secondary" type="button" onClick={() => setHelpOpen(true)}>
+            <button className="button button-secondary" type="button" onClick={openHelp}>
               Cómo decide
             </button>
-            <button className="button button-primary" type="button" disabled={actionBusy || processing} onClick={() => setReceiveOpen(true)}>
+            <button className="button button-primary" type="button" disabled={actionBusy || processing} onClick={openReceive}>
               + Recibir factura
             </button>
             <button className="button button-secondary" type="button" disabled={actionBusy || processing} onClick={() => void handleReset()}>
@@ -289,6 +337,14 @@ export default function App() {
             </button>
           </div>
         </header>
+
+        <FirstRunHint
+          open={firstRunOpen}
+          onDismiss={dismissFirstRun}
+          onOpenData={openData}
+          onOpenRules={openRules}
+          onReceiveInvoice={openReceive}
+        />
 
         {connectionError ? (
           <main><section className="offline-state" role="alert">
@@ -311,7 +367,7 @@ export default function App() {
                 rowRevisions={rowRevisions}
                 onSelect={selectInvoice}
                 onProcess={() => void handleProcess()}
-                onReceive={() => setReceiveOpen(true)}
+                onReceive={openReceive}
                 onDropFiles={(files) => void handleDropFiles(files)}
               />
               <Expediente
@@ -328,7 +384,8 @@ export default function App() {
             </div>
           </main> : activeSection === 'reglas' ? <Suspense fallback={<main><p role="status">Cargando reglas…</p></main>}><Reglas api={reglasApi} /></Suspense>
             : activeSection === 'datos' ? <Suspense fallback={<main><p role="status">Cargando datos…</p></main>}><Datos api={datosApi} /></Suspense>
-            : <main><Suspense fallback={<p role="status">Cargando bitácora…</p>}><Bitacora api={bitacoraApi} /></Suspense></main>
+            : activeSection === 'evaluacion' ? <Evaluacion result={evaluationResult} loading={evaluationLoading} error={evaluationError} />
+              : <main><Suspense fallback={<p role="status">Cargando bitácora…</p>}><Bitacora api={bitacoraApi} /></Suspense></main>
         ) : null}
       </div>
       <Suspense fallback={null}>

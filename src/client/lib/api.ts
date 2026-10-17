@@ -19,7 +19,7 @@ import type {
 } from '../../shared/api';
 import type { Budget, Contract, DecisionRecord, FxRate, Rules, Treasury, Vendor } from '../../shared/domain/types';
 import type {
-  BitacoraApi, CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi, ReglasApi,
+  BitacoraApi, CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi, EvaluationResult, ReglasApi,
 } from './api-types';
 
 const invoiceStatusSchema = z.enum([
@@ -244,6 +244,89 @@ const logEntrySchema: z.ZodType<LogEntry> = z.object({
   headline: z.string(), seal: z.string(), by: z.string().nullable(),
 }).strict();
 
+const evaluationRegressionAvailableSchema = z.object({
+  status: z.literal('available'),
+  tests: z.number().int().nonnegative(),
+  unsafeApprovals: z.number().int().nonnegative(),
+  source: z.string(),
+  safetyGate: z.enum(['passed', 'failed']),
+});
+const evaluationLabeledAvailableSchema = z.object({
+  status: z.literal('available'),
+  mode: z.literal('replay'),
+  total: z.number().int().nonnegative(),
+  correct: z.number().int().nonnegative(),
+  falseEscalations: z.number().int().nonnegative(),
+  autonomyPct: z.number().finite(),
+  unsafeApprovals: z.number().int().nonnegative(),
+  unsafeInvoiceIds: z.array(z.string()),
+  safetyGate: z.enum(['passed', 'failed']),
+});
+const evaluationRegressionSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('unavailable'),
+    reason: z.enum(['evidence_not_supplied', 'invalid_evidence']),
+  }),
+  evaluationRegressionAvailableSchema,
+]);
+const evaluationLabeledSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('unavailable'),
+    reason: z.enum([
+      'empty_labeled_set', 'invalid_labeled_set', 'runner_unavailable', 'missing_recording',
+      'incomplete_set', 'runner_failed', 'not_replay', 'invalid_decision',
+    ]),
+    invoiceId: z.string().optional(),
+  }),
+  evaluationLabeledAvailableSchema,
+]);
+const evaluationLiveSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('unavailable'),
+    reason: z.enum(['sample_not_supplied', 'empty_sample', 'invalid_sample']),
+  }),
+  z.object({
+    status: z.literal('available'),
+    mode: z.literal('live'),
+    sample: z.number().int().nonnegative(),
+    p50Ms: z.number().nonnegative(),
+    costUsd: z.string().regex(/^\d+(?:\.\d+)?$/),
+    failures: z.number().int().nonnegative(),
+  }),
+]);
+const evalReportSchema = z.object({
+  regression: z.object({ tests: z.number().int().nonnegative(), unsafeApprovals: z.number().int().nonnegative() }),
+  labeled: z.object({
+    total: z.number().int().nonnegative(),
+    correct: z.number().int().nonnegative(),
+    autonomyPct: z.number().finite(),
+    falseEscalations: z.number().int().nonnegative(),
+    mode: z.enum(['replay', 'live']),
+  }),
+  live: z.object({
+    sample: z.number().int().nonnegative(),
+    p50Ms: z.number().nonnegative(),
+    costUsd: z.string().regex(/^\d+(?:\.\d+)?$/),
+    failures: z.number().int().nonnegative(),
+  }).optional(),
+});
+const evaluationResultSchema: z.ZodType<EvaluationResult> = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('blocked'),
+    regression: evaluationRegressionSchema,
+    labeled: evaluationLabeledSchema,
+    live: evaluationLiveSchema,
+  }),
+  z.object({
+    status: z.literal('available'),
+    report: evalReportSchema,
+    regression: evaluationRegressionAvailableSchema,
+    labeled: evaluationLabeledAvailableSchema,
+    live: evaluationLiveSchema,
+    safetyGate: z.enum(['passed', 'failed']),
+  }),
+]);
+
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly payload: ApiError | ConflictResponse | null;
@@ -302,6 +385,22 @@ export function getWorkspace(): Promise<WorkspaceSummary> {
 
 export function getInvoices(): Promise<InvoiceRow[]> {
   return requestJson('/api/invoices', z.array(invoiceRowSchema));
+}
+
+export async function getEvaluation(): Promise<EvaluationResult | null> {
+  const response = await fetch('/api/eval');
+  if (response.status === 503) return null;
+  if (!response.ok) throw await readError(response);
+
+  let raw: unknown;
+  try {
+    raw = await response.json();
+  } catch {
+    throw new ApiRequestError('El servidor devolvió una respuesta vacía o inválida.', response.status);
+  }
+  const parsed = evaluationResultSchema.safeParse(raw);
+  if (!parsed.success) throw new ApiRequestError('El servidor devolvió una respuesta inválida.', response.status);
+  return parsed.data;
 }
 
 export function getExpediente(id: string): Promise<Expediente> {
