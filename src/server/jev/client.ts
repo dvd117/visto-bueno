@@ -178,6 +178,12 @@ export async function askJev(input: AskJevInput): Promise<JevAnswers> {
     const path = recordingPath(model, input.state, input.questions);
 
     if (mode === 'replay') return await replay(path, input.questions);
+    // Recording tooling only: reuse genuine recordings and call the provider just for missing states.
+    if (mode === 'record' && process.env.JEV_RECORD_MISSING_ONLY === '1') {
+      const existing = await replay(path, input.questions);
+      if (existing.ok) return { ...existing, recorded: true };
+      if (existing.error !== 'missing_recording') return existing;
+    }
 
     const apiKey = process.env.TYPESAFE_API_KEY?.trim();
     if (!apiKey) return { ok: false, error: 'no_key' };
