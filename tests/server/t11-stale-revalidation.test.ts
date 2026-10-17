@@ -29,13 +29,13 @@ const urgentJev: JevAnswers = {
 function invoiceInput(invoiceId: string, answers = jev) {
   const claims: ExtractionClaims = {
     amountsFound: ['USD 850.00'],
-    accountsFound: ['Bancolombia ···· 8890'],
+    accountsFound: ['Banco Ventaluz ···· 8890'],
     taxIdsFound: ['901.234.567-8'],
     invoiceIdsFound: [invoiceId],
     currenciesFound: ['USD'],
     payeeName: 'Nube Andina S.A.S.',
     payeeTaxId: '901.234.567-8',
-    payoutAccount: 'Bancolombia ···· 8890',
+    payoutAccount: 'Banco Ventaluz ···· 8890',
     invoiceId,
     invoiceDate: '2026-10-16',
     dueDate: '2026-10-25',
@@ -49,7 +49,7 @@ function invoiceInput(invoiceId: string, answers = jev) {
     documentTypeHint: 'factura',
     hasMultipleCurrenciesShown: false,
     evidenceQuotes: {
-      amountRaw: 'USD 850.00', payoutAccount: 'Bancolombia ···· 8890',
+      amountRaw: 'USD 850.00', payoutAccount: 'Banco Ventaluz ···· 8890',
       payeeTaxId: '901.234.567-8', invoiceId,
     },
     suspiciousPassages: [],
@@ -80,12 +80,12 @@ describe('T11 stale decision revalidation', () => {
     expect(original.decision.status).toBe('ready');
 
     const before = await runtime.app.request('/api/export/payments.csv', { headers: { cookie } });
-    expect(await before.text()).toContain('Bancolombia ···· 8890');
+    expect(await before.text()).toContain('Banco Ventaluz ···· 8890');
 
     const vendor = getWorkspaceData(db, workspaceId).vendors.find(({ id }) => id === 'nube-andina')!;
     const edited = await runtime.app.request('/api/data/vendors', {
       method: 'PUT', headers: { cookie, 'content-type': 'application/json' },
-      body: JSON.stringify({ ...vendor, payoutAccount: 'Bancolombia ···· 9999' }),
+      body: JSON.stringify({ ...vendor, payoutAccount: 'Banco Ventaluz ···· 9999' }),
     });
     expect(edited.status).toBe(200);
 
@@ -97,7 +97,7 @@ describe('T11 stale decision revalidation', () => {
       .get(workspaceId, 'AL-037')).toBeUndefined();
 
     const after = await runtime.app.request('/api/export/payments.csv', { headers: { cookie } });
-    expect(await after.text()).not.toContain('Bancolombia ···· 9999');
+    expect(await after.text()).not.toContain('Banco Ventaluz ···· 9999');
   });
 
   it('stales a ready decision when a new overlapping contract changes R3', async () => {

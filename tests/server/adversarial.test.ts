@@ -45,15 +45,15 @@ const vendorClaims: Record<VendorKey, {
   payeeName: string; payeeTaxId: string; payoutAccount: string; amountRaw: string; description: string;
 }> = {
   nube: {
-    payeeName: 'NUBE ANDINA S.A.S.', payeeTaxId: '901.234.567-8', payoutAccount: 'Bancolombia ···· 8890',
+    payeeName: 'NUBE ANDINA S.A.S.', payeeTaxId: '901.234.567-8', payoutAccount: 'Banco Ventaluz ···· 8890',
     amountRaw: 'USD 850.00', description: 'Hosting administrado y respaldo de infraestructura',
   },
   norte: {
-    payeeName: 'NORTE CLARO SOLUCIONES S.A.S.', payeeTaxId: '900.000.202-5', payoutAccount: 'Banco Andino ···· 2295',
+    payeeName: 'NORTE CLARO SOLUCIONES S.A.S.', payeeTaxId: '900.000.202-5', payoutAccount: 'Banco Altocauce ···· 2295',
     amountRaw: 'USD 950.00', description: 'Consultoría de seguridad de aplicaciones',
   },
   datos: {
-    payeeName: 'Datos del Ávila C.A.', payeeTaxId: 'J-30987654-2', payoutAccount: 'Mercantil ···· 5206',
+    payeeName: 'Datos del Ávila C.A.', payeeTaxId: 'J-30987654-2', payoutAccount: 'Banco Alborvia ···· 5206',
     amountRaw: 'USD 640.00', description: 'Restablecimiento urgente de enlace',
   },
 };
@@ -580,8 +580,8 @@ function protectedFlagInput(invoiceId: string, checkId: string): { extraction: E
         sourceText = [source.payeeName, source.payeeTaxId, source.payoutAccount, invoiceId].join('\n');
         break;
       case 'source_payoutAccount':
-        changed.payoutAccount = 'Bancolombia 8890';
-        changed.accountsFound = ['Bancolombia 8890'];
+        changed.payoutAccount = 'Banco Ventaluz 8890';
+        changed.accountsFound = ['Banco Ventaluz 8890'];
         sourceText = [source.payeeName, source.payeeTaxId, invoiceId, source.amountRaw].join('\n');
         break;
       case 'source_payeeTaxId':

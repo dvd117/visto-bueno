@@ -69,7 +69,7 @@ describe('RecibirPanel', () => {
     const template = invoiceTemplates.find(({ id }) => id === 'legitimate-cop');
     expect(template?.content).toContain('Beneficiaria: Valentina Ruiz');
     expect(template?.content).toContain('NIT: 900.123.456-7');
-    expect(template?.content).toContain('Cuenta Bancolombia ···· 7712');
+    expect(template?.content).toContain('Cuenta Banco Ventaluz ···· 7712');
     expect(template?.content).toContain('Monto total: COP 4.800.000,00');
     expect(template?.content).toContain('Período: noviembre de 2026');
   });

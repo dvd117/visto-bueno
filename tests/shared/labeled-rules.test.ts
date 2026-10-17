@@ -33,37 +33,37 @@ function isoDate(source: string, value: string): string {
 function claimsFromFixture(id: string, source: string): ExtractionClaims {
   const fields = {
     'AL-035': {
-      payeeName: 'PIXEL PATIO S.A.S.', taxId: '900.000.101-3', account: 'Banco Andino ···· 1184',
+      payeeName: 'PIXEL PATIO S.A.S.', taxId: '900.000.101-3', account: 'Banco Altocauce ···· 1184',
       invoiceId: 'AL-035', date: '18/10/2026', due: '28/10/2026', amount: 'USD 4.000,00', currency: 'USD',
       description: 'auditoría de accesibilidad del prototipo',
     },
     'AL-037': {
-      payeeName: 'VALENTINA RUIZ', taxId: '900.123.456-7', account: 'Bancolombia ···· 7712',
+      payeeName: 'VALENTINA RUIZ', taxId: '900.123.456-7', account: 'Banco Ventaluz ···· 7712',
       invoiceId: 'AL-037', date: '15/10/2026', due: '20/10/2026', amount: 'COP 4.800.000,00', currency: 'COP',
       description: 'Diseño UX, octubre de 2026',
     },
     'AL-038': {
-      payeeName: 'CARLOS MÉNDEZ', taxId: 'MEX-920315-4K2', account: 'BBVA México ···· 2038',
+      payeeName: 'CARLOS MÉNDEZ', taxId: 'MEX-920315-4K2', account: 'Banco Brumavela ···· 2038',
       invoiceId: 'AL-038', date: '14/10/2026', due: '22/10/2026', amount: 'MXN 62.000,00', currency: 'MXN',
       rate: 'MXN 1.000,00', quantity: '62', description: 'Desarrollo backend, 62 horas de trabajo',
     },
     'AL-039': {
-      payeeName: 'PROVEEDOR EXPRESS LLC', taxId: 'US-DE-999004', account: 'Mercantil ···· 9940',
+      payeeName: 'PROVEEDOR EXPRESS LLC', taxId: 'US-DE-999004', account: 'Banco Alborvia ···· 9940',
       invoiceId: 'AL-039', date: '12/10/2026', due: '18/10/2026', amount: 'USD 9.900,00', currency: 'USD',
       description: 'Servicios de consultoría de infraestructura',
     },
     'AL-042': {
-      payeeName: 'NUBE ANDINA S.A.S.', taxId: '901.234.567-8', account: 'Bancolombia, cuenta de ahorros ···· 4412',
+      payeeName: 'NUBE ANDINA S.A.S.', taxId: '901.234.567-8', account: 'Banco Ventaluz, cuenta de ahorros ···· 4412',
       invoiceId: 'AL-042', date: '15/10/2026', due: '25/10/2026', amount: 'USD 850,00', currency: 'USD',
       description: 'Hosting administrado, octubre de 2026',
     },
     'AL-045': {
-      payeeName: 'DATOS DEL ÁVILA C.A.', taxId: 'J-30987654-2', account: 'Mercantil ···· 5206',
+      payeeName: 'DATOS DEL ÁVILA C.A.', taxId: 'J-30987654-2', account: 'Banco Alborvia ···· 5206',
       invoiceId: 'AL-045', date: '14/10/2026', due: '30/10/2026', amount: 'USD 640,00', currency: 'USD',
       description: 'Soporte de datos y conectividad, octubre de 2026',
     },
     'AL-049': {
-      payeeName: 'LEX DELAWARE LLP', taxId: 'US-DE-004218', account: 'First Western ···· 4510',
+      payeeName: 'LEX DELAWARE LLP', taxId: 'US-DE-004218', account: 'Banco Valleclaro ···· 4510',
       invoiceId: 'AL-043', date: '20/10/2026', due: '31/10/2026', amount: 'USD 1,200.00', currency: 'USD',
       description: 'Presentación extraordinaria de documentos corporativos',
     },

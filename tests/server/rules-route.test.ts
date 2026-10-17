@@ -50,7 +50,7 @@ function extraction(
     : input.amountRaw;
   const payeeName = vendor === 'nube' ? 'Nube Andina S.A.S.' : 'Datos del Ávila C.A.';
   const payeeTaxId = vendor === 'nube' ? '901.234.567-8' : 'J-30987654-2';
-  const payoutAccount = vendor === 'nube' ? 'Bancolombia ···· 8890' : 'Mercantil ···· 5206';
+  const payoutAccount = vendor === 'nube' ? 'Banco Ventaluz ···· 8890' : 'Banco Alborvia ···· 5206';
   const date = input.invoiceDate ?? '2026-10-16';
   const claims: ExtractionClaims = {
     amountsFound: amountRaw === null ? [] : [amountRaw],

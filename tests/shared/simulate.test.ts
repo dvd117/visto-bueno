@@ -6,7 +6,7 @@ import { simulateImpact, type SimulationInput, type SimulationInvoice } from '..
 
 const vendor: Vendor = {
   id: 'vendor-1', name: 'Andina Labs proveedor ficticio', taxId: '900.000.001-1', country: 'CO',
-  payoutCurrency: 'USD', payoutAccount: 'Banco Andino ···· 8890', status: 'allowed', version: 1,
+  payoutCurrency: 'USD', payoutAccount: 'Banco Altocauce ···· 8890', status: 'allowed', version: 1,
 };
 
 const contract: Contract = {

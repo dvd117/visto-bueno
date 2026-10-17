@@ -5,7 +5,7 @@ import { evaluateRules } from '../../src/shared/engine/rules';
 
 const vendor: Vendor = {
   id: 'vendor-1', name: 'Nube Andina S.A.S.', taxId: '901.234.567-8', country: 'CO',
-  payoutCurrency: 'USD', payoutAccount: 'Banco Andino ···· 8890', status: 'allowed', version: 1,
+  payoutCurrency: 'USD', payoutAccount: 'Banco Altocauce ···· 8890', status: 'allowed', version: 1,
 };
 
 const contract: Contract = {
@@ -15,9 +15,9 @@ const contract: Contract = {
 
 function claims(overrides: Partial<ExtractionClaims> = {}): ExtractionClaims {
   return {
-    amountsFound: ['USD 100.00'], accountsFound: ['Banco Andino ···· 8890'], taxIdsFound: ['901.234.567-8'],
+    amountsFound: ['USD 100.00'], accountsFound: ['Banco Altocauce ···· 8890'], taxIdsFound: ['901.234.567-8'],
     invoiceIdsFound: ['INV-001'], currenciesFound: ['USD'], payeeName: 'Nube Andina S.A.S.',
-    payeeTaxId: '901.234.567-8', payoutAccount: 'Banco Andino ···· 8890', invoiceId: 'INV-001',
+    payeeTaxId: '901.234.567-8', payoutAccount: 'Banco Altocauce ···· 8890', invoiceId: 'INV-001',
     invoiceDate: '2026-10-16', dueDate: '2026-10-20', currency: 'USD', amountRaw: 'USD 100.00',
     subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null, description: 'Hosting',
     documentTypeHint: 'factura', hasMultipleCurrenciesShown: false, evidenceQuotes: {}, suspiciousPassages: [],
@@ -78,8 +78,8 @@ const accountMaskCases = ['X', 'XX', 'x', 'xx', '*', '****', '·', '····', '
   ]);
 
 const multiAccountCandidates = [
-  'Banco Andino 11112228890 y Banco Andino 99990008890',
-  'Cuenta de ahorros Banco Andino 11112228890 y cuenta corriente Banco Andino 99990008890',
+  'Banco Altocauce 11112228890 y Banco Altocauce 99990008890',
+  'Cuenta de ahorros Banco Altocauce 11112228890 y cuenta corriente Banco Altocauce 99990008890',
 ];
 
 describe('evaluateRules', () => {
@@ -100,7 +100,7 @@ describe('evaluateRules', () => {
 
   it('R2 passes a matching bank account and stops with masked mismatch evidence', () => {
     expectPass(evaluate(), 'R2');
-    expectPass(evaluate({ claims: claims({ payoutAccount: 'Banco Andino 1234568890' }) }), 'R2');
+    expectPass(evaluate({ claims: claims({ payoutAccount: 'Banco Altocauce 1234568890' }) }), 'R2');
     const unidentifiable = evaluate({
       vendor: { ...vendor, payoutAccount: '···· 8890' },
       claims: claims({ payoutAccount: '···· 8890' }),
@@ -108,34 +108,34 @@ describe('evaluateRules', () => {
     expectFail(unidentifiable, 'R2', 'stop');
     expect(getCheck(unidentifiable, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· —' });
     expectFail(evaluate({ claims: claims({ payoutAccount: '8890' }) }), 'R2', 'stop');
-    expectFail(evaluate({ claims: claims({ payoutAccount: 'Bancolombia ···· 8890' }) }), 'R2', 'stop');
-    const result = evaluate({ claims: claims({ payoutAccount: 'Bancolombia ···· 4412' }) });
+    expectFail(evaluate({ claims: claims({ payoutAccount: 'Banco Ventaluz ···· 8890' }) }), 'R2', 'stop');
+    const result = evaluate({ claims: claims({ payoutAccount: 'Banco Ventaluz ···· 4412' }) });
     expectFail(result, 'R2', 'stop');
     expect(getCheck(result, 'R2')).toMatchObject({
       evidence: { invoice: '···· 4412', record: '···· 8890' },
       reason: 'Verifica el cambio con el proveedor por un canal seguro, actualiza su cuenta en Preparar datos y re-evalúa',
     });
-    const ambiguous = evaluate({ claims: claims({ payoutAccount: 'Bancolombia 99991234567 - 8890' }) });
+    const ambiguous = evaluate({ claims: claims({ payoutAccount: 'Banco Ventaluz 99991234567 - 8890' }) });
     expectFail(ambiguous, 'R2', 'stop');
     expect(getCheck(ambiguous, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· 8890' });
     expectFail(evaluate({ claims: claims({ payoutAccount: null }) }), 'R2', 'stop');
   });
 
   it('R2 fails closed when a standalone X is ambiguous before a full account number', () => {
-    const result = evaluate({ claims: claims({ payoutAccount: 'Banco Andino X 11112228890' }) });
+    const result = evaluate({ claims: claims({ payoutAccount: 'Banco Altocauce X 11112228890' }) });
     expectFail(result, 'R2', 'stop');
     expect(getCheck(result, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· 8890' });
   });
 
   it.each([
-    'Banco Andino XX 11112228890',
-    'Banco Andino XXXX 11112228890',
+    'Banco Altocauce XX 11112228890',
+    'Banco Altocauce XXXX 11112228890',
   ])('R2 fails closed for an X mask before five or more visible digits: %s', (payoutAccount) => {
     expectFail(evaluate({ claims: claims({ payoutAccount }) }), 'R2', 'stop');
   });
 
   it.each(accountMaskCases)('R2 allows only up to four visible digits after mask $marker ($digits)', ({ marker, digits, allowed }) => {
-    const result = evaluate({ claims: claims({ payoutAccount: `Banco Andino ${marker} ${digits}` }) });
+    const result = evaluate({ claims: claims({ payoutAccount: `Banco Altocauce ${marker} ${digits}` }) });
     expect(getCheck(result, 'R2').passed).toBe(allowed);
     if (allowed) expectPass(result, 'R2');
     else expectFail(result, 'R2', 'stop');

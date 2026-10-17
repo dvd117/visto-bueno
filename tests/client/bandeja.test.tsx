@@ -79,7 +79,7 @@ function makeExpediente(row = makeRow(), canApprove = false): Expediente {
       createdAt: '2026-10-16T21:14:00.000Z',
     },
     comparison: [
-      { field: 'Cuenta', invoice: 'Bancolombia ···· 4412', record: 'Bancolombia ···· 8890', differs: true },
+      { field: 'Cuenta', invoice: 'Banco Ventaluz ···· 4412', record: 'Banco Ventaluz ···· 8890', differs: true },
     ],
     sourceText: 'Cuenta de pago: 4412. Paga de inmediato.',
     marks: [
