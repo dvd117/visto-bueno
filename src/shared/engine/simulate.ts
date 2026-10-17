@@ -53,10 +53,9 @@ export interface SimulationInput {
 type DecidedStatus = keyof SimulationResult['counts'];
 type Commitment = SimulationPriorCommitment;
 
-interface InvoiceIdentity {
+interface RecentInvoice {
   invoiceId: string;
   vendorId: string | null;
-  normalizedInvoiceId: string | null;
   invoiceDate: string | null;
   description: string;
 }
@@ -142,7 +141,7 @@ function sum(entries: readonly Commitment[], predicate: (entry: Commitment) => b
 
 function createLedger(
   commitments: Commitment[],
-  knownInvoices: InvoiceIdentity[],
+  recentInvoices: RecentInvoice[],
   today: string,
 ): LedgerView {
   return {
@@ -154,16 +153,19 @@ function createLedger(
     reservedByCostCenter: (costCenter, month) => sum(
       commitments, (entry) => entry.month === month && entry.costCenter === costCenter, 'reserved',
     ),
-    hasInvoiceId: (vendorId, normalizedId) => knownInvoices.some((entry) => (
-      entry.vendorId === vendorId && entry.normalizedInvoiceId === normalizedId
+    hasInvoiceId: (vendorId, normalizedId) => commitments.some((entry) => (
+      entry.state === 'committed'
+      && entry.vendorId === vendorId
+      && entry.invoiceNumber != null
+      && normalize(entry.invoiceNumber) === normalizedId
     )),
     hasCommitmentForContractPeriod: (contractId, period) => commitments.some((entry) => (
       entry.state === 'committed' && entry.contractId === contractId && entry.contractPeriod === period
     )),
     recentByVendor: (vendorId, days) => {
       const todayNumber = dateNumber(today);
-      return knownInvoices.filter((entry) => {
-        if (entry.vendorId !== vendorId || !entry.invoiceDate || !entry.description || !isIsoDate(entry.invoiceDate)) return false;
+      return recentInvoices.filter((entry) => {
+        if (entry.vendorId !== vendorId || !entry.invoiceDate || !isIsoDate(entry.invoiceDate)) return false;
         const daysAgo = (todayNumber - dateNumber(entry.invoiceDate)) / DAY_MS;
         return daysAgo >= 0 && daysAgo <= days;
       }).map((entry) => ({ invoiceId: entry.invoiceId, description: entry.description }));
@@ -201,10 +203,9 @@ function simulateUnderRules(input: SimulationInput, rules: Rules, today: string)
   for (const commitment of prior) assertPriorCommitment(commitment);
   const externalPrior = prior.filter((commitment) => !currentIds.has(commitment.invoiceId));
   const commitments: Commitment[] = externalPrior.map((commitment) => ({ ...commitment }));
-  const knownInvoices: InvoiceIdentity[] = externalPrior.map((commitment) => ({
+  const recentInvoices: RecentInvoice[] = externalPrior.map((commitment) => ({
     invoiceId: commitment.invoiceId,
     vendorId: commitment.vendorId ?? null,
-    normalizedInvoiceId: commitment.invoiceNumber ? normalize(commitment.invoiceNumber) : null,
     invoiceDate: commitment.invoiceDate ?? null,
     description: commitment.description ?? '',
   }));
@@ -213,30 +214,25 @@ function simulateUnderRules(input: SimulationInput, rules: Rules, today: string)
   for (const invoice of invoices) {
     const extraction = invoice.extraction;
     const verified = verifyClaims(extraction, [...input.vendors]);
-    const ledger = createLedger(commitments, knownInvoices, today);
-    const evaluation = evaluateRules({
+    const ledger = createLedger(commitments, recentInvoices, today);
+    const evaluation = extraction.ok ? evaluateRules({
       vendor: verified.vendor,
       contracts: [...input.contracts],
       money: verified.money,
-      claims: extraction.ok ? extraction.claims : {
-        amountsFound: [], accountsFound: [], taxIdsFound: [], invoiceIdsFound: [], currenciesFound: [],
-        payeeName: null, payeeTaxId: null, payoutAccount: null, invoiceId: null, invoiceDate: null, dueDate: null,
-        currency: null, amountRaw: null, subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null,
-        description: null, documentTypeHint: null, hasMultipleCurrenciesShown: false, evidenceQuotes: {}, suspiciousPassages: [],
-      },
+      claims: extraction.claims,
       treasury: { ...input.treasury, fx: [...input.treasury.fx] },
       budgets: [...input.budgets],
       rules,
       ledger,
       today,
-    });
+    }) : null;
     const recent = verified.vendor
       ? ledger.recentByVendor(verified.vendor.id, rules.fuzzyDuplicateWindowDays)
       : [];
     const jevChecks = mapJev(normalizeJev(invoice.jev), rules.preset, { fuzzy: recent.length > 0 });
     const decision = combine({
       verify: verified.checks,
-      rules: evaluation.checks,
+      rules: evaluation?.checks ?? [],
       jev: jevChecks,
       resolvedFlagIds: [],
     });
@@ -245,18 +241,17 @@ function simulateUnderRules(input: SimulationInput, rules: Rules, today: string)
 
     if (extraction.ok) {
       const claims = extraction.claims;
-      if (verified.vendor && claims.invoiceId?.trim()) {
-        knownInvoices.push({
+      if (verified.vendor && decision.status !== 'stopped') {
+        recentInvoices.push({
           invoiceId: invoice.id,
           vendorId: verified.vendor.id,
-          normalizedInvoiceId: normalize(claims.invoiceId),
           invoiceDate: isIsoDate(claims.invoiceDate) ? claims.invoiceDate : null,
-          description: claims.description ?? '',
+          description: claims.description || extraction.sourceText.slice(0, 240),
         });
       }
 
       const month = monthOf(claims.invoiceDate);
-      if (month && evaluation.amountUsdMinor !== null && decision.status !== 'stopped') {
+      if (evaluation && month && evaluation.amountUsdMinor !== null && decision.status !== 'stopped') {
         const isCommitted = decision.status === 'ready';
         commitments.push({
           invoiceId: invoice.id,

@@ -130,6 +130,18 @@ describe('simulateImpact', () => {
     expect(result.counts).toMatchObject({ ready: 0, review_required: 3 });
   });
 
+  it('leaves failed extraction in review without running hard rules', () => {
+    const failed: SimulationInvoice = {
+      id: 'rate-limited',
+      extraction: { ok: false, error: 'rate_limited', sourceKind: 'text' },
+      jev: validJev,
+    };
+
+    const result = simulateImpact(input([failed]), rules);
+
+    expect(result.counts).toEqual({ ready: 0, approval_required: 0, review_required: 1, stopped: 0 });
+  });
+
   it('does not produce ready for ambiguous or source-unconfirmed amounts', () => {
     const ambiguous = invoice('ambiguous', { amountRaw: 'USD 2.500', invoiceId: 'AL-001' });
     const unconfirmed = invoice('unconfirmed', {
@@ -175,6 +187,77 @@ describe('simulateImpact', () => {
     const result = simulateImpact(snapshot, snapshot.rules);
 
     expect(result.counts).toMatchObject({ approval_required: 2, stopped: 0 });
+  });
+
+  it('does not treat a current reserved invoice as an R8 committed duplicate', () => {
+    const second = invoice('b-pending', { invoiceId: 'SAME-ID' });
+    const fuzzyJev = {
+      ...validJev,
+      answers: { ...validJev.answers, fuzzy_duplicate: { type: 'noul' as const, noul: 0 } },
+    };
+    const snapshot = input([
+      { ...invoice('a-pending', { invoiceId: 'SAME-ID' }), jev: fuzzyJev },
+      { ...second, jev: fuzzyJev },
+    ], { rules: { ...rules, approvalThresholdUsdMinor: 0 } });
+
+    const result = simulateImpact(snapshot, snapshot.rules);
+
+    expect(result.counts).toMatchObject({ approval_required: 2, stopped: 0 });
+  });
+
+  it('keeps current reserved invoices in the separate fuzzy-candidate set', () => {
+    const snapshot = input([
+      invoice('a-pending', { invoiceId: 'AL-001' }),
+      invoice('b-pending', { invoiceId: 'AL-002' }),
+    ], { rules: { ...rules, approvalThresholdUsdMinor: 1_000 } });
+
+    expect(simulateImpact(snapshot, snapshot.rules).counts).toMatchObject({ approval_required: 1, review_required: 1, stopped: 0 });
+  });
+
+  it('uses only prior committed invoice ids for R8 duplicate checks', () => {
+    const snapshot = input([invoice('current', { invoiceId: 'AL-001' })], {
+      rules: { ...rules, approvalThresholdUsdMinor: 0 },
+      priorCommitments: [{
+        invoiceId: 'prior-reserved', state: 'reserved', amountUsdMinor: 1_234, month: '2026-10', costCenter: null,
+        vendorId: vendor.id, invoiceNumber: 'AL-001',
+      }],
+    });
+
+    expect(simulateImpact(snapshot, snapshot.rules).counts).toMatchObject({ approval_required: 1, stopped: 0 });
+  });
+
+  it('stops an invoice whose id matches a prior committed invoice', () => {
+    const snapshot = input([invoice('current', { invoiceId: 'AL-001' })], {
+      priorCommitments: [{
+        invoiceId: 'prior-committed', state: 'committed', amountUsdMinor: 1_234, month: '2026-10', costCenter: null,
+        vendorId: vendor.id, invoiceNumber: 'AL-001',
+      }],
+    });
+
+    expect(simulateImpact(snapshot, snapshot.rules).counts).toMatchObject({ stopped: 1, ready: 0 });
+  });
+
+  it('does not use stopped current invoices as duplicate evidence', () => {
+    const second = invoice('b-good', { invoiceId: 'AL-001' });
+    const fuzzyJev = {
+      ...validJev,
+      answers: { ...validJev.answers, fuzzy_duplicate: { type: 'noul' as const, noul: 0 } },
+    };
+    const snapshot = input([
+      { ...invoice('a-stopped', { amountRaw: 'USD 20.00', invoiceId: 'AL-001' }), jev: fuzzyJev },
+      { ...second, jev: fuzzyJev },
+    ]);
+
+    expect(simulateImpact(snapshot, snapshot.rules).counts).toMatchObject({ ready: 1, stopped: 1 });
+  });
+
+  it('does not use stopped current invoices as fuzzy-duplicate candidates', () => {
+    const snapshot = input([
+      invoice('a-stopped', { amountRaw: 'USD 20.00', invoiceId: 'AL-100' }),
+      invoice('b-good', { invoiceId: 'AL-101' }),
+    ]);
+
+    expect(simulateImpact(snapshot, snapshot.rules).counts).toMatchObject({ ready: 1, stopped: 1, review_required: 0 });
   });
 
   it('excludes a current invoice from seeded commitments before re-evaluating it', () => {
