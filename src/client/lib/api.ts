@@ -14,13 +14,13 @@ import type {
   ProcessEvent,
   ProcessRequest,
   RunStats,
+  SimulationResult,
   WorkspaceSummary,
 } from '../../shared/api';
 import type { Budget, Contract, DecisionRecord, FxRate, Rules, Treasury, Vendor } from '../../shared/domain/types';
-import type { BitacoraApi } from '../features/bitacora/Bitacora';
 import type {
-  CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi,
-} from '../features/datos/Datos';
+  BitacoraApi, CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi, ReglasApi,
+} from './api-types';
 
 const invoiceStatusSchema = z.enum([
   'queued', 'ready', 'approval_required', 'review_required', 'stopped', 'approved', 'rejected', 'stale',
@@ -220,6 +220,25 @@ const dataSchemas: Record<DataTable, z.ZodType<unknown>> = {
   vendors: z.array(vendorSchema), contracts: z.array(contractSchema),
   budgets: z.array(budgetSchema), treasury: treasurySchema,
 };
+const dataRowSchemas: Record<DataTable, z.ZodType<unknown>> = {
+  vendors: vendorSchema, contracts: contractSchema, budgets: budgetSchema, treasury: treasurySchema,
+};
+const simulationCountsSchema = z.object({
+  ready: nonNegativeInteger,
+  approval_required: nonNegativeInteger,
+  review_required: nonNegativeInteger,
+  stopped: nonNegativeInteger,
+}).strict();
+const simulationResultSchema: z.ZodType<SimulationResult> = z.object({
+  counts: simulationCountsSchema,
+  deltas: z.object({
+    ready: safeInteger,
+    approval_required: safeInteger,
+    review_required: safeInteger,
+    stopped: safeInteger,
+  }).strict(),
+  unsafeApprovals: z.literal(0),
+}).strict();
 const logEntrySchema: z.ZodType<LogEntry> = z.object({
   at: z.string(), invoiceId: z.string(), status: invoiceStatusSchema,
   headline: z.string(), seal: z.string(), by: z.string().nullable(),
@@ -429,7 +448,7 @@ export async function getTable<T extends DataTable>(table: T): Promise<DataTable
 }
 
 export async function putRow<T extends DataTable>(table: T, row: DataRowMap[T]): Promise<DataRowMap[T]> {
-  const result: unknown = await requestJson(`/api/data/${table}`, dataSchemas[table], jsonInit('PUT', row));
+  const result: unknown = await requestJson(`/api/data/${table}`, dataRowSchemas[table], jsonInit('PUT', row));
   return result as DataRowMap[T];
 }
 
@@ -478,5 +497,10 @@ export function exportReportMd(): Promise<string> {
 }
 
 export const datosApi: DatosApi = { getTable, putRow, uploadCsv, templateUrl };
+export const reglasApi: ReglasApi = {
+  getRules: () => requestJson('/api/rules', rulesSchema),
+  saveRules: (rules) => requestJson('/api/rules', rulesSchema, jsonInit('PUT', rules)),
+  simulate: (rules) => requestJson('/api/rules/simulate', simulationResultSchema, jsonInit('POST', { rules })),
+};
 export const bitacoraApi: BitacoraApi = { getLog, exportPaymentsCsv, exportLogCsv, exportReportMd };
 

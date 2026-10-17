@@ -2,13 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { SimulationResult } from '../../../shared/api';
 import type { Preset, Rules } from '../../../shared/domain/types';
+import type { ReglasApi } from '../../lib/api-types';
 import './reglas.css';
-
-export interface ReglasApi {
-  getRules(): Promise<Rules>;
-  saveRules(rules: Rules): Promise<Rules>;
-  simulate(rules: Rules): Promise<SimulationResult>;
-}
+export type { ReglasApi } from '../../lib/api-types';
 
 interface ReglasProps {
   api: ReglasApi;

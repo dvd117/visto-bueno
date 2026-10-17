@@ -7,6 +7,14 @@ const counters = {
   ready: 0, approval_required: 0, review_required: 0, stopped: 0,
   approved: 0, rejected: 0, stale: 0, queued: 0,
 };
+const rules = {
+  version: 1,
+  perPaymentLimitUsdMinor: 1500000,
+  monthlyLimitUsdMinor: 6000000,
+  approvalThresholdUsdMinor: 300000,
+  fuzzyDuplicateWindowDays: 60,
+  preset: 'equilibrado',
+} as const;
 
 function json(value: unknown): Response {
   return new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -17,12 +25,15 @@ beforeEach(() => {
     const path = new URL(String(input), window.location.href).pathname;
     if (path === '/api/workspace') return json({
       company: { name: 'Andina Labs Inc.', fictional: true },
-      rules: {
-        version: 1, perPaymentLimitUsdMinor: 100_000, monthlyLimitUsdMinor: 500_000,
-        approvalThresholdUsdMinor: 50_000, fuzzyDuplicateWindowDays: 60, preset: 'equilibrado',
-      },
+      rules,
       counters,
       lastRun: null,
+    });
+    if (path === '/api/rules') return json(rules);
+    if (path === '/api/rules/simulate') return json({
+      counts: { ready: 0, approval_required: 0, review_required: 0, stopped: 0 },
+      deltas: { ready: 0, approval_required: 0, review_required: 0, stopped: 0 },
+      unsafeApprovals: 0,
     });
     if (path === '/api/invoices') return json([]);
     if (path === '/api/data/vendors' || path === '/api/data/contracts' || path === '/api/data/budgets') return json([]);
@@ -59,5 +70,15 @@ describe('T11 app integration', () => {
 
     fireEvent.click(screen.getByRole('link', { name: 'Bitácora' }));
     expect(await screen.findByRole('heading', { name: 'Bitácora' })).toBeTruthy();
+  });
+
+  it('mounts the Reglas section using its rules adapter', async () => {
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Andina Labs Inc.' });
+
+    fireEvent.click(screen.getByRole('link', { name: 'Reglas' }));
+
+    expect(await screen.findByRole('heading', { name: 'Reglas de pago' })).toBeTruthy();
+    expect(await screen.findByText('Versión vigente: 1')).toBeTruthy();
   });
 });

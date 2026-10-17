@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RecibirPanel, type RecibirApi } from '../../src/client/features/recibir/RecibirPanel';
+import type { ProcessRequest } from '../../src/shared/api';
 import { invoiceTemplates } from '../../src/shared/templates';
 
 const invoice = {
@@ -21,7 +22,7 @@ function createApi(overrides: Partial<RecibirApi> = {}): RecibirApi {
   return {
     createInvoiceText: vi.fn(async (_text: string) => invoice),
     createInvoiceFile: vi.fn(async (_file: File) => ({ ...invoice, sourceKind: 'pdf' })),
-    process: vi.fn((_ids: string[] | undefined, _mode: 'replay' | 'live') => noEvents()),
+    process: vi.fn((_request: ProcessRequest) => noEvents()),
     ...overrides,
   };
 }
@@ -80,10 +81,9 @@ describe('RecibirPanel', () => {
         calls.push('create');
         return invoice;
       }),
-      process: vi.fn((ids: string[] | undefined, mode: 'replay' | 'live') => {
+      process: vi.fn((request: ProcessRequest) => {
         calls.push('process');
-        expect(ids).toEqual([invoice.id]);
-        expect(mode).toBe('live');
+        expect(request).toEqual({ ids: [invoice.id], mode: 'live' });
         return noEvents();
       }),
     });
@@ -109,7 +109,7 @@ describe('RecibirPanel', () => {
     });
 
     await waitFor(() => expect(api.createInvoiceFile).toHaveBeenCalledWith(file));
-    expect(api.process).toHaveBeenCalledWith([invoice.id], 'live');
+    expect(api.process).toHaveBeenCalledWith({ ids: [invoice.id], mode: 'live' });
   });
 
   it('shows the demo limit message when the API returns 429', async () => {
@@ -128,6 +128,6 @@ describe('RecibirPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cargar facturas de ejemplo' }));
 
-    await waitFor(() => expect(api.process).toHaveBeenCalledWith(undefined, 'replay'));
+    await waitFor(() => expect(api.process).toHaveBeenCalledWith({ mode: 'replay', examples: true }));
   });
 });

@@ -24,6 +24,10 @@ afterEach(() => {
 
 afterAll(() => serverRuntime.dispose());
 
+function assertLabeledReplayEvidenceAvailable(complete: boolean, required: boolean): void {
+  if (required && !complete) throw new Error('REQUIRE_LABELED_SET=1 but genuine replay evidence is incomplete.');
+}
+
 describe('T11 API', () => {
   it('sets an isolated workspace cookie and lists the 20 queued examples', async () => {
     const { app } = makeRuntime();
@@ -72,6 +76,8 @@ describe('T11 API', () => {
     });
     const recordingsComplete = decisions.every(({ jevRecorded }) => jevRecorded);
 
+    assertLabeledReplayEvidenceAvailable(recordingsComplete, process.env.REQUIRE_LABELED_SET === '1');
+
     expect(response.headers.get('content-type')).toMatch(/text\/event-stream/i);
     expect(frames.filter((frame) => frame.type === 'decided')).toHaveLength(20);
     expect(frames.filter((frame) => frame.type === 'done')).toHaveLength(1);
@@ -86,6 +92,11 @@ describe('T11 API', () => {
         .toEqual(fixtures.map(({ invoiceId, expected }) => [invoiceId, expected]));
     }
     expect(reserveCall).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the mandatory labeled-set gate is activated without complete recordings', () => {
+    expect(() => assertLabeledReplayEvidenceAvailable(false, true))
+      .toThrow('REQUIRE_LABELED_SET=1 but genuine replay evidence is incomplete.');
   });
 
   it('handles non-invoice text as review and refuses approval of a stopped example', async () => {

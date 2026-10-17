@@ -50,7 +50,7 @@ export interface WorkspaceSummary {
 }
 
 /** POST /api/process (response is an SSE stream of ProcessEvent) */
-export interface ProcessRequest { ids?: string[]; mode?: 'replay' | 'live' }
+export interface ProcessRequest { ids?: string[]; mode?: 'replay' | 'live'; examples?: true }
 
 /** POST /api/invoices with JSON (multipart `file` is the other form) */
 export interface NewInvoiceText { text: string }

@@ -1,34 +1,11 @@
 import { useEffect, useState } from 'react';
 import Decimal from 'decimal.js';
-import type { ApiError } from '../../../shared/api';
 import type { Budget, Contract, CostCenter, Currency, FxRate, Treasury, Vendor } from '../../../shared/domain/types';
+import type {
+  CsvTable, DataTable, DataTableValues, DatosApi,
+} from '../../lib/api-types';
+export type { CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi } from '../../lib/api-types';
 import './datos.css';
-
-export type DataTable = 'vendors' | 'contracts' | 'budgets' | 'treasury';
-export type CsvTable = 'vendors' | 'contracts' | 'budgets' | 'fx';
-
-export interface DataTableValues {
-  vendors: Vendor[];
-  contracts: Contract[];
-  budgets: Budget[];
-  treasury: Treasury;
-}
-
-export interface DataRowMap {
-  vendors: Vendor;
-  contracts: Contract;
-  budgets: Budget;
-  treasury: Treasury;
-}
-
-export type DataUploadResult = { ok: true } | { ok: false; error: ApiError };
-
-export interface DatosApi {
-  getTable<T extends DataTable>(table: T): Promise<DataTableValues[T]>;
-  putRow<T extends DataTable>(table: T, row: DataRowMap[T]): Promise<DataRowMap[T]>;
-  uploadCsv(table: CsvTable, file: File): Promise<DataUploadResult>;
-  templateUrl(table: CsvTable): string;
-}
 
 interface Column<T> {
   key: string;

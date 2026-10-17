@@ -39,9 +39,9 @@ type JsonBodyResult =
   | { ok: false; status: 400; message: string }
   | { ok: false; status: 413; message: string };
 
-async function readJsonBody(request: Request): Promise<JsonBodyResult> {
+async function readJsonBody(request: Request, requestBytes?: Uint8Array): Promise<JsonBodyResult> {
   try {
-    const limited = await readLimitedBody(request);
+    const limited = requestBytes === undefined ? await readLimitedBody(request) : { ok: true as const, bytes: requestBytes };
     if (!limited.ok) return limited;
     const text = new TextDecoder('utf-8', { fatal: true }).decode(limited.bytes);
     return { ok: true, value: JSON.parse(text) as unknown };
@@ -135,6 +135,8 @@ function readSimulationSnapshot(db: Db, workspaceId: string): SimulationInput {
 
 export function createRulesRoutes({ db }: { db: Db }): Hono<RulesRouteEnv> {
   const routes = new Hono<RulesRouteEnv>();
+  const bodyBytes = (context: { var: Record<string, unknown> }) =>
+    context.var.requestBytes instanceof Uint8Array ? context.var.requestBytes : undefined;
 
   routes.get('/rules', (c) => {
     try {
@@ -145,7 +147,7 @@ export function createRulesRoutes({ db }: { db: Db }): Hono<RulesRouteEnv> {
   });
 
   routes.put('/rules', async (c) => {
-    const parsed = await readJsonBody(c.req.raw);
+    const parsed = await readJsonBody(c.req.raw, bodyBytes(c));
     if (!parsed.ok) return c.json({ error: 'invalid_request', message: parsed.message }, parsed.status);
 
     let rules: Rules;
@@ -168,7 +170,7 @@ export function createRulesRoutes({ db }: { db: Db }): Hono<RulesRouteEnv> {
   });
 
   routes.post('/rules/simulate', async (c) => {
-    const parsed = await readJsonBody(c.req.raw);
+    const parsed = await readJsonBody(c.req.raw, bodyBytes(c));
     if (!parsed.ok) return c.json({ error: 'invalid_request', message: parsed.message }, parsed.status);
     if (!isRecord(parsed.value) || Object.keys(parsed.value).length !== 1 || !Object.hasOwn(parsed.value, 'rules')) {
       return c.json(INVALID_REQUEST, 400);

@@ -13,7 +13,7 @@ Si se define `JEV_MODEL`, mantener el mismo valor al grabar y ejecutar el gate d
 Después de que el script termine correctamente, correr el gate de replay sin llamadas de proveedor:
 
 ```sh
-EXTRACT_MODE=replay JEV_MODE=replay npm test -- tests/server/api.test.ts -t 'replays the genuine sample'
+REQUIRE_LABELED_SET=1 EXTRACT_MODE=replay JEV_MODE=replay npm test -- tests/server/api.test.ts -t 'replays the genuine sample'
 ```
 
-Con las 20 grabaciones completas, esa prueba compara los 20 estados del pipeline con `fixtures/invoices/labels.json` y falla si un estado `ready` no está etiquetado `ready`. Sin grabaciones completas, no presenta métricas ni declara el gate etiquetado disponible.
+Con las 20 grabaciones completas, esa prueba compara los 20 estados del pipeline con `fixtures/invoices/labels.json` y falla si un estado `ready` no está etiquetado `ready`. `REQUIRE_LABELED_SET=1` hace que grabaciones ausentes, corruptas o con hash/modelo distinto fallen el gate; sin esa activación, la prueba local sigue validando el cierre seguro, pero no cuenta como evidencia etiquetada.

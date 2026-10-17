@@ -1,13 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { LogEntry } from '../../../shared/api';
 import type { InvoiceStatus } from '../../../shared/domain/types';
-
-export interface BitacoraApi {
-  getLog(): Promise<LogEntry[]>;
-  exportPaymentsCsv(): Promise<string>;
-  exportLogCsv(): Promise<string>;
-  exportReportMd(): Promise<string>;
-}
+import type { BitacoraApi } from '../../lib/api-types';
+export type { BitacoraApi } from '../../lib/api-types';
 
 interface BitacoraProps {
   api: BitacoraApi;

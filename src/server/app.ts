@@ -6,6 +6,7 @@ import { createLiveCallLimiter, createWorkspaceTtlCleanup, readLimitedBody } fro
 import { createWorkspaceMiddleware, type ServerEnv, type WorkspaceMiddlewareOptions } from './middleware/workspace';
 import { validateProductionAssets } from './fixtures';
 import { createApiRoutes } from './routes/api';
+import { createRulesRoutes } from './routes/rules';
 import type { PipelineOptions } from './pipeline';
 
 export interface CreateServerAppOptions extends Partial<Omit<PipelineOptions, 'db'>>,
@@ -50,6 +51,7 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
     ...(options.jevProvider ? { jevProvider: options.jevProvider } : {}),
     ...(options.now ? { now: options.now } : {}),
   }));
+  app.route('/api', createRulesRoutes({ db }));
   app.notFound((c) => c.req.path.startsWith('/api/')
     ? c.json({ error: 'not_found', message: 'No encontré esta ruta.' }, 404)
     : c.text('Not Found', 404));

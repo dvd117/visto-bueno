@@ -36,6 +36,7 @@ const resolutionSchema = z.object({
 const processSchema = z.object({
   ids: z.array(z.string().trim().min(1).max(80)).max(100).optional(),
   mode: z.enum(['replay', 'live']).optional(),
+  examples: z.literal(true).optional(),
 }).strict();
 const textInvoiceSchema = z.object({ text: z.string().trim().min(1).max(2 * 1024 * 1024) }).strict();
 
@@ -124,7 +125,7 @@ function fileKind(file: File): { sourceKind: 'pdf' | 'image'; extension: string;
 }
 
 function validFileBytes(bytes: Uint8Array, kind: 'pdf' | 'image', mimeType: string): boolean {
-  if (kind === 'pdf') return bytes.subarray(0, 5).toString() === '%PDF-';
+  if (kind === 'pdf') return Buffer.from(bytes.subarray(0, 5)).toString('ascii') === '%PDF-';
   if (mimeType === 'image/png') return Buffer.from(bytes.subarray(0, 8)).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (mimeType === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   return Buffer.from(bytes.subarray(0, 4)).toString('ascii') === 'RIFF'
@@ -262,11 +263,12 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
     const workspaceId = c.get('workspaceId');
     const mode: ProcessMode = parsed.data.mode ?? 'replay';
     let ids: string[];
-    if (parsed.data.ids === undefined) {
-      if (mode !== 'replay') return jsonFailure(c, 400, 'Las facturas de ejemplo solo se procesan en modo de reproducción.');
+    if (parsed.data.examples) {
+      if (parsed.data.ids !== undefined || mode !== 'replay') {
+        return jsonFailure(c, 400, 'Las facturas de ejemplo solo se procesan en modo de reproducción.');
+      }
       const fixtures = ensureExampleInvoices(db, workspaceId);
       ids = fixtures.map(({ invoiceId }) => invoiceId);
-      const fixtureSet = new Set(ids);
       db.transaction(() => {
         for (const id of ids) {
           const invoice = getInvoice(db, workspaceId, id);
@@ -279,7 +281,10 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
           db.prepare('DELETE FROM commitments WHERE workspace_id = ? AND invoice_id = ?').run(workspaceId, id);
         }
       }).immediate();
-      ids = ids.filter((id) => fixtureSet.has(id));
+    } else if (parsed.data.ids === undefined) {
+      if (mode !== 'replay') return jsonFailure(c, 400, 'Elige facturas recibidas para procesar en vivo.');
+      ids = (db.prepare("SELECT id FROM invoices WHERE workspace_id = ? AND status = 'queued' ORDER BY id")
+        .all(workspaceId) as Array<{ id: string }>).map(({ id }) => id);
     } else {
       ids = [...new Set(parsed.data.ids)];
     }

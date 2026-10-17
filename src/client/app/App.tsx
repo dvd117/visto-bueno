@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow, ProcessEvent, WorkspaceSummary } from '../../shared/api';
+import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow, ProcessEvent, ProcessRequest, WorkspaceSummary } from '../../shared/api';
 import {
   ApiRequestError,
   bitacoraApi,
@@ -11,6 +11,7 @@ import {
   getWorkspace,
   processInvoiceEvents,
   processInvoices,
+  reglasApi,
   reevaluateInvoice,
   rejectInvoice,
   resetWorkspace,
@@ -22,12 +23,13 @@ import { Expediente } from '../features/expediente/Expediente';
 import type { RecibirApi } from '../features/recibir/RecibirPanel';
 import './app.css';
 
-type AppSection = 'inbox' | 'datos' | 'bitacora';
+type AppSection = 'inbox' | 'reglas' | 'datos' | 'bitacora';
 
 const Bitacora = lazy(async () => ({ default: (await import('../features/bitacora/Bitacora')).Bitacora }));
 const Datos = lazy(() => import('../features/datos/Datos'));
 const RecibirPanel = lazy(async () => ({ default: (await import('../features/recibir/RecibirPanel')).RecibirPanel }));
 const ComoDecide = lazy(async () => ({ default: (await import('../features/ayuda/ComoDecide')).ComoDecide }));
+const Reglas = lazy(async () => ({ default: (await import('../features/reglas/Reglas')).Reglas }));
 
 function errorMessage(error: unknown): string {
   if (error instanceof TypeError) return 'No pude conectar con el servidor';
@@ -159,11 +161,11 @@ export default function App() {
       setDetailFailure(null);
       return row;
     },
-    async *process(ids, mode) {
+    async *process(request: ProcessRequest) {
       if (processing) throw new ApiRequestError('Ya hay una evaluación en curso. Inténtalo al terminar.', 409);
       setProcessing(true);
       try {
-        yield* processInvoiceEvents({ ids, mode }, handleProcessEvent);
+        yield* processInvoiceEvents(request, handleProcessEvent);
       } finally {
         setProcessing(false);
         await loadWorkspace(false);
@@ -265,7 +267,9 @@ export default function App() {
             <a href="#inbox" aria-current={activeSection === 'inbox' ? 'page' : undefined} onClick={(event) => {
               event.preventDefault(); setActiveSection('inbox'); void loadWorkspace(false);
             }}>Bandeja</a>
-            <a href="#reglas">Reglas</a>
+            <a href="#reglas" aria-current={activeSection === 'reglas' ? 'page' : undefined} onClick={(event) => {
+              event.preventDefault(); setActiveSection('reglas');
+            }}>Reglas</a>
             <a href="#datos" aria-current={activeSection === 'datos' ? 'page' : undefined} onClick={(event) => {
               event.preventDefault(); setActiveSection('datos'); void loadWorkspace(false);
             }}>Preparar datos</a>
@@ -322,7 +326,8 @@ export default function App() {
                 onReevaluate={handleReevaluate}
               />
             </div>
-          </main> : activeSection === 'datos' ? <Suspense fallback={<main><p role="status">Cargando datos…</p></main>}><Datos api={datosApi} /></Suspense>
+          </main> : activeSection === 'reglas' ? <Suspense fallback={<main><p role="status">Cargando reglas…</p></main>}><Reglas api={reglasApi} /></Suspense>
+            : activeSection === 'datos' ? <Suspense fallback={<main><p role="status">Cargando datos…</p></main>}><Datos api={datosApi} /></Suspense>
             : <main><Suspense fallback={<p role="status">Cargando bitácora…</p>}><Bitacora api={bitacoraApi} /></Suspense></main>
         ) : null}
       </div>
