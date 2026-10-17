@@ -78,6 +78,8 @@ export default function App() {
   const [rowRevisions, setRowRevisions] = useState<Record<string, number>>({});
   const [toast, setToast] = useState('');
   const toastTimer = useRef<number | undefined>(undefined);
+  const resetOutcome = useRef<Promise<boolean> | null>(null);
+  const resetGeneration = useRef(0);
   const selectedStatus = rows.find((row) => row.id === selectedId)?.status;
   const detailKey = JSON.stringify([selectedId, selectedStatus]);
   const detailError = detailFailure?.key === detailKey ? detailFailure.message : null;
@@ -159,6 +161,16 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(''), 3200);
   }, []);
 
+  const shouldDiscardReceive = useCallback(async (generation: number) => {
+    while (true) {
+      const outcome = resetOutcome.current;
+      if (!outcome) break;
+      if (await outcome) return true;
+      if (resetOutcome.current === outcome) break;
+    }
+    return generation !== resetGeneration.current;
+  }, []);
+
   const handleProcessEvent = useCallback((event: ProcessEvent) => {
     if (event.type === 'decided') {
       setRows((current) => replaceRow(current, event.row));
@@ -192,7 +204,11 @@ export default function App() {
 
   const receivingApi = useMemo<RecibirApi>(() => ({
     async createInvoiceText(text) {
+      const generation = resetGeneration.current;
       const row = await createInvoice({ text });
+      if (await shouldDiscardReceive(generation)) {
+        throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
+      }
       setRows((current) => replaceRow(current, row));
       setSelectedId(row.id);
       setExpediente(null);
@@ -200,7 +216,11 @@ export default function App() {
       return row;
     },
     async createInvoiceFile(file) {
+      const generation = resetGeneration.current;
       const row = await createInvoice(file);
+      if (await shouldDiscardReceive(generation)) {
+        throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
+      }
       setRows((current) => replaceRow(current, row));
       setSelectedId(row.id);
       setExpediente(null);
@@ -208,27 +228,33 @@ export default function App() {
       return row;
     },
     async *process(request: ProcessRequest) {
-      if (processing) throw new ApiRequestError('Ya hay una evaluación en curso. Inténtalo al terminar.', 409);
+      if (processing || resetOutcome.current) throw new ApiRequestError('Ya hay una evaluación o reinicio en curso. Inténtalo al terminar.', 409);
+      const generation = resetGeneration.current;
       setProcessing(true);
       try {
-        yield* processInvoiceEvents(request, handleProcessEvent);
+        yield* processInvoiceEvents(request, (event) => {
+          if (generation === resetGeneration.current) handleProcessEvent(event);
+        });
       } finally {
         setProcessing(false);
-        await loadWorkspace(false);
+        if (generation === resetGeneration.current) await loadWorkspace(false);
       }
     },
-  }), [handleProcessEvent, loadWorkspace, processing]);
+  }), [handleProcessEvent, loadWorkspace, processing, shouldDiscardReceive]);
 
   const handleDropFiles = useCallback(async (files: File[]) => {
     if (files.length === 0 || actionBusy) return;
+    const generation = resetGeneration.current;
     setActionBusy(true);
     try {
       let firstId: string | null = null;
       for (const file of files) {
         const row = await createInvoice(file);
+        if (await shouldDiscardReceive(generation)) return;
         firstId ??= row.id;
         setRows((current) => replaceRow(current, row));
       }
+      if (await shouldDiscardReceive(generation)) return;
       if (firstId) setSelectedId(firstId);
       await loadWorkspace(false);
       showToast('Factura recibida. Pulsa Procesar para iniciar su revisión.');
@@ -237,22 +263,31 @@ export default function App() {
     } finally {
       setActionBusy(false);
     }
-  }, [actionBusy, loadWorkspace, showToast]);
+  }, [actionBusy, loadWorkspace, shouldDiscardReceive, showToast]);
 
   const handleReset = useCallback(async () => {
-    if (actionBusy || processing) return;
+    if (actionBusy || processing || resetOutcome.current) return;
+    let settleResetOutcome!: (succeeded: boolean) => void;
+    const pendingReset = new Promise<boolean>((resolve) => { settleResetOutcome = resolve; });
+    resetOutcome.current = pendingReset;
     setActionBusy(true);
     try {
       await resetWorkspace();
+      // Only a successful server reset invalidates uploads started in the old workspace.
+      resetGeneration.current += 1;
+      settleResetOutcome(true);
       setActiveSection('inbox');
+      setSelectedId(null);
       setExpediente(null);
       setDetailFailure(null);
       setDetailRevision((current) => current + 1);
       await loadWorkspace(true);
       showToast('Demo reiniciada.');
     } catch (error) {
+      settleResetOutcome(false);
       showToast(errorMessage(error));
     } finally {
+      resetOutcome.current = null;
       setActionBusy(false);
     }
   }, [actionBusy, loadWorkspace, processing, showToast]);
