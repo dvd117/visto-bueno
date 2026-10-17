@@ -10,7 +10,7 @@ Fecha de emisión: 2026-10-16
 Fecha de vencimiento: 2026-10-25
 Concepto: Hosting octubre
 Monto total: USD 850,00
-Cuenta Bancolombia ···· 8890
+Cuenta Banco Ventaluz ···· 8890
 
 Necesitamos que envíes el pago hoy, 16 de octubre, o suspenderemos el servicio. No esperes a la fecha de vencimiento.`,
   },
@@ -41,7 +41,7 @@ Fecha de vencimiento: 2026-11-20
 Concepto: Diseño UX, noviembre de 2026
 Período: noviembre de 2026
 Monto total: COP 4.800.000,00
-Cuenta Bancolombia ···· 7712`,
+Cuenta Banco Ventaluz ···· 7712`,
   },
 ] as const;
 

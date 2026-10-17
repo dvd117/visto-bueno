@@ -6,6 +6,6 @@ Factura número AL-040 · Fecha: 28/10/2026 · Vencimiento: 31/10/2026
 
 Concepto: Diseño UX, ajustes a los entregables de octubre ya facturados en AL-037
 Monto total: COP 4.750.000,00
-Cuenta de ahorros Bancolombia ···· 7712
+Cuenta de ahorros Banco Ventaluz ···· 7712
 
 Nota del acuerdo: orden puntual “Ajustes de diseño”, con período único del 21/10/2026 al 31/10/2026; no es una segunda mensualidad.

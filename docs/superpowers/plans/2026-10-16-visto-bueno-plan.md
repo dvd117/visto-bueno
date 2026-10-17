@@ -167,7 +167,7 @@ export interface DecisionRecord { id: string; invoiceId: string; decision: Decis
 - Rules v1: per-payment limit USD 15,000.00; monthly limit USD 60,000.00; approval threshold USD 3,000.00; fuzzy window 60 days; preset `equilibrado`.
 - Treasury: balance USD 48,000.00; FX dated 2026-10-15: COP `4171.30`, MXN `18.8656`, USD `1`.
 - Budgets 2026-10 (USD): ingenieria 20,000.00; diseno 6,000.00; operaciones 6,000.00 (with USD 1,850.00 already committed by a seeded prior payment, leaving 4,150.00); legal 5,000.00.
-- Vendors include, with these exact values (the mockup uses them): Nube Andina S.A.S., NIT `901.234.567-8`, Bancolombia account ending `8890`, fixed USD 850.00/month, operaciones; Valentina Ruiz (CO), fixed COP 4,800,000.00/month, diseno; Carlos Méndez (MX), variable MXN rate 1,000.00/hour, max 70 h/month, ingenieria; Imprenta Caribe C.A. (VE), fixed USD 310.00 one_time; Lex Delaware LLP (US), fixed USD 1,200.00 annual, legal; Datos del Ávila C.A. (VE), fixed USD 640.00/month, operaciones. Add 4 more so there are 10.
+- Vendors include, with these exact values (the mockup uses them): Nube Andina S.A.S., NIT `901.234.567-8`, Banco Ventaluz account ending `8890`, fixed USD 850.00/month, operaciones; Valentina Ruiz (CO), fixed COP 4,800,000.00/month, diseno; Carlos Méndez (MX), variable MXN rate 1,000.00/hour, max 70 h/month, ingenieria; Imprenta Caribe C.A. (VE), fixed USD 310.00 one_time; Lex Delaware LLP (US), fixed USD 1,200.00 annual, legal; Datos del Ávila C.A. (VE), fixed USD 640.00/month, operaciones. Add 4 more so there are 10.
 
 **Labeled set (20 invoices; ids AL-030..AL-049; expected status and the check that decides it):**
 

@@ -9,7 +9,7 @@ const featureCss = readFileSync(`${process.cwd()}/src/client/features/datos/dato
 const values: DataTableValues = {
   vendors: [{
     id: 'nube-andina', name: 'Nube Andina S.A.S.', taxId: '901.234.567-8', country: 'CO',
-    payoutCurrency: 'USD', payoutAccount: 'Bancolombia ···· 8890', status: 'allowed', version: 1,
+    payoutCurrency: 'USD', payoutAccount: 'Banco Ventaluz ···· 8890', status: 'allowed', version: 1,
   }],
   contracts: [{
     id: 'nube-hosting-monthly', vendorId: 'nube-andina',
@@ -85,7 +85,7 @@ describe('Preparar datos — QA visual', () => {
     const fullValues = [
       ['Proveedor — Nube Andina S.A.S.', 'Nube Andina S.A.S.'],
       ['Identificador fiscal — Nube Andina S.A.S.', '901.234.567-8'],
-      ['Cuenta de pago — Nube Andina S.A.S.', 'Bancolombia ···· 8890'],
+      ['Cuenta de pago — Nube Andina S.A.S.', 'Banco Ventaluz ···· 8890'],
       ['Alcance — nube-hosting-monthly', 'Hosting administrado y respaldo de infraestructura'],
       ['Monto fijo — nube-hosting-monthly', '850.00'],
     ] as const;

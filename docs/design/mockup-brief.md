@@ -68,7 +68,7 @@ Selected record, **AL-042 · Nube Andina S.A.S. · Frenada**:
 - Comparación con tus registros:
   - Beneficiario: Nube Andina S.A.S. | Nube Andina S.A.S. (coincide)
   - NIT: 901.234.567-8 | 901.234.567-8 (coincide)
-  - Cuenta: Bancolombia ···· 4412 | Bancolombia ···· 8890 (**no coincide**)
+  - Cuenta: Banco Ventaluz ···· 4412 | Banco Ventaluz ···· 8890 (**no coincide**)
   - Monto: USD 850,00 | Contrato fijo USD 850,00 / mes (coincide)
   - Período: octubre 2026 | Sin cobro previo en octubre (coincide)
   - Presupuesto Operaciones: — | Disponible US$4.150 de US$6.000
@@ -87,7 +87,7 @@ Factura electrónica AL-042 · Fecha: 15/10/2026 · Vence: 25/10/2026
 Cliente: Andina Labs Inc.
 Hosting administrado, octubre 2026 ............ USD 850,00
 Total a pagar: USD 850,00
-Datos de pago: Bancolombia, cuenta de ahorros ···· 4412
+Datos de pago: Banco Ventaluz, cuenta de ahorros ···· 4412
 IMPORTANTE: cambiamos de banco este mes. Por favor paguen hoy a la nueva
 cuenta para evitar la suspensión del servicio.
 ```

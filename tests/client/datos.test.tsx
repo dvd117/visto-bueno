@@ -8,7 +8,7 @@ const parallelTimeoutMs = 15_000;
 const data: DataTableValues = {
   vendors: [{
     id: 'nube-andina', name: 'Nube Andina S.A.S.', taxId: '901.234.567-8', country: 'CO',
-    payoutCurrency: 'USD', payoutAccount: 'Bancolombia ···· 8890', status: 'allowed', version: 1,
+    payoutCurrency: 'USD', payoutAccount: 'Banco Ventaluz ···· 8890', status: 'allowed', version: 1,
   }],
   contracts: [],
   budgets: [{ costCenter: 'ingenieria', month: '2026-10', approvedUsdMinor: 85_000 }],
@@ -37,11 +37,11 @@ describe('Preparar datos', () => {
     expect(screen.getByRole('table', { name: 'Saldo y tipos de cambio' })).toBeDefined();
 
     const account = await screen.findByLabelText('Cuenta de pago — Nube Andina S.A.S.');
-    fireEvent.change(account, { target: { value: 'Bancolombia ···· 4412' } });
+    fireEvent.change(account, { target: { value: 'Banco Ventaluz ···· 4412' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios de Nube Andina S.A.S.' }));
 
     await waitFor(() => expect(api.putRow).toHaveBeenCalledWith('vendors', expect.objectContaining({
-      id: 'nube-andina', payoutAccount: 'Bancolombia ···· 4412', version: 1,
+      id: 'nube-andina', payoutAccount: 'Banco Ventaluz ···· 4412', version: 1,
     })));
   }, parallelTimeoutMs);
 
