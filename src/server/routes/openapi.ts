@@ -28,10 +28,149 @@ type JsonSchema = Record<string, unknown>;
 type Operation = Record<string, unknown>;
 
 function zodSchema(schema: z.ZodType): JsonSchema {
-  const result = { ...z.toJSONSchema(schema) } as JsonSchema;
+  // The wire contract is the shape before any client-side normalization transforms.
+  const result = { ...z.toJSONSchema(schema, { io: 'input' }) } as JsonSchema;
   delete result.$schema;
   return result;
 }
+
+function propertySchema(schema: JsonSchema, name: string): JsonSchema {
+  return ((schema.properties as Record<string, JsonSchema> | undefined)?.[name] ?? {});
+}
+
+function withProperties(
+  schema: JsonSchema,
+  overrides: Record<string, JsonSchema>,
+  extensions: Record<string, unknown> = {},
+): JsonSchema {
+  return {
+    ...schema,
+    ...extensions,
+    properties: {
+      ...((schema.properties as Record<string, JsonSchema> | undefined) ?? {}),
+      ...overrides,
+    },
+  };
+}
+
+function mapProperties(
+  schema: JsonSchema,
+  names: string[],
+  map: (property: JsonSchema) => JsonSchema,
+): JsonSchema {
+  return withProperties(schema, Object.fromEntries(names.map((name) => [
+    name, map(propertySchema(schema, name)),
+  ])));
+}
+
+function nonBlankProperties(schema: JsonSchema, names: string[]): JsonSchema {
+  return mapProperties(schema, names, (property) => ({ ...property, pattern: '\\S' }));
+}
+
+function safeIntegerProperties(schema: JsonSchema, names: string[]): JsonSchema {
+  return mapProperties(schema, names, (property) => ({ ...property, maximum: Number.MAX_SAFE_INTEGER }));
+}
+
+const contractShapeConstraints = [{
+  if: { properties: { type: { const: 'fixed' } }, required: ['type'] },
+  then: {
+    properties: { amountMinor: {} },
+    required: ['amountMinor'],
+    not: { anyOf: [
+      { properties: { rateMinor: {} }, required: ['rateMinor'] },
+      { properties: { unit: {} }, required: ['unit'] },
+      { properties: { maxUnitsPerPeriod: {} }, required: ['maxUnitsPerPeriod'] },
+    ] },
+  },
+  else: {
+    properties: { rateMinor: {}, unit: {}, maxUnitsPerPeriod: {}, amountMinor: {} },
+    required: ['rateMinor', 'unit', 'maxUnitsPerPeriod'],
+    not: { properties: { amountMinor: {} }, required: ['amountMinor'] },
+  },
+}];
+
+const invoiceTextSchema = nonBlankProperties(zodSchema(textInvoiceSchema), ['text']);
+const decisionActionSchema = nonBlankProperties(zodSchema(actionSchema), ['approver', 'reason', 'idempotencyKey']);
+const flagResolutionSchema = nonBlankProperties(zodSchema(resolutionSchema), ['choice', 'reason', 'approver']);
+const processRequestBase = zodSchema(processSchema);
+const processIds = propertySchema(processRequestBase, 'ids');
+const processRequestSchema = withProperties(processRequestBase, {
+  ids: {
+    ...processIds,
+    items: { ...(processIds.items as JsonSchema), pattern: '\\S' },
+  },
+}, {
+  description: 'examples=true procesa los ejemplos sembrados en replay y excluye ids; mode=live requiere ids.',
+  allOf: [
+    {
+      if: { properties: { examples: { const: true } }, required: ['examples'] },
+      then: {
+        properties: { ids: {} },
+        not: { anyOf: [
+          { properties: { ids: {} }, required: ['ids'] },
+          { properties: { mode: { const: 'live' } }, required: ['mode'] },
+        ] },
+      },
+    },
+    {
+      if: { properties: { mode: { const: 'live' } }, required: ['mode'] },
+      then: { properties: { ids: {} }, required: ['ids'] },
+    },
+  ],
+});
+
+const vendorSchemaBase = safeIntegerProperties(
+  nonBlankProperties(zodSchema(vendorSchema), ['id', 'name', 'taxId', 'payoutAccount']),
+  ['version'],
+);
+const contractSchemaBase = safeIntegerProperties(
+  nonBlankProperties(zodSchema(contractSchema), ['id', 'vendorId', 'scope', 'unit']),
+  ['amountMinor', 'rateMinor', 'maxUnitsPerPeriod', 'version'],
+);
+const contractProperties = {
+  start: { ...propertySchema(contractSchemaBase, 'start'), format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+  end: { ...propertySchema(contractSchemaBase, 'end'), format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+};
+const contractSchemaDocument = withProperties(contractSchemaBase, contractProperties, {
+  description: 'start y end son fechas ISO válidas; start debe ser anterior o igual a end.',
+  allOf: contractShapeConstraints,
+  'x-runtime-constraints': [{
+    fields: ['start', 'end'],
+    relation: 'start <= end',
+  }],
+});
+const budgetSchemaDocument = safeIntegerProperties(zodSchema(budgetSchema), ['approvedUsdMinor']);
+const treasurySchemaBase = safeIntegerProperties(zodSchema(treasurySchema), ['balanceUsdMinor']);
+const fxArray = propertySchema(treasurySchemaBase, 'fx');
+const fxItem = fxArray.items as JsonSchema;
+const fxItemWithConstraints = withProperties(fxItem, {
+  perUsd: { ...propertySchema(fxItem, 'perUsd'), pattern: '^(?=.*[1-9])\\d+(?:\\.\\d+)?$' },
+  date: { ...propertySchema(fxItem, 'date'), format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+});
+const treasurySchemaDocument = withProperties(treasurySchemaBase, {
+  fx: {
+    ...fxArray,
+    description: 'Cada moneda puede aparecer una sola vez.',
+    items: fxItemWithConstraints,
+    allOf: ['USD', 'COP', 'MXN'].map((currency) => ({
+      contains: {
+        properties: { currency: { const: currency } },
+        required: ['currency'],
+      },
+      minContains: 0,
+      maxContains: 1,
+    })),
+  },
+});
+
+const evaluationResultJsonSchema = {
+  ...zodSchema(evaluationResultSchema),
+  'x-runtime-constraints': [
+    'Los resultados disponibles exigen métricas de regresión y de etiquetas no vacías y coherentes.',
+    'Los estados de seguridad deben coincidir con los conteos de aprobaciones inseguras; los resúmenes deben coincidir con la evidencia principal.',
+    'Una muestra en vivo disponible debe ser no vacía, tener fallas no mayores que la muestra y coincidir con report.live; si no está disponible, se omite report.live.',
+  ],
+};
 
 const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 const jsonContent = (schema: JsonSchema | ReturnType<typeof ref>) => ({ 'application/json': { schema } });
@@ -81,6 +220,10 @@ function requestBody(
 const rulesSchema: JsonSchema = {
   type: 'object',
   description: 'approvalThresholdUsdMinor debe ser menor que perPaymentLimitUsdMinor.',
+  'x-runtime-constraints': [{
+    fields: ['approvalThresholdUsdMinor', 'perPaymentLimitUsdMinor'],
+    relation: 'approvalThresholdUsdMinor < perPaymentLimitUsdMinor',
+  }],
   properties: {
     version: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
     perPaymentLimitUsdMinor: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
@@ -104,17 +247,17 @@ const components: Record<string, JsonSchema> = {
   InvoiceRows: zodSchema(z.array(invoiceRowSchema)),
   Expediente: zodSchema(expedienteSchema),
   ProcessEvent: zodSchema(processEventSchema),
-  ProcessRequest: zodSchema(processSchema),
-  NewInvoiceText: zodSchema(textInvoiceSchema),
-  DecisionAction: zodSchema(actionSchema),
-  FlagResolution: zodSchema(resolutionSchema),
-  Vendor: zodSchema(vendorSchema),
-  Vendors: zodSchema(z.array(vendorSchema)),
-  Contract: zodSchema(contractSchema),
-  Contracts: zodSchema(z.array(contractSchema)),
-  Budget: zodSchema(budgetSchema),
-  Budgets: zodSchema(z.array(budgetSchema)),
-  Treasury: zodSchema(treasurySchema),
+  ProcessRequest: processRequestSchema,
+  NewInvoiceText: invoiceTextSchema,
+  DecisionAction: decisionActionSchema,
+  FlagResolution: flagResolutionSchema,
+  Vendor: vendorSchemaBase,
+  Vendors: { ...zodSchema(z.array(vendorSchema)), items: vendorSchemaBase },
+  Contract: contractSchemaDocument,
+  Contracts: { ...zodSchema(z.array(contractSchema)), items: contractSchemaDocument },
+  Budget: budgetSchemaDocument,
+  Budgets: { ...zodSchema(z.array(budgetSchema)), items: budgetSchemaDocument },
+  Treasury: treasurySchemaDocument,
   Rules: rulesSchema,
   SimulationRequest: {
     type: 'object',
@@ -125,7 +268,7 @@ const components: Record<string, JsonSchema> = {
   SimulationResult: zodSchema(simulationResultSchema),
   LogEntry: zodSchema(logEntrySchema),
   LogEntries: zodSchema(z.array(logEntrySchema)),
-  EvaluationResult: zodSchema(evaluationResultSchema),
+  EvaluationResult: evaluationResultJsonSchema,
   ResetResult: {
     type: 'object', properties: { ok: { const: true } }, required: ['ok'], additionalProperties: false,
   },
