@@ -58,14 +58,16 @@ export function validateProductionAssets(root = process.cwd()): void {
 export function ensureExampleInvoices(db: Db, workspaceId: string, root = process.cwd()): ExampleFixture[] {
   const fixtures = readExampleFixtures(root);
   const find = db.prepare('SELECT 1 FROM invoices WHERE workspace_id = ? AND id = ?');
-  for (const fixture of fixtures) {
-    if (find.get(workspaceId, fixture.invoiceId)) continue;
-    createInvoice(db, workspaceId, {
-      id: fixture.invoiceId,
-      sourceKind: fixture.sourceKind,
-      ...(fixture.sourceKind === 'text' ? { sourceText: readFileSync(resolve(root, fixture.file), 'utf8') } : {}),
-      filePath: fixture.file,
-    });
-  }
+  db.transaction(() => {
+    for (const fixture of fixtures) {
+      if (find.get(workspaceId, fixture.invoiceId)) continue;
+      createInvoice(db, workspaceId, {
+        id: fixture.invoiceId,
+        sourceKind: fixture.sourceKind,
+        ...(fixture.sourceKind === 'text' ? { sourceText: readFileSync(resolve(root, fixture.file), 'utf8') } : {}),
+        filePath: fixture.file,
+      });
+    }
+  }).immediate();
   return fixtures;
 }
