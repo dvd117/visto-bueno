@@ -1,6 +1,6 @@
 # Milestone 0 acceptance runner
 
-This is an opt-in Playwright browser check for the fictional Andina Labs demo. It is **not** part of `npm test`, CI, or the production image. The M0 path is ready to run after T11 exposes the UI/API.
+This is an opt-in Playwright browser check for the fictional Andina Labs demo. It is **not** part of `npm test`, CI, or the production image. The M0 path uses the 20 seeded invoices already present in every fresh workspace; it does not upload a replacement AL-037.
 
 ## Setup
 
@@ -40,19 +40,19 @@ Exit codes: `0` = assertions in the selected browser scope passed; `1` = asserti
 
 ## Mandatory M0 checklist
 
-The script creates a fresh browser workspace and refuses to continue if it already contains invoices. It uses the existing fixed-contract PDF fixture `fixtures/invoices/AL-037.pdf` only; all data is fictional.
+The script creates two fresh browser workspaces and verifies that both contain exactly the queued seed IDs `AL-030` through `AL-049`. M0 selects the existing fixed-contract seed `AL-037` in Bandeja and clicks `Procesar`; it never opens Recibir or submits a live upload. All data is fictional.
 
 | Acceptance item | What it observes |
 | --- | --- |
 | `/health` and T11 readiness | Real health response plus real `/api/workspace` and `/api/invoices` responses. Missing endpoint = `BLOCKED`. |
-| Fresh workspace | Before any write, two new browser profiles must have distinct `workspace_id` cookies and zero invoices; after the first profile receives AL-037, the second is checked again and must still be empty. |
-| Six pipeline stages | Uses persisted API evidence, not invented UI stages: EXTRACT (source text + successful extraction check), VERIFY (verify checks), RULES (rule checks), JUDGMENT (genuine JEV checks or explicit missing evidence), COMBINE (persisted status/canApprove), RECORD (record id + seal). |
-| Safe no-JEV case | M0 may still pass if replay JEV evidence is missing, the invoice is not `ready`, `canApprove` is false, and the Expediente visibly says JEV is unavailable. The JUDGMENT step is marked missing, not passed. |
-| Streaming | Clicks the real Bandeja `Procesar` button, asserts the browser sent `{ mode: "replay" }`, parses actual SSE `decided` + `done`, validates replay stats/counters, and checks the visible counter values. |
+| Fresh workspace and isolation | The two profiles have distinct `workspace_id` cookies and the same 20 queued seed IDs. After the first profile processes them, the second must still show all 20 queued. No upload IDs are used or shared in M0. |
+| Six pipeline stages | Uses AL-037's persisted evidence, not invented UI stages: EXTRACT (source text + successful extraction check), VERIFY (verify checks), RULES (rule checks), JUDGMENT (genuine JEV checks or explicit missing recording), COMBINE (persisted status/canApprove), RECORD (record id + seal). |
+| Safe no-JEV case | M0 may pass if JEV has the explicit `missing_recording` result and matching sanitized SSE error, AL-037 is not `ready`, `canApprove` is false, and the Expediente says JEV is unavailable. JUDGMENT is marked missing, not passed. Any other extraction, persistence, or JEV error fails. |
+| Streaming | Selects AL-037, clicks the real Bandeja `Procesar` button, asserts `{ mode: "replay" }` with no explicit IDs, and validates exactly 20 `decided` events plus one final `done`. Visible counters come from the **last** decided event, not AL-037's intermediate counters. |
 | Bandeja + Expediente | Confirms the invoice row, comparison, decision trail, text/source view, persisted checks, fixed contract, money amount, and seal. |
-| Reset / seed | Calls the visible `Reiniciar demo`, checks empty invoice state and baseline company/rules, then reprocesses AL-037 to confirm its fixed contract/money seed still works; resets again for cleanup. |
+| Reset / cleanup | Calls the visible `Reiniciar demo` and verifies all 20 seed IDs are back in `queued`, baseline company/rules are restored, and `lastRun` is null. Failure cleanup uses the same seed-restoration assertions. |
 
-The stage map is evidence mapping only. It does not claim six distinct screens or controls exist. EXTRACT, VERIFY, RULES, JUDGMENT and COMBINE are represented by the actual persisted checks/decision; RECORD is the decision record and seal.
+The stage map is evidence mapping only. It does not claim six distinct screens or controls exist. EXTRACT, VERIFY, RULES, JUDGMENT and COMBINE are represented by the actual persisted checks/decision; RECORD is the decision record and seal. Each of the 20 seed decisions must contain persisted extraction evidence. Missing JEV is tolerated only for the explicit missing-recording case and only when its persisted result proves fail-closed behavior.
 
 ## Optional Tonight browser subset
 
@@ -63,7 +63,7 @@ env -u GEMINI_API_KEY -u TYPESAFE_API_KEY EXTRACT_MODE=replay JEV_MODE=replay \
   node scripts/acceptance-milestone0.mjs --confirm-server-replay --tonight
 ```
 
-This adds real replayed text intake (`AL-030.txt` via the JSON API, then UI processing), stopped-approval denial (`AL-039`, expected 409 and still stopped), replay re-evaluation of that stopped invoice, and rejection of a generic resolution for `AL-047`'s `ambiguous_amount` integrity flag. It tests a positive approval only for `AL-038` after extraction succeeds and the persisted JEV result is both successful and marked recorded; it fills the declared-name and reason fields and uses the real UI. If genuine replay evidence is unavailable, it reports `BLOCKED` and does not attempt approval. The isolated workspace is reset after errors when the reset control is available.
+This adds real API intake/replay checks: JSON text and multipart PDFs are uploaded through `POST /api/invoices`, then each returned upload ID is processed only with an explicit `{ ids, mode: "replay" }` request. It does not use the Recibir panel's file/text submit because those controls intentionally process live. It checks stopped-approval denial (`AL-039`, expected 409 and still stopped), replay re-evaluation, and refusal of a generic resolution for `AL-047`'s `ambiguous_amount` integrity flag. It attempts positive approval only for `AL-038` after genuine extraction and successful recorded JEV evidence; it fills the declared-name and reason fields and uses the real UI. If eligible evidence is unavailable, positive approval is explicitly `BLOCKED`, no approval is attempted, the workspace is reset to the 20 queued seeds, and the command exits nonzero. New upload UUIDs are kept separate from the seeded `AL-030`–`AL-049` IDs; no JEV recording is required merely because an uploaded request has a different hash.
 
 `--tonight` reports only the browser subset. It does **not** certify the full labeled set or the following external gates:
 
@@ -73,4 +73,4 @@ This adds real replayed text intake (`AL-030.txt` via the JSON API, then UI proc
 - Genuine JEV recording inventory: require successful recorded replay evidence; never fabricate a response.
 - Text/PDF extraction replay: browser subset checks one PDF plus one text fixture; it is not a broad format regression suite.
 
-The default M0 command does not click Recibir's live-submit button and never edits rules, vendors, contracts, budgets, treasury, exports, or global/admin state. Approval and flag probes in `--tonight` affect only the newly created fictional workspace and are followed by reset.
+The default M0 command does not click Recibir's live-submit button and never edits rules, vendors, contracts, budgets, treasury, exports, or global/admin state. The `--tonight` API intake and approval/flag probes affect only the new fictional workspace and are followed by reset to the original 20 queued seeds.
