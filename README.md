@@ -79,7 +79,13 @@ No se publican cifras sin un artefacto medido. Estado de este borrador:
 - **Seguridad de regresión:** Pendiente de medición; no se publica un conteo de aprobaciones indebidas.
 - **Conjunto etiquetado:** Pendiente de medición; tener facturas etiquetadas no demuestra exactitud ni autonomía.
 - **Muestra en vivo:** Pendiente de medición; requiere facturas no vistas y latencia, fallos y uso observados.
-- **Costo por 1.000 facturas:** Pendiente de medición. Para calcularlo hacen falta los modelos y llamadas por factura, tokens de entrada y salida de extracción y JEV, y las tarifas aplicables en la fecha de medición. El código actual registra tokens de entrada y latencia de JEV, pero no suficiente uso de tokens de extracción para calcular el costo completo.
+- **Costo por 1.000 facturas:** Pendiente de medición. Para calcularlo hacen falta los modelos y llamadas por factura, tokens de entrada y salida de extracción y JEV, y las tarifas aplicables en la fecha de medición.
+
+### Costo por factura
+
+La extracción registra `usageMetadata` de Gemini por llamada. El costo estimado suma tokens de entrada a USD 0,25 y tokens de salida (candidatos y razonamiento) a USD 1,50 por millón para `gemini-3.1-flash-lite`, según la tarifa Standard de la [API Gemini Developer](https://ai.google.dev/gemini-api/docs/pricing). Si falta el uso registrado, el costo queda desconocido.
+
+**Costo medido por factura:** `<pendiente de medición>`
 
 Estas tres evidencias —seguridad, conjunto etiquetado y muestra en vivo— se mantienen separadas; una no sustituye a otra.
 

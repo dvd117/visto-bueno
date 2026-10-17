@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
+import Decimal from 'decimal.js';
 import type { ProcessEvent, ProcessRequest, RunStats } from '../shared/api';
 import type { ExtractionResult, JevAnswers, SourceKind } from '../shared/domain/types';
 import { buildJevQuestions } from '../shared/engine/jev-questions';
@@ -13,6 +14,7 @@ import { ProviderCallLimitError, type ProviderAttemptHook } from './model-attemp
 import { askJev } from './jev/client';
 import { createLiveCallLimiter } from './middleware/limits';
 import { extract } from './extract';
+import type { ExtractionMeasurement } from './extract/cost';
 
 export type ProcessMode = NonNullable<ProcessRequest['mode']>;
 export type ProviderMode = 'replay' | 'record' | 'live';
@@ -46,6 +48,7 @@ interface SourceInput {
 interface PreparedInvoice {
   invoice: StoredInvoice;
   extraction: ExtractionResult;
+  extractionMeasurement?: ExtractionMeasurement;
   jev: JevAnswers;
   extractionMessage?: string;
   jevMessage?: string;
@@ -326,30 +329,37 @@ export async function processBatch(
     const extracted = await mapConcurrent(invoices, 4, async (invoice) => {
       const source = await sourceInput(invoice, options.uploadDirectory ?? resolve(process.cwd(), 'data/uploads'));
       if (!source) return { invoice, extraction: failedExtraction(invoice.sourceKind, 'unreadable') };
+      let extractionMeasurement: ExtractionMeasurement | undefined;
       try {
+        const extraction = await (options.extractProvider ?? extract)({
+          ...source,
+          invoiceId: invoice.id,
+          mode: extractionMode,
+          onAttempt: attemptHook(options, input.workspaceId, input.ip, extractionMode === 'replay' ? 'replay' : 'live'),
+          onMeasurement: (measurement) => { extractionMeasurement = measurement; },
+        });
         return {
           invoice,
-          extraction: await (options.extractProvider ?? extract)({
-            ...source,
-            mode: extractionMode,
-            onAttempt: attemptHook(options, input.workspaceId, input.ip, extractionMode === 'replay' ? 'replay' : 'live'),
-          }),
+          extraction,
+          extractionMeasurement,
         };
-    } catch (cause) {
-      if (cause instanceof ProviderCallLimitError) {
-        return {
-          invoice,
-          extraction: failedExtraction(invoice.sourceKind, 'rate_limited'),
-          extractionMessage: cause.message,
-          quotaDenied: true,
-        };
+      } catch (cause) {
+        if (cause instanceof ProviderCallLimitError) {
+          return {
+            invoice,
+            extraction: failedExtraction(invoice.sourceKind, 'rate_limited'),
+            extractionMeasurement,
+            extractionMessage: cause.message,
+            quotaDenied: true,
+          };
         }
-        return { invoice, extraction: failedExtraction(invoice.sourceKind, 'unreadable') };
+        return { invoice, extraction: failedExtraction(invoice.sourceKind, 'unreadable'), extractionMeasurement };
       }
     });
-    prepared.push(...extracted.map(({ invoice, extraction, extractionMessage, quotaDenied }) => ({
+    prepared.push(...extracted.map(({ invoice, extraction, extractionMeasurement, extractionMessage, quotaDenied }) => ({
       invoice,
       extraction,
+      ...(extractionMeasurement ? { extractionMeasurement } : {}),
       jev: { ok: false, error: 'http_error' } as JevAnswers,
       ...(extractionMessage ? { extractionMessage } : {}),
       ...(quotaDenied ? { quotaDenied } : {}),
@@ -389,10 +399,22 @@ export async function processBatch(
   const stats: RunStats = {
     invoices: ids.length,
     ms: Math.max(0, now() - startedAt),
-    costUsd: input.mode === 'replay' ? '0.00' : '—',
+    costUsd: measuredBatchCost(prepared.map(({ extractionMeasurement }) => extractionMeasurement).filter(
+      (measurement): measurement is ExtractionMeasurement => measurement !== undefined,
+    )),
     mode: input.mode,
   };
   await emitSafely(input.emit, { type: 'done', stats });
   return stats;
+}
+
+function measuredBatchCost(measurements: readonly ExtractionMeasurement[]): string {
+  const costs: string[] = [];
+  for (const { costUsd } of measurements) {
+    if (costUsd === null) return '—';
+    costs.push(costUsd);
+  }
+  if (costs.length === 0) return '—';
+  return costs.reduce((total, cost) => total.plus(cost), new Decimal(0)).toFixed(8);
 }
 

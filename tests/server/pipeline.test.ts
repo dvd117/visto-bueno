@@ -13,6 +13,35 @@ afterEach(() => {
 });
 
 describe('pipeline provider modes', () => {
+  it('aggregates measured extraction cost into the existing batch stats field', async () => {
+    const db = openDb(':memory:');
+    databases.push(db);
+    const workspaceId = 'measured-cost-test';
+    ensureWorkspace(db, workspaceId);
+    const fixture = ensureExampleInvoices(db, workspaceId).find(({ invoiceId }) => invoiceId === 'AL-030');
+    expect(fixture).toBeDefined();
+    const extractProvider = vi.fn(async (input: Parameters<typeof extract>[0]) => {
+      input.onMeasurement?.({
+        model: 'gemini-3.1-flash-lite',
+        usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 250, totalTokenCount: 1250 },
+        costUsd: '0.00062500',
+      });
+      return { ok: false as const, error: 'unreadable' as const, sourceKind: input.kind };
+    });
+
+    const stats = await processBatch({ db, extractProvider }, {
+      workspaceId,
+      ids: [fixture!.invoiceId],
+      mode: 'live',
+      extractMode: 'live',
+      ip: null,
+      emit: () => undefined,
+    });
+
+    expect(extractProvider).toHaveBeenCalledOnce();
+    expect(stats.costUsd).toBe('0.00062500');
+  });
+
   it('can replay genuine extraction and record JEV through the canonical state builder', async () => {
     const db = openDb(':memory:');
     databases.push(db);
@@ -70,6 +99,7 @@ describe('pipeline provider modes', () => {
     });
 
     expect(stats.invoices).toBe(1);
+    expect(stats.costUsd).toBe('—');
     expect(getInvoice(db, workspaceId, 'AL-030')?.status).not.toBe('queued');
   });
 });

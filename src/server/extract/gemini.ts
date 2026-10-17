@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import type { ExtractionClaims, SourceKind } from '../../shared/domain/types';
 import { ProviderCallLimitError, type ProviderAttemptHook } from '../model-attempt';
+import { calculateGeminiCostUsd, normalizeUsageMetadata, type ExtractionMeasurement } from './cost';
 import { extractionClaimsSchema, geminiExtractionSchema } from './schema';
 
 const MAX_RETRIES = 2;
@@ -31,7 +32,12 @@ export interface GeminiInput {
   onAttempt?: ProviderAttemptHook;
 }
 
-export async function extractClaims(input: GeminiInput): Promise<ExtractionClaims | null> {
+export interface GeminiExtraction {
+  claims: ExtractionClaims | null;
+  measurement: ExtractionMeasurement;
+}
+
+export async function extractClaims(input: GeminiInput): Promise<GeminiExtraction | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = resolveGeminiModel();
   if (!apiKey) return null;
@@ -59,9 +65,16 @@ export async function extractClaims(input: GeminiInput): Promise<ExtractionClaim
           httpOptions: { timeout: REQUEST_TIMEOUT_MS, retryOptions: { attempts: 1 } },
         },
       });
+      const responseModel = response.modelVersion?.trim() || model;
+      const usageMetadata = normalizeUsageMetadata(response.usageMetadata);
+      const measurement: ExtractionMeasurement = {
+        model: responseModel,
+        ...(usageMetadata ? { usageMetadata } : {}),
+        costUsd: calculateGeminiCostUsd(responseModel, usageMetadata),
+      };
       if (!response.text) {
         reportDiagnostic('Gemini extraction response was empty.');
-        return null;
+        return { claims: null, measurement };
       }
 
       let output: unknown;
@@ -69,16 +82,16 @@ export async function extractClaims(input: GeminiInput): Promise<ExtractionClaim
         output = JSON.parse(response.text);
       } catch {
         reportDiagnostic('Gemini extraction response was invalid JSON.');
-        return null;
+        return { claims: null, measurement };
       }
 
       const parsed = extractionClaimsSchema.safeParse(output);
       if (!parsed.success) {
         const fields = [...new Set(parsed.error.issues.map(({ path }) => path.map(String).join('.') || '<root>'))];
         reportDiagnostic(`Gemini response schema rejected fields: ${fields.join(', ')}`);
-        return null;
+        return { claims: null, measurement };
       }
-      return parsed.data;
+      return { claims: parsed.data, measurement };
     } catch (error) {
       if (error instanceof ProviderCallLimitError) throw error;
       if (getStatus(error) === 429 && attempt < MAX_RETRIES) {
