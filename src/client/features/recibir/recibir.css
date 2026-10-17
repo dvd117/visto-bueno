@@ -108,8 +108,7 @@
 .recibir-primary:focus-visible,
 .recibir-secondary:focus-visible,
 .recibir-template-button:focus-visible,
-.recibir-file-label:focus-within,
-.recibir-file-input:focus-visible,
+.recibir-file-input:focus-visible + .recibir-file-label,
 .recibir-form textarea:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
@@ -141,27 +140,34 @@
   color: var(--soft);
 }
 
-.recibir-file-label {
-  display: inline-block;
-  margin-bottom: 9px;
+.recibir-file-control {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
 }
 
 .recibir-file-input {
-  display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  color: var(--soft);
-  font: inherit;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
-.recibir-file-input::file-selector-button {
-  margin-right: 8px;
-  border: 1px solid var(--line-bold);
-  border-radius: 0;
-  padding: 8px 10px;
-  background: var(--page);
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
+.recibir-file-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.recibir-file-status {
+  margin: 10px 0 0;
+  color: var(--soft);
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .recibir-live-label {

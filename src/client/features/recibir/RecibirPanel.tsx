@@ -52,6 +52,7 @@ export function RecibirPanel({ open, onClose, api }: RecibirPanelProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
   if (!open) return null;
 
@@ -80,10 +81,12 @@ export function RecibirPanel({ open, onClose, api }: RecibirPanelProps) {
   async function submitFile(file: File) {
     if (busy) return;
     if (!isSupportedFile(file)) {
+      setSelectedFileName(null);
       setError('El archivo debe ser un PDF o una imagen.');
       return;
     }
 
+    setSelectedFileName(file.name);
     setBusy(true);
     setError(null);
     try {
@@ -193,15 +196,24 @@ export function RecibirPanel({ open, onClose, api }: RecibirPanelProps) {
             role="region"
           >
             <p>Suelta aquí un PDF o una imagen, o elige un archivo.</p>
-            <label className="recibir-file-label" htmlFor="recibir-file">Seleccionar PDF o imagen</label>
-            <input
-              accept=".pdf,image/*"
-              className="recibir-file-input"
-              disabled={busy}
-              id="recibir-file"
-              onChange={handleFileChange}
-              type="file"
-            />
+            <div className="recibir-file-control">
+              <input
+                accept=".pdf,image/*"
+                aria-describedby={selectedFileName ? 'recibir-file-status' : undefined}
+                className="recibir-file-input"
+                disabled={busy}
+                id="recibir-file"
+                name="invoice-file"
+                onChange={handleFileChange}
+                type="file"
+              />
+              <label className="recibir-file-label" htmlFor="recibir-file">Seleccionar PDF o imagen</label>
+            </div>
+            {selectedFileName && (
+              <p aria-live="polite" className="recibir-file-status" id="recibir-file-status" role="status">
+                Archivo seleccionado: {selectedFileName}
+              </p>
+            )}
           </div>
         </section>
 
