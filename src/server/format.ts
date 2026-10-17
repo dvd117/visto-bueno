@@ -35,7 +35,12 @@ export function toInvoiceRow(invoice: StoredInvoice): InvoiceRow {
 
 function truncateSnippet(value: string, limit = 120): string {
   if (value.length <= limit) return value;
-  const prefix = value.slice(0, limit);
+  let prefix = '';
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  for (const { segment } of segmenter.segment(value)) {
+    if (prefix.length + segment.length > limit) break;
+    prefix += segment;
+  }
   const boundary = prefix.search(/\s+\S*$/u);
   return `${(boundary > 0 ? prefix.slice(0, boundary) : prefix).trimEnd()}…`;
 }
@@ -92,13 +97,15 @@ function contractAmountComparison(invoice: StoredInvoice, contract: Contract | n
     : { currency: contract.currency, minor: contract.rateMinor };
   const invoiceText = [
     amount,
-    actualRate?.ok ? `Tarifa facturada: ${formatMoney(actualRate.money)}${contract.unit ? ` / ${contract.unit}` : ''}` : null,
-  ].filter((value): value is string => value !== null).join(' · ') || null;
+    actualRate?.ok
+      ? `Tarifa facturada: ${formatMoney(actualRate.money)}${contract.unit ? ` / ${contract.unit}` : ''}`
+      : 'Tarifa facturada: No disponible',
+  ].filter((value): value is string => value !== null).join(' · ');
   return {
     field: 'Monto facturado / monto contractual',
     invoice: invoiceText,
     record: expectedRate ? `Tarifa contractual: ${formatMoney(expectedRate)}${contract.unit ? ` / ${contract.unit}` : ''}` : null,
-    differs: !actualRate?.ok || !expectedRate || actualRate.money.minor !== expectedRate.minor,
+    differs: Boolean(actualRate?.ok && expectedRate && actualRate.money.minor !== expectedRate.minor),
   };
 }
 
