@@ -43,8 +43,12 @@ interface CountersProps {
 export function Counters({ counters, lastRun }: CountersProps) {
   const mode = lastRun?.mode === 'live' ? 'en vivo' : 'grabado';
   const elapsed = lastRun ? formatSeconds(lastRun.ms) : '—';
+  const runCost = lastRun && /^\d+(?:\.\d+)?$/.test(lastRun.costUsd)
+    ? `US$${lastRun.costUsd.replace('.', ',')}`
+    : 'sin medición';
+  const runSource = lastRun?.mode === 'live' ? 'en vivo' : 'respuestas grabadas';
   const runDescription = lastRun
-    ? `${lastRun.invoices} ${lastRun.invoices === 1 ? 'factura' : 'facturas'} en ${elapsed} · US$${lastRun.costUsd.replace('.', ',')} · ${mode}`
+    ? `${lastRun.invoices} ${lastRun.invoices === 1 ? 'factura' : 'facturas'} en ${elapsed} · ${runCost} · ${runSource}`
     : 'Sin ejecuciones todavía';
 
   return (

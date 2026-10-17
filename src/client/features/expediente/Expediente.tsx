@@ -399,7 +399,7 @@ export function Expediente({
               </div>
             )) : <p className="quiet-note">El servidor no indicó alertas pendientes.</p>}
             <label className="field-label approver-field">
-              Tu nombre <span>(identidad declarada (demo))</span>
+              Tu nombre: <span>identidad declarada (demo)</span>
               <input value={approver} onChange={(event) => setApprover(event.target.value)} autoComplete="off" />
             </label>
             <label className="field-label">
@@ -416,7 +416,7 @@ export function Expediente({
           <section className="record-section action-section" aria-labelledby="actions-heading">
             <div className="section-heading"><h3 id="actions-heading">Tu decisión</h3></div>
             <label className="field-label">
-              Tu nombre <span>(identidad declarada (demo))</span>
+              Tu nombre: <span>identidad declarada (demo)</span>
               <input value={approver} onChange={(event) => setApprover(event.target.value)} autoComplete="off" />
             </label>
             <label className="field-label">
