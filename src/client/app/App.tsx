@@ -81,6 +81,7 @@ export default function App() {
   const selectedStatus = rows.find((row) => row.id === selectedId)?.status;
   const detailKey = JSON.stringify([selectedId, selectedStatus]);
   const detailError = detailFailure?.key === detailKey ? detailFailure.message : null;
+  const selectedExpediente = expediente?.row.id === selectedId ? expediente : null;
   const detailLoading = Boolean(selectedId && !connectionError && !detailError && (
     !expediente || expediente.row.id !== selectedId || expediente.row.status !== selectedStatus
   ));
@@ -371,8 +372,8 @@ export default function App() {
                 onDropFiles={(files) => void handleDropFiles(files)}
               />
               <Expediente
-                key={`${selectedId ?? 'empty'}:${expediente?.row.status ?? ''}:${expediente?.record?.id ?? ''}`}
-                expediente={expediente}
+                key={`${selectedId ?? 'empty'}:${selectedExpediente?.row.status ?? ''}:${selectedExpediente?.record?.id ?? ''}`}
+                expediente={selectedExpediente}
                 loading={detailLoading}
                 error={detailError}
                 busy={actionBusy || processing}
