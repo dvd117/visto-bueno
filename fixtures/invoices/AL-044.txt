@@ -1,7 +1,8 @@
 Mensaje recibido por WhatsApp de LADERA AUSTRAL SpA
 País del proveedor: CL
 RUT 99.876.543-9
-Cuenta de cobro AL-044 para Andina Labs Inc.
+Cuenta de cobro para Andina Labs Inc.
+Número de comprobante: AL-044
 Fecha: 15/10/2026 · Vence: 19/10/2026
 
 Concepto: Restablecimiento urgente de enlace, octubre de 2026
