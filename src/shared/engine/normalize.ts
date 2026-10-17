@@ -28,22 +28,41 @@ function decimalDigitToAscii(value: string): string {
   return String((codePoint - zero) % 10);
 }
 
-function scriptOfLetter(value: string): string {
-  if (value === 'ｘ' || value === 'Ｘ') return 'fullwidth';
-  if (/^\p{Script=Latin}$/u.test(value)) return 'latin';
-  if (/^\p{Script=Cyrillic}$/u.test(value)) return 'cyrillic';
-  if (/^\p{Script=Greek}$/u.test(value)) return 'greek';
-  if (value === '×') return 'symbol';
-  return 'other';
+function hasUnsafeUnicode(value: string): boolean {
+  return Array.from(value).some((character) => (
+    /\p{Cf}/u.test(character)
+    || (/\p{C}/u.test(character) && !/\s/u.test(character))
+    || /\p{M}/u.test(character)
+  ));
 }
 
-function hasMixedScriptConfusableToken(value: string): boolean {
-  const tokens = value.match(/[\p{L}\p{M}×]+/gu) ?? [];
-  return tokens.some((token) => {
-    const letters = Array.from(token).filter((character) => /\p{L}/u.test(character) || character === '×');
-    if (!letters.some((character) => CONFUSABLE_MASK_LETTERS.has(character))) return false;
-    return new Set(letters.map(scriptOfLetter)).size > 1;
-  });
+function recognizedMaskSuffixRange(value: string): { start: number; end: number } | null {
+  const accountText = value.replace(/[^\p{L}\p{N}]*$/u, '');
+  const numberMatch = /[0-9]+(?:[ -][0-9]+)*$/u.exec(accountText);
+  if (!numberMatch || numberMatch.index === undefined) return null;
+
+  const bankPrefix = accountText.slice(0, numberMatch.index).trimEnd();
+  const maskSuffix = /([\p{P}\p{S}x](?:\s*[\p{P}\p{S}x])*)$/iu.exec(bankPrefix);
+  if (!maskSuffix || maskSuffix.index === undefined) return null;
+
+  const maskPrefix = bankPrefix.slice(0, maskSuffix.index);
+  const xRunIsPartOfBankName = /^[x]+$/iu.test(maskSuffix[1])
+    && Boolean(maskPrefix)
+    && /[\p{L}\p{N}]$/u.test(maskPrefix);
+  if (xRunIsPartOfBankName) return null;
+
+  const start = Array.from(accountText.slice(0, maskSuffix.index)).length;
+  return { start, end: start + Array.from(maskSuffix[1]).length };
+}
+
+function hasNonLatinLetterOutsideMask(value: string, mappedValue: string): boolean {
+  const maskRange = recognizedMaskSuffixRange(mappedValue);
+  return Array.from(value).some((character, index) => (
+    /\p{L}/u.test(character)
+    && !/^\p{Script=Latin}$/u.test(character)
+    && !(maskRange && index >= maskRange.start && index < maskRange.end
+      && CONFUSABLE_MASK_LETTERS.has(character))
+  ));
 }
 
 function hasEmbeddedMaskLookalike(value: string): boolean {
@@ -59,17 +78,18 @@ function hasEmbeddedMaskLookalike(value: string): boolean {
 
 function prepareAccountCandidate(value: string): { value: string; ambiguous: boolean } {
   const normalized = value.normalize('NFKC');
+  const mappedValue = normalized
+    .replace(/\p{Nd}/gu, decimalDigitToAscii)
+    .replace(CONFUSABLE_MASK_LETTER_PATTERN, 'x')
+    .replace(CONFUSABLE_MASK_MARK_PATTERN, '·');
   const hasNonDecimalNumber = NON_DECIMAL_NUMBER.test(value.replace(/\p{Nd}/gu, ''))
     || NON_DECIMAL_NUMBER.test(normalized.replace(/\p{Nd}/gu, ''));
-  const ambiguous = hasNonDecimalNumber || hasMixedScriptConfusableToken(value) || hasEmbeddedMaskLookalike(value);
+  const ambiguous = hasNonDecimalNumber
+    || hasUnsafeUnicode(normalized)
+    || hasNonLatinLetterOutsideMask(normalized, mappedValue)
+    || hasEmbeddedMaskLookalike(normalized);
 
-  return {
-    value: normalized
-      .replace(/\p{Nd}/gu, decimalDigitToAscii)
-      .replace(CONFUSABLE_MASK_LETTER_PATTERN, 'x')
-      .replace(CONFUSABLE_MASK_MARK_PATTERN, '·'),
-    ambiguous,
-  };
+  return { value: mappedValue, ambiguous };
 }
 
 interface AccountParts {
