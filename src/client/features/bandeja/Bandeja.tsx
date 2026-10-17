@@ -10,7 +10,7 @@ interface BandejaProps {
   rowRevisions: Record<string, number>;
   onSelect: (id: string) => void;
   onProcess: () => void;
-  onReceive: () => void;
+  onReceive?: () => void;
   onDropFiles: (files: File[]) => void;
 }
 
@@ -62,9 +62,12 @@ export function Bandeja({
       {rows.length === 0 ? (
         <div className="empty-list">
           <p className="eyebrow">Sin facturas</p>
-          <p>Aún no hay facturas en la bandeja.</p>
-          <p>Recibe una factura de prueba y procesa su expediente.</p>
-          <button className="button button-primary empty-receive" type="button" onClick={onReceive}>+ Recibir factura</button>
+          <p>Para empezar, recibe una factura y revisa su expediente.</p>
+          {onReceive && (
+            <button className="button button-primary empty-receive" type="button" onClick={onReceive}>
+              Recibir una factura
+            </button>
+          )}
         </div>
       ) : (
         <>
