@@ -16,7 +16,11 @@ const RECONCILIATION_HEADER = 'invoice_id,status,decision_reason,check_reasons,v
 const LOG_HEADER = 'at,invoice_id,status,headline,by,seal';
 
 function csvCell(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+  // Spreadsheet apps may execute formula prefixes even inside quoted CSV cells.
+  const safeValue = /^[\s\u0000-\u001f\u007f]*[=+\-@]/u.test(value) || /^[\t\r\n]/u.test(value)
+    ? `'${value}`
+    : value;
+  return /[",\r\n\t]/.test(safeValue) ? `"${safeValue.replaceAll('"', '""')}"` : safeValue;
 }
 
 function csvRow(values: string[]): string {

@@ -100,6 +100,27 @@ describe('export builders', () => {
     expect(csv).toContain('"María, ""Finanzas"""');
   });
 
+  it.each(['=1+1', '+1+1', '-1+1', '@SUM(A1:A2)'])(
+    'neutralizes formula-leading approver names in reconciliation CSV (%s)',
+    (approverName) => {
+      const item = paymentItem('approved', 'formula', simpleVendor);
+      item.authorizedBy = approverName;
+
+      const csv = reconciliationCsv([item]);
+
+      expect(csv).toContain(`,'${approverName},formula,seal-formula`);
+    },
+  );
+
+  it('neutralizes formula-like names after leading whitespace and quotes tabs', () => {
+    const item = paymentItem('approved', 'formula', simpleVendor);
+    item.authorizedBy = ' \t=1+1';
+
+    const csv = reconciliationCsv([item]);
+
+    expect(csv).toContain(`,"' \t=1+1",formula,seal-formula`);
+  });
+
   it('filters a selected payment batch to chosen ready invoices and all approved invoices', () => {
     const csv = paymentsCsv([
       paymentItem('ready', 'ready-included', simpleVendor),
