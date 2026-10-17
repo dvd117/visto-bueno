@@ -30,7 +30,7 @@ const invoiceStatusSchema = z.enum([
 const sourceKindSchema = z.enum(['pdf', 'image', 'text']);
 const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US']);
 const currencySchema = z.enum(CURRENCIES);
-const invoiceRowSchema: z.ZodType<InvoiceRow> = z.object({
+export const invoiceRowSchema: z.ZodType<InvoiceRow> = z.object({
   id: z.string(),
   payee: z.string(),
   concept: z.string(),
@@ -154,7 +154,7 @@ const comparisonSchema: z.ZodType<Comparison> = z.object({
   record: z.string().nullable(),
   differs: z.boolean(),
 });
-const expedienteSchema: z.ZodType<Expediente> = z.object({
+export const expedienteSchema: z.ZodType<Expediente> = z.object({
   row: invoiceRowSchema,
   record: decisionRecordSchema.nullable(),
   comparison: z.array(comparisonSchema),
@@ -164,16 +164,16 @@ const expedienteSchema: z.ZodType<Expediente> = z.object({
   history: z.array(decisionRecordSchema),
 });
 
-const workspaceSummarySchema: z.ZodType<WorkspaceSummary> = z.object({
+export const workspaceSummarySchema: z.ZodType<WorkspaceSummary> = z.object({
   company: z.object({ name: z.string(), fictional: z.literal(true) }),
   rules: rulesSchema,
   counters: countersSchema,
   lastRun: runStatsSchema.nullable(),
 });
-const apiErrorSchema: z.ZodType<ApiError> = z.object({ error: z.string(), message: z.string() });
-const conflictSchema: z.ZodType<ConflictResponse> = z.object({ error: z.literal('conflict'), expediente: expedienteSchema });
+export const apiErrorSchema: z.ZodType<ApiError> = z.object({ error: z.string(), message: z.string() });
+export const conflictSchema: z.ZodType<ConflictResponse> = z.object({ error: z.literal('conflict'), expediente: expedienteSchema });
 
-const processEventSchema: z.ZodType<ProcessEvent> = z.discriminatedUnion('type', [
+export const processEventSchema: z.ZodType<ProcessEvent> = z.discriminatedUnion('type', [
   z.object({ type: z.literal('decided'), row: invoiceRowSchema, counters: countersSchema }),
   z.object({ type: z.literal('error'), invoiceId: z.string(), message: z.string(), status: z.literal(429).optional() }),
   z.object({ type: z.literal('done'), stats: runStatsSchema }),
@@ -240,7 +240,7 @@ const simulationCountsSchema = z.object({
   review_required: nonNegativeInteger,
   stopped: nonNegativeInteger,
 }).strict();
-const simulationResultSchema: z.ZodType<SimulationResult> = z.object({
+export const simulationResultSchema: z.ZodType<SimulationResult> = z.object({
   counts: simulationCountsSchema,
   deltas: z.object({
     ready: safeInteger,
@@ -250,7 +250,7 @@ const simulationResultSchema: z.ZodType<SimulationResult> = z.object({
   }).strict(),
   unsafeApprovals: z.literal(0),
 }).strict();
-const logEntrySchema: z.ZodType<LogEntry> = z.object({
+export const logEntrySchema: z.ZodType<LogEntry> = z.object({
   at: z.string(), invoiceId: z.string(), status: invoiceStatusSchema,
   headline: z.string(), seal: z.string(), by: z.string().nullable(),
 }).strict();
