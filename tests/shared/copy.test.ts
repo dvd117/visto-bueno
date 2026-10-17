@@ -3,7 +3,7 @@ import type { CheckResult, Decision } from '../../src/shared/domain/types';
 import { subtitleForDecision } from '../../src/shared/engine/copy';
 
 function check(id: string, effect: CheckResult['effect']): CheckResult {
-  return { id, kind: id.startsWith('R') ? 'rule' : 'verify', label: id, passed: false, effect, reason: 'Reason' };
+  return { id, kind: id.startsWith('R') ? 'rule' : 'verify', label: id, passed: false, outcome: 'failed', effect, reason: 'Reason' };
 }
 
 function decision(

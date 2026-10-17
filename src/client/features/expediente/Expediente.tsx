@@ -114,17 +114,36 @@ function DecisionTrail({ checks }: { checks: CheckResult[] }) {
   return (
     <ul className="trail-list">
       {checks.map((check) => {
+        const outcome = check.outcome ?? (check.passed ? 'passed' : 'failed');
+        const pending = outcome === 'pending';
+        const notApplicable = outcome === 'not_applicable';
         const unverifiable = check.effect === 'approval' && !check.passed;
-        const alert = check.effect === 'review' || unverifiable;
-        const passed = check.passed && !alert;
-        const glyph = alert ? '!' : passed ? '✓' : '×';
-        const stateLabel = unverifiable ? 'No verificable en imagen' : alert ? 'Alerta' : passed ? 'Cumple' : 'No cumple';
+        const alert = !pending && !notApplicable && (check.effect === 'review' || unverifiable);
+        const glyph = pending ? '?' : notApplicable ? '—' : alert ? '!' : outcome === 'passed' ? '✓' : '×';
+        const stateLabel = pending ? 'Pendiente'
+          : notApplicable ? 'No aplica'
+            : alert ? 'Alerta' : outcome === 'passed' ? 'Cumple' : 'No cumple';
+        const rowState = pending || alert ? ' trail-alert'
+          : notApplicable ? '' : outcome === 'passed' ? ' trail-pass' : ' trail-fail';
+        const pendingReason: Record<string, string> = {
+          R2: 'No se pudo verificar una sola cuenta bancaria contra un registro.',
+          R5: 'No hay un monto verificable para comparar con el acuerdo.',
+          R11: 'No hay un monto verificable para comparar con el límite por pago.',
+          R12: 'No hay un monto verificable para comparar con el límite mensual.',
+          R13: 'No hay un monto verificable para comparar con el presupuesto.',
+          R14: 'No hay un monto verificable para comparar con el saldo.',
+          R15: 'No hay un monto convertible para comparar con el umbral.',
+          R16: 'No hay un monto verificable para evaluar la tasa de cambio.',
+        };
+        const reason = notApplicable ? 'No aplica a este caso.'
+          : pending && check.effect !== 'approval' ? pendingReason[check.id] ?? check.reason
+            : check.reason;
         return (
-          <li className={`trail-row${alert ? ' trail-alert' : passed ? ' trail-pass' : ' trail-fail'}`} key={check.id}>
+          <li className={`trail-row${rowState}`} key={check.id}>
             <span className="trail-glyph" aria-label={stateLabel}>{glyph}</span>
             <span className="trail-check">
-              <strong>{check.label}</strong>
-              <span>{check.reason}</span>
+              <strong>{check.label} · {stateLabel}</strong>
+              <span>{reason}</span>
             </span>
             <CheckSource check={check} />
           </li>

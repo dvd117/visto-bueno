@@ -1,4 +1,4 @@
-import type { CheckResult, JevAnswer, JevAnswers, Preset } from '../domain/types';
+import type { CheckOutcome, CheckResult, JevAnswer, JevAnswers, Preset } from '../domain/types';
 
 export const PRESETS = Object.freeze({
   estricto: Object.freeze({ action: 0.6, reviewFrom: 0.25 }),
@@ -49,12 +49,20 @@ function topScopeIndex(answer: ScoreAnswer): number | null {
   return Number(entries[0][0]);
 }
 
-function result(id: string, label: string, effect: CheckResult['effect'], reason: string, probability?: number): CheckResult {
+function result(
+  id: string,
+  label: string,
+  effect: CheckResult['effect'],
+  reason: string,
+  probability?: number,
+  outcome: CheckOutcome = effect === 'none' ? 'passed' : effect === 'approval' ? 'pending' : 'failed',
+): CheckResult {
   return {
     id,
     kind: 'judgment',
     label,
-    passed: effect === 'none',
+    passed: outcome === 'passed' || outcome === 'not_applicable',
+    outcome,
     effect,
     reason,
     ...(probability === undefined ? {} : { probability }),
@@ -62,7 +70,14 @@ function result(id: string, label: string, effect: CheckResult['effect'], reason
 }
 
 function unavailable(): CheckResult {
-  return result('jev_unavailable', 'Evaluación JEV no disponible', 'review', 'No pude completar la evaluación');
+  return result('jev_unavailable', 'Evaluación JEV no disponible', 'review', 'No pude completar la evaluación', undefined, 'pending');
+}
+
+function scopeNotApplicable(): CheckResult {
+  return result(
+    'scope_match', 'Coincidencia con el alcance', 'none',
+    'No aplica: no hay un acuerdo único vigente para evaluar el alcance.', undefined, 'not_applicable',
+  );
 }
 
 function mapNoul(id: 'instructs_agent' | 'artificial_urgency' | 'fuzzy_duplicate', value: number, preset: Preset): CheckResult {
@@ -129,15 +144,16 @@ function mapDocumentType(answer: ChoiceAnswer): CheckResult {
   return result('document_type', 'Tipo de documento', effect, reason, answer.confidence);
 }
 
-export function mapJev(answers: JevAnswers, preset: Preset, asked?: { fuzzy?: boolean }): CheckResult[] {
+export function mapJev(answers: JevAnswers, preset: Preset, asked?: { fuzzy?: boolean; scope?: boolean }): CheckResult[] {
   if (!answers.ok) return [unavailable()];
 
   const values = answers.answers;
+  const scopeAsked = asked?.scope !== false;
   const fuzzyDuplicate = values.fuzzy_duplicate;
   const costCenter = values.cost_center;
   if (!isNoulAnswer(values.instructs_agent)
     || !isNoulAnswer(values.artificial_urgency)
-    || !isScopeAnswer(values.scope_match)
+    || (scopeAsked && !isScopeAnswer(values.scope_match))
     || !isChoiceAnswer(values.document_type)
     || (asked?.fuzzy === true && fuzzyDuplicate === undefined)
     || (fuzzyDuplicate !== undefined && !isNoulAnswer(fuzzyDuplicate))
@@ -148,7 +164,7 @@ export function mapJev(answers: JevAnswers, preset: Preset, asked?: { fuzzy?: bo
   const checks = [
     mapNoul('instructs_agent', values.instructs_agent.noul, preset),
     mapNoul('artificial_urgency', values.artificial_urgency.noul, preset),
-    mapScope(values.scope_match),
+    scopeAsked ? mapScope(values.scope_match as ScoreAnswer) : scopeNotApplicable(),
   ];
 
   if (fuzzyDuplicate !== undefined) {

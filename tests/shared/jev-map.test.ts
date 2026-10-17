@@ -103,6 +103,30 @@ describe('JEV presets and mapping', () => {
     expect(result(0, 0.6).effect).toBe('none');
   });
 
+  it('marks scope not applicable and ignores the answer when no unique contract is active', () => {
+    const { scope_match: _scope, ...answers } = validJev({ scope_match: score(2, 0.99) }).answers;
+    const checks = mapJev({ ...validJev(), answers }, 'equilibrado', { scope: false });
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'scope_match', passed: true, outcome: 'not_applicable', effect: 'none',
+    }));
+    expect(checks.find((check) => check.id === 'jev_unavailable')).toBeUndefined();
+  });
+
+  it('keeps fired review signals failed-like while reserving pending for unavailable JEV', () => {
+    const answers = validJev({
+      instructs_agent: noul(0.5),
+      artificial_urgency: noul(0.5),
+      scope_match: score(1, 0.9),
+      fuzzy_duplicate: noul(0.5),
+      document_type: choice('otro', 0.99),
+    });
+    const checks = mapJev(answers, 'equilibrado', { fuzzy: true });
+
+    expect(checks.filter(({ effect }) => effect === 'review')).toHaveLength(5);
+    expect(checks.filter(({ effect }) => effect === 'review').every(({ outcome }) => outcome === 'failed')).toBe(true);
+    expect(checkFor('jev_unavailable', { ok: false, error: 'timeout' })).toMatchObject({ outcome: 'pending' });
+  });
+
   it('reviews an ambiguous top score instead of selecting a confident category', () => {
     const answer: JevAnswer = {
       type: 'score', score: 1, confidence: 0.9, probabilities: { '0': 0.5, '1': 0.5, '2': 0 },

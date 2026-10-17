@@ -10,10 +10,13 @@ const vendor: Vendor = {
 };
 
 function claims(overrides: Partial<ExtractionClaims> = {}): ExtractionClaims {
+  const payoutAccount = Object.hasOwn(overrides, 'payoutAccount')
+    ? overrides.payoutAccount ?? null
+    : 'Banco Ventaluz ···· 8890';
   return {
-    amountsFound: ['USD 100.00'], accountsFound: ['Banco Ventaluz ···· 8890'], taxIdsFound: ['901.234.567-8'],
+    amountsFound: ['USD 100.00'], accountsFound: payoutAccount ? [payoutAccount] : [], taxIdsFound: ['901.234.567-8'],
     invoiceIdsFound: ['INV-001'], currenciesFound: ['USD'], payeeName: 'Nube Andina S.A.S.',
-    payeeTaxId: '901.234.567-8', payoutAccount: 'Banco Ventaluz ···· 8890', invoiceId: 'INV-001',
+    payeeTaxId: '901.234.567-8', payoutAccount, invoiceId: 'INV-001',
     invoiceDate: '2026-10-16', dueDate: '2026-10-20', currency: 'USD', amountRaw: 'USD 100.00',
     subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null, description: 'Hosting',
     documentTypeHint: 'factura', hasMultipleCurrenciesShown: false,
@@ -439,7 +442,7 @@ describe('verifyClaims', () => {
       claims: claims({ amountRaw: 'USD 2.500', amountsFound: ['USD 2.500'] }),
       sourceText: 'NIT 901.234.567-8 Cuenta Banco Ventaluz ···· 8890 Factura INV-001 Total USD 2.500',
     }), [vendor]);
-    expect(getCheck(result, 'ambiguous_amount')).toMatchObject({ passed: false, effect: 'review' });
+    expect(getCheck(result, 'ambiguous_amount')).toMatchObject({ passed: false, outcome: 'failed', effect: 'review' });
     expect(result.money).toBeNull();
   });
 
@@ -453,13 +456,13 @@ describe('verifyClaims', () => {
     const unknown = verifyClaims(extraction({
       claims: claims({ payeeTaxId: 'unknown', payoutAccount: 'Unknown Bank ···· 0000', currency: null }),
     }), [vendor]);
-    expect(getCheck(unknown, 'ambiguous_amount')).toMatchObject({ passed: false, effect: 'review' });
+    expect(getCheck(unknown, 'ambiguous_amount')).toMatchObject({ passed: false, outcome: 'failed', effect: 'review' });
     expect(unknown.money).toBeNull();
   });
 
   it('adds an approval check for image-only sources', () => {
     const result = verifyClaims(extraction({ sourceKind: 'image' }), [vendor]);
-    expect(getCheck(result, 'image_confirmation')).toMatchObject({ passed: true, effect: 'approval' });
+    expect(getCheck(result, 'image_confirmation')).toMatchObject({ passed: true, outcome: 'pending', effect: 'approval' });
     expect(result.checks.filter((check) => check.id.startsWith('source_'))).toHaveLength(4);
     expect(result.checks.filter((check) => check.id.startsWith('source_')).every((check) => (
       !check.passed && check.effect === 'approval' && check.reason === 'No verificable en imagen.'

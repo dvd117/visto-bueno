@@ -1,8 +1,11 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, LogEntry } from '../../src/shared/api';
+import type { CheckResult, ExtractionClaims, JevAnswer, JevAnswers } from '../../src/shared/domain/types';
 import { Bitacora, type BitacoraApi } from '../../src/client/features/bitacora/Bitacora';
 import { Expediente } from '../../src/client/features/expediente/Expediente';
+import { mapJev } from '../../src/shared/engine/jev-map';
+import { verifyClaims } from '../../src/shared/engine/verify';
 
 afterEach(() => {
   cleanup();
@@ -51,6 +54,62 @@ function renderExpediente(expediente: ExpedienteData) {
   );
 }
 
+function makeExpedienteWithChecks(invoiceId: string, checks: CheckResult[]): ExpedienteData {
+  const expediente = makeExpediente();
+  expediente.row.id = invoiceId;
+  expediente.row.status = 'review_required';
+  expediente.record = {
+    id: `record-${invoiceId}`,
+    invoiceId,
+    decision: {
+      status: 'review_required', checks, flags: [], canApprove: false,
+      headline: 'Requiere tu aprobación.', nextStep: null,
+      amountUsdMinor: null, contractId: null, costCenter: null,
+    },
+    rulesSnapshot: {
+      version: 1, perPaymentLimitUsdMinor: 1_000_000, monthlyLimitUsdMinor: 5_000_000,
+      approvalThresholdUsdMinor: 300_000, fuzzyDuplicateWindowDays: 60, preset: 'equilibrado',
+    },
+    dataVersions: { fxDate: '2026-10-16' }, jev: { ok: false, error: 'timeout' },
+    seal: '8f3a1c', createdAt: '2026-10-16T21:14:00.000Z',
+  };
+  return expediente;
+}
+
+const noul = (n: number): JevAnswer => ({ type: 'noul', noul: n });
+const score = (top: number, confidence: number): JevAnswer => ({
+  type: 'score', score: top, confidence,
+  probabilities: { '0': top === 0 ? 0.9 : 0.05, '1': top === 1 ? 0.9 : 0.05, '2': top === 2 ? 0.9 : 0.05 },
+});
+const choice = (value: string, confidence: number): JevAnswer => ({
+  type: 'choice', choice: value, confidence, probabilities: { [value]: confidence },
+});
+
+function firedReviewChecks() {
+  const answers: Extract<JevAnswers, { ok: true }> = {
+    ok: true,
+    answers: {
+      instructs_agent: noul(0.5), artificial_urgency: noul(0.5),
+      scope_match: score(1, 0.9), fuzzy_duplicate: noul(0.5),
+      document_type: choice('otro', 0.99),
+    },
+    latencyMs: 1, recorded: true, inputTokens: 20,
+  };
+  return mapJev(answers, 'equilibrado', { fuzzy: true });
+}
+
+function ambiguousAmountCheck(): CheckResult {
+  const claims: ExtractionClaims = {
+    amountsFound: ['USD 1?00'], accountsFound: [], taxIdsFound: [], invoiceIdsFound: [], currenciesFound: ['USD'],
+    payeeName: null, payeeTaxId: null, payoutAccount: null, invoiceId: null,
+    invoiceDate: null, dueDate: null, currency: 'USD', amountRaw: 'USD 1?00',
+    subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null, description: 'Hosting',
+    documentTypeHint: 'factura', hasMultipleCurrenciesShown: false, evidenceQuotes: {}, suspiciousPassages: [],
+  };
+  return verifyClaims({ ok: true, claims, sourceText: 'Total USD 1?00', sourceKind: 'text' }, [])
+    .checks.find(({ id }) => id === 'ambiguous_amount')!;
+}
+
 function makeBitacoraApi(entries: LogEntry[]): BitacoraApi {
   return {
     getLog: vi.fn().mockResolvedValue(entries),
@@ -61,6 +120,91 @@ function makeBitacoraApi(entries: LogEntry[]): BitacoraApi {
 }
 
 describe('QA: Expediente document tabs', () => {
+  it('renders the 15 fired risk signals as accessible alerts, never as pending checks', () => {
+    const fired = firedReviewChecks();
+    const ambiguousAmount = ambiguousAmountCheck();
+    const pairs = [
+      ['AL-042', 'instructs_agent'], ['AL-044', 'instructs_agent'],
+      ['AL-045', 'instructs_agent'], ['AL-046', 'instructs_agent'],
+      ['AL-039', 'artificial_urgency'], ['AL-042', 'artificial_urgency'],
+      ['AL-044', 'artificial_urgency'], ['AL-045', 'artificial_urgency'],
+      ['AL-045', 'fuzzy_duplicate'], ['AL-046', 'fuzzy_duplicate'],
+      ['AL-049', 'fuzzy_duplicate'], ['AL-044', 'document_type'],
+      ['AL-037', 'scope_match'], ['AL-049', 'scope_match'],
+      ['AL-047', 'ambiguous_amount'],
+    ] as const;
+
+    expect(pairs).toHaveLength(15);
+    for (const invoiceId of new Set(pairs.map(([id]) => id))) {
+      const checks = pairs.filter(([id]) => id === invoiceId).map(([, checkId]) => (
+        checkId === 'ambiguous_amount'
+          ? ambiguousAmount
+          : fired.find(({ id }) => id === checkId)!
+      ));
+      expect(checks.every(({ effect }) => effect === 'review')).toBe(true);
+      renderExpediente(makeExpedienteWithChecks(invoiceId, checks));
+
+      for (const check of checks) {
+        const title = screen.getByText(`${check.label} · Alerta`);
+        const row = title.closest('li');
+        const glyph = row?.querySelector('.trail-glyph');
+        expect(glyph?.textContent).toBe('!');
+        expect(glyph?.getAttribute('aria-label')).toBe('Alerta');
+        expect(row?.textContent).not.toContain('Pendiente');
+      }
+      cleanup();
+    }
+  });
+
+  it('renders pending and not-applicable trail outcomes with distinct glyphs and labels', () => {
+    const expediente = makeExpediente();
+    expediente.row.status = 'review_required';
+    expediente.record = {
+      id: 'record-trail',
+      invoiceId: expediente.row.id,
+      decision: {
+        status: 'review_required',
+        checks: [
+          {
+            id: 'R2', kind: 'rule', label: 'Cuenta bancaria registrada', passed: true,
+            outcome: 'pending', effect: 'none', reason: 'La cuenta de la factura coincide con la cuenta registrada.',
+          },
+          {
+            id: 'image_confirmation', kind: 'verify', label: 'Confirmación visual', passed: false,
+            outcome: 'pending', effect: 'approval', reason: 'Confirma los datos contra la imagen.',
+          },
+          {
+            id: 'jev_unavailable', kind: 'judgment', label: 'Evaluación JEV no disponible', passed: false,
+            outcome: 'pending', effect: 'review', reason: 'No pude completar la evaluación.',
+          },
+          {
+            id: 'scope_match', kind: 'judgment', label: 'Coincidencia con el alcance', passed: true,
+            outcome: 'not_applicable', effect: 'none', reason: 'No hay un acuerdo único vigente.',
+          },
+        ],
+        flags: [], canApprove: false, headline: 'Requiere tu aprobación.', nextStep: null,
+        amountUsdMinor: null, contractId: null, costCenter: null,
+      },
+      rulesSnapshot: {
+        version: 1, perPaymentLimitUsdMinor: 1_000_000, monthlyLimitUsdMinor: 5_000_000,
+        approvalThresholdUsdMinor: 300_000, fuzzyDuplicateWindowDays: 60, preset: 'equilibrado',
+      },
+      dataVersions: { fxDate: '2026-10-16' }, jev: { ok: false, error: 'timeout' },
+      seal: '8f3a1c', createdAt: '2026-10-16T21:14:00.000Z',
+    };
+
+    renderExpediente(expediente);
+
+    expect(screen.getByText('Cuenta bancaria registrada · Pendiente')).toBeTruthy();
+    expect(screen.getByText('No se pudo verificar una sola cuenta bancaria contra un registro.')).toBeTruthy();
+    expect(screen.queryByText('La cuenta de la factura coincide con la cuenta registrada.')).toBeNull();
+    expect(screen.getByText('Confirmación visual · Pendiente')).toBeTruthy();
+    expect(screen.getByText('Evaluación JEV no disponible · Pendiente')).toBeTruthy();
+    expect(screen.getByText('Coincidencia con el alcance · No aplica')).toBeTruthy();
+    expect(screen.getAllByText('?', { selector: '.trail-glyph' })).toHaveLength(3);
+    expect(screen.getByText('—', { selector: '.trail-glyph' })).toBeTruthy();
+  });
+
   it('associates both tabs with their panels and preserves the original and marked text views', () => {
     renderExpediente(makeExpediente());
 

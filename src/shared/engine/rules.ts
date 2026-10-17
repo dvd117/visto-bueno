@@ -1,9 +1,10 @@
 import Decimal from 'decimal.js';
 import { parseAmount, toUsdMinor } from '../domain/money';
 import type {
-  Budget, CheckResult, Contract, CostCenter, Currency, ExtractionClaims, Money, Rules, SourceKind, Treasury, Vendor,
+  Budget, CheckOutcome, CheckResult, Contract, CostCenter, Currency, ExtractionClaims, Money, Rules, SourceKind, Treasury, Vendor,
 } from '../domain/types';
 import { normalize, normalizeAccount } from './normalize';
+import { hasSingleUnambiguousAccount } from './verify';
 
 export interface LedgerView {
   committedUsdMinor(month: string): number;
@@ -46,8 +47,16 @@ function isIsoDate(value: string | null | undefined): value is string {
   return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1];
 }
 
-function check(id: string, label: string, passed: boolean, effect: CheckResult['effect'], reason: string, evidence?: CheckResult['evidence']): CheckResult {
-  return { id, kind: 'rule', label, passed, effect, reason, ...(evidence ? { evidence } : {}) };
+function check(
+  id: string,
+  label: string,
+  passed: boolean,
+  effect: CheckResult['effect'],
+  reason: string,
+  evidence?: CheckResult['evidence'],
+  outcome: CheckOutcome = passed ? 'passed' : 'failed',
+): CheckResult {
+  return { id, kind: 'rule', label, passed, outcome, effect, reason, ...(evidence ? { evidence } : {}) };
 }
 
 function periodFor(contract: Contract, invoiceDate: string): string {
@@ -63,7 +72,7 @@ function maskAccount(account: string | null): string {
 }
 
 function imageAccountCheck(): CheckResult {
-  return check('R2', 'Cuenta bancaria registrada', false, 'approval', 'No verificable en imagen.');
+  return check('R2', 'Cuenta bancaria registrada', false, 'approval', 'No verificable en imagen.', undefined, 'pending');
 }
 
 function monthFromDate(date: string | null): string | null {
@@ -120,19 +129,25 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
 
   const invoiceKey = claims.payoutAccount ? normalizeAccount(claims.payoutAccount) : '';
   const registeredKey = vendor ? normalizeAccount(vendor.payoutAccount) : '';
+  const invoiceAccountCandidates = [...claims.accountsFound, claims.payoutAccount];
+  const hasInvoiceAccount = invoiceAccountCandidates.some((candidate) => Boolean(candidate?.trim()));
+  const singleInvoiceAccount = hasInvoiceAccount && hasSingleUnambiguousAccount(invoiceAccountCandidates);
+  const accountVerifiable = vendor !== null && invoiceKey !== '' && registeredKey !== '' && singleInvoiceAccount;
   const accountMatches = !vendor || (invoiceKey !== '' && registeredKey !== '' && invoiceKey === registeredKey);
+  const accountOutcome: CheckOutcome = !accountVerifiable ? 'pending' : accountMatches ? 'passed' : 'failed';
+  const accountEffect = accountMatches ? 'none' : 'stop';
   const imageSource = ctx.sourceKind === 'image';
   const accountEvidence = vendor && claims.payoutAccount
     ? { invoice: maskAccount(claims.payoutAccount), record: maskAccount(vendor.payoutAccount) }
     : undefined;
   checks.push(imageSource ? imageAccountCheck() : check(
-    'R2', 'Cuenta bancaria registrada', accountMatches, accountMatches ? 'none' : 'stop',
-    accountMatches
-      ? 'La cuenta de la factura coincide con la cuenta registrada.'
+    'R2', 'Cuenta bancaria registrada', accountMatches, accountEffect,
+    accountMatches ? 'La cuenta de la factura coincide con la cuenta registrada.'
       : claims.payoutAccount
         ? 'Verifica el cambio con el proveedor por un canal seguro, actualiza su cuenta en Preparar datos y re-evalúa'
         : 'La factura no identifica una cuenta bancaria para compararla con el registro.',
     accountEvidence,
+    accountOutcome,
   ));
 
   const exactlyOneContract = activeContracts.length === 1;
@@ -143,18 +158,27 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
 
   const claimedCurrency = invoiceCurrency(ctx);
   const currencyMatches = !contract || !claimedCurrency || contract.currency === claimedCurrency;
+  const currencyApplicable = contract !== null && claimedCurrency !== null;
   checks.push(check(
     'R4', 'Moneda según el acuerdo', currencyMatches, currencyMatches ? 'none' : 'stop',
     currencyMatches ? 'La moneda coincide con el acuerdo o no aplica.' : 'La moneda de la factura no coincide con el acuerdo.',
+    undefined,
+    currencyApplicable ? (currencyMatches ? 'passed' : 'failed') : 'not_applicable',
   ));
 
-  const fixedAmountMatches = !contract || contract.type !== 'fixed' || ctx.money === null
+  const fixedContract = contract?.type === 'fixed';
+  const fixedAmountMatches = !fixedContract || ctx.money === null
     || (contract.amountMinor !== undefined && ctx.money.minor === contract.amountMinor);
+  const fixedAmountOutcome: CheckOutcome = imageSource || (fixedContract && ctx.money === null)
+    ? 'pending'
+    : !fixedContract ? 'not_applicable' : fixedAmountMatches ? 'passed' : 'failed';
   checks.push(check(
     'R5', 'Monto fijo según el acuerdo', imageSource ? false : fixedAmountMatches,
     imageSource ? 'approval' : fixedAmountMatches ? 'none' : 'stop',
     imageSource ? 'No verificable en imagen.'
       : fixedAmountMatches ? 'El monto coincide con el acuerdo o no aplica.' : 'El monto no coincide con el monto acordado.',
+    undefined,
+    fixedAmountOutcome,
   ));
 
   const variableContract = contract?.type === 'variable' ? contract : null;
@@ -165,6 +189,8 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
     !variable ? 'No aplica a un acuerdo de monto fijo.'
       : variableValid ? 'La cantidad y la tarifa coinciden; requiere aprobación humana.'
         : 'La cantidad, tarifa o total no coincide con el acuerdo.',
+    undefined,
+    variable ? (variableValid ? 'passed' : 'failed') : 'not_applicable',
   ));
 
   const contractPeriod = contract && validInvoiceDate ? periodFor(contract, validInvoiceDate) : null;
@@ -179,13 +205,20 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
       periodReason = 'Este contrato ya registra un cobro en el período correspondiente.';
     }
   }
-  checks.push(check('R7', 'Un cobro por período contractual', !alreadyCommitted, alreadyCommitted ? 'stop' : 'none', periodReason));
+  const periodApplicable = contract !== null && contractPeriod !== null;
+  checks.push(check(
+    'R7', 'Un cobro por período contractual', !alreadyCommitted, alreadyCommitted ? 'stop' : 'none', periodReason,
+    undefined,
+    !periodApplicable ? 'not_applicable' : alreadyCommitted ? 'failed' : 'passed',
+  ));
 
   const normalizedInvoiceId = claims.invoiceId ? normalize(claims.invoiceId) : '';
   const duplicate = Boolean(vendor && normalizedInvoiceId && ctx.ledger.hasInvoiceId(vendor.id, normalizedInvoiceId));
   checks.push(check(
     'R8', 'Número de factura único', !duplicate, duplicate ? 'stop' : 'none',
     duplicate ? 'Este número de factura ya existe para el proveedor.' : 'No se encontró una factura comprometida con este número.',
+    undefined,
+    vendor && normalizedInvoiceId ? (duplicate ? 'failed' : 'passed') : 'not_applicable',
   ));
 
   const dateWithinContract = !contractForDateCheck || (validInvoiceDate !== null
@@ -194,6 +227,8 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
     'R9', 'Fecha dentro del período del acuerdo', dateWithinContract, dateWithinContract ? 'none' : 'stop',
     dateWithinContract ? 'La fecha de la factura está dentro del período del acuerdo o no aplica.'
       : 'La fecha de la factura está fuera del período del contrato.',
+    undefined,
+    !contractForDateCheck ? 'not_applicable' : dateWithinContract ? 'passed' : 'failed',
   ));
 
   const validDueDate = isIsoDate(claims.dueDate) ? claims.dueDate : null;
@@ -212,6 +247,8 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
     amountAvailable ? 'No aplica sin un monto verificable.'
       : fxUnavailable ? 'No se pudo convertir el monto a USD.'
         : paymentLimitPasses ? 'El monto está dentro del límite por pago.' : 'El monto supera el límite por pago.',
+    undefined,
+    amountAvailable ? 'pending' : paymentLimitPasses ? 'passed' : 'failed',
   ));
 
   const monthlyCommitted = month ? ctx.ledger.committedUsdMinor(month) : 0;
@@ -224,6 +261,8 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
     amountAvailable ? 'No aplica sin un monto verificable.'
       : fxUnavailable ? 'No se pudo convertir el monto a USD.'
         : monthlyLimitPasses ? 'El total mensual está dentro del límite.' : 'El total mensual supera el límite configurado.',
+    undefined,
+    amountAvailable ? 'pending' : monthlyLimitPasses ? 'passed' : 'failed',
   ));
 
   const costCenter = contract?.costCenter;
@@ -243,6 +282,8 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
       : fxUnavailable ? 'No se pudo convertir el monto a USD.'
         : budgetPasses ? 'El presupuesto disponible cubre este monto.'
           : 'El presupuesto disponible del centro de costo no cubre este monto.',
+    undefined,
+    !contract ? 'not_applicable' : amountAvailable ? 'pending' : budgetPasses ? 'passed' : 'failed',
   ));
 
   const balanceCommitted = month ? ctx.ledger.committedUsdMinor(month) : 0;
@@ -255,6 +296,8 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
     amountAvailable ? 'No aplica sin un monto verificable.'
       : fxUnavailable ? 'No se pudo convertir el monto a USD.'
         : balancePasses ? 'El saldo disponible cubre este monto.' : 'El saldo disponible no cubre este monto.',
+    undefined,
+    amountAvailable ? 'pending' : balancePasses ? 'passed' : 'failed',
   ));
 
   const approvalRequired = amountUsdMinor !== null && amountUsdMinor > ctx.rules.approvalThresholdUsdMinor;
@@ -262,12 +305,16 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
     'R15', 'Umbral de aprobación humana', true, approvalRequired ? 'approval' : 'none',
     approvalRequired ? 'El monto supera el umbral y requiere aprobación humana.'
       : 'El monto no supera el umbral de aprobación o no aplica.',
+    undefined,
+    amountUsdMinor === null ? 'pending' : 'passed',
   ));
 
   const fxAvailable = ctx.money === null || amountConversion?.ok === true;
   checks.push(check(
     'R16', 'Tasa de cambio disponible', fxAvailable, fxAvailable ? 'none' : 'stop',
     fxAvailable ? 'Hay una tasa de cambio disponible para el monto.' : 'No hay una tasa de cambio para esta moneda.',
+    undefined,
+    ctx.money === null ? 'pending' : fxAvailable ? 'passed' : 'failed',
   ));
 
   return { checks, contract, amountUsdMinor };

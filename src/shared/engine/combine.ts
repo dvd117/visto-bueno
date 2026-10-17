@@ -18,6 +18,7 @@ const REQUIRED_JEV_CHECK_IDS = [
 function cloneCheck(check: CheckResult): CheckResult {
   return {
     ...check,
+    outcome: check.outcome ?? (check.passed ? 'passed' : 'failed'),
     ...(check.evidence ? { evidence: { ...check.evidence } } : {}),
   };
 }
@@ -40,6 +41,7 @@ function unavailableCheck(): CheckResult {
     kind: 'judgment',
     label: 'Evaluación JEV no disponible',
     passed: false,
+    outcome: 'pending',
     effect: 'review',
     reason: 'No pude completar la evaluación',
   };
