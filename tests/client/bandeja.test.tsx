@@ -2,6 +2,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Expediente, InvoiceRow, ProcessEvent, WorkspaceSummary } from '../../src/shared/api';
+import { Counters } from '../../src/client/features/bandeja/Counters';
+import { Bandeja } from '../../src/client/features/bandeja/Bandeja';
 import App from '../../src/client/app/App';
 
 const rules = {
@@ -144,6 +146,48 @@ afterEach(() => {
 });
 
 describe('Bandeja and Expediente', () => {
+  it('formats ISO due dates in Latin American Spanish', () => {
+    const row = { ...makeRow('ready'), due: '2026-10-15' };
+
+    render(
+      <Bandeja
+        rows={[row]}
+        selectedId={row.id}
+        counters={makeWorkspace().counters}
+        processing={false}
+        rowRevisions={{}}
+        onSelect={vi.fn()}
+        onProcess={vi.fn()}
+        onReceive={vi.fn()}
+        onDropFiles={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Vence 15 oct 2026')).not.toBeNull();
+  });
+
+  it('explains an unmeasured replay cost without a dash placeholder', () => {
+    render(
+      <Counters
+        counters={makeWorkspace().counters}
+        lastRun={{ invoices: 20, ms: 1000, costUsd: '—', mode: 'replay' }}
+      />,
+    );
+
+    expect(screen.getByText('20 facturas en 1,0 s · sin medición · respuestas grabadas')).not.toBeNull();
+    expect(screen.queryByText(/US\$—/)).toBeNull();
+  });
+
+  it('keeps the required declared identity phrase without nested parentheses', async () => {
+    const row = makeRow('approval_required');
+    installApi([row], makeExpediente(row, true));
+
+    render(<App />);
+
+    expect(await screen.findByText('identidad declarada (demo)')).not.toBeNull();
+    expect(screen.getByLabelText(/identidad declarada \(demo\)/i)).not.toBeNull();
+  });
+
   it('shows the decision subtitle in both the row and expediente status', async () => {
     const row = { ...makeRow('review_required'), subtitle: 'Duda en los datos' };
     const expediente = makeExpediente(row);

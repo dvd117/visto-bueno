@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Counters, InvoiceRow } from '../../../shared/api';
 import { StatusChip } from '../../app/StatusChip';
+import { formatDueDate } from '../../lib/format-due-date';
 
 interface BandejaProps {
   rows: InvoiceRow[];
@@ -102,7 +103,7 @@ export function Bandeja({
                     delay={index % 4 * 0.06}
                     revision={rowRevisions[row.id] ?? 0}
                   />
-                  {row.due && <span className="invoice-due">Vence {row.due}</span>}
+                  {row.due && <span className="invoice-due">Vence {formatDueDate(row.due)}</span>}
                 </span>
               </button>
             ))}
