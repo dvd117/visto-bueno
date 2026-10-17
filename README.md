@@ -85,7 +85,7 @@ No se publican cifras sin un artefacto medido. Estado de este borrador:
 
 La extracción registra `usageMetadata` de Gemini por llamada. El costo estimado suma tokens de entrada a USD 0,25 y tokens de salida (candidatos y razonamiento) a USD 1,50 por millón para `gemini-3.1-flash-lite`, según la tarifa Standard de la [API Gemini Developer](https://ai.google.dev/gemini-api/docs/pricing). Si falta el uso registrado, el costo queda desconocido.
 
-**Costo medido por factura:** `<pendiente de medición>`
+**Costo medido por factura:** USD 0,00075 en promedio (USD 0,0150 por las 20 facturas etiquetadas), medido el 17-10-2026 con una sola llamada real por factura, sin reintentos: 9.948 tokens de entrada y 8.309 de salida en total. Por tipo: texto USD 0,00074 (3), PDF USD 0,00073 (16), imagen USD 0,00106 (1).
 
 Estas tres evidencias —seguridad, conjunto etiquetado y muestra en vivo— se mantienen separadas; una no sustituye a otra.
 
