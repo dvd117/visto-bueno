@@ -1,0 +1,11 @@
+CARLOS MÉNDEZ
+RFC MEX-920315-4K2
+
+Factura de servicios profesionales para Andina Labs Inc.
+Folio: AL-038
+Fecha: 14/10/2026 · Vencimiento: 22/10/2026
+
+Concepto: Desarrollo backend, 62 horas de trabajo
+Tarifa acordada: MXN 1.000,00 por hora
+Total por 62 horas: MXN 62.000,00
+Cuenta BBVA México ···· 2038

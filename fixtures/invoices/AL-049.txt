@@ -1,0 +1,12 @@
+Identificador del archivo de muestra: AL-049
+LEX DELAWARE LLP
+Tax ID: US-DE-004218
+
+Factura para Andina Labs Inc.
+Número de factura: AL-043
+Fecha: 20/10/2026
+Vence: 31/10/2026
+
+Servicio: Presentación extraordinaria de documentos corporativos
+Total a pagar: USD 1,200.00
+Datos bancarios: First Western ···· 4510
