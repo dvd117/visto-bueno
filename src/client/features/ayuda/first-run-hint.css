@@ -84,12 +84,25 @@
 
 @media (max-width: 560px) {
   .first-run-hint {
-    gap: 12px;
+    position: relative;
+    display: block;
     padding: 14px 14px;
+  }
+
+  .first-run-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
   }
 
   .first-run-steps {
     display: grid;
     gap: 6px;
+  }
+
+  .first-run-action {
+    display: block;
+    width: 100%;
+    text-align: left;
   }
 }
