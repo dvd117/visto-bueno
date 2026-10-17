@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EvaluationResult } from '../lib/api-types';
 import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow, ProcessEvent, ProcessRequest, WorkspaceSummary } from '../../shared/api';
+import type { InvoiceStatus } from '../../shared/domain/types';
 import {
   ApiRequestError,
   bitacoraApi,
@@ -21,6 +22,7 @@ import {
 } from '../lib/api';
 import { Bandeja } from '../features/bandeja/Bandeja';
 import { Counters } from '../features/bandeja/Counters';
+import { ActionBar } from '../features/expediente/ActionBar';
 import { Expediente } from '../features/expediente/Expediente';
 import { Evaluacion } from '../features/evaluacion/Evaluacion';
 import { FirstRunHint } from '../features/ayuda/FirstRunHint';
@@ -28,6 +30,7 @@ import type { RecibirApi } from '../features/recibir/RecibirPanel';
 import './app.css';
 
 type AppSection = 'inbox' | 'reglas' | 'datos' | 'bitacora' | 'evaluacion';
+type ActionableStatus = Extract<InvoiceStatus, 'ready' | 'approval_required' | 'review_required' | 'stopped'>;
 
 const FIRST_RUN_DISMISSED_KEY = 'visto-bueno:first-run-dismissed';
 
@@ -60,6 +63,7 @@ function replaceRow(rows: InvoiceRow[], nextRow: InvoiceRow): InvoiceRow[] {
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
   const [rows, setRows] = useState<InvoiceRow[]>([]);
+  const [heldReadyIds, setHeldReadyIds] = useState<Set<string>>(() => new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expediente, setExpediente] = useState<ExpedienteData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -190,6 +194,20 @@ export default function App() {
     setDetailFailure(null);
   }, [selectedId]);
 
+  const selectActionState = useCallback((status: ActionableStatus) => {
+    const firstInvoice = rows.find((row) => row.status === status);
+    if (firstInvoice) selectInvoice(firstInvoice.id);
+  }, [rows, selectInvoice]);
+
+  const togglePaymentBatch = useCallback((invoiceId: string) => {
+    setHeldReadyIds((current) => {
+      const next = new Set(current);
+      if (next.has(invoiceId)) next.delete(invoiceId);
+      else next.add(invoiceId);
+      return next;
+    });
+  }, []);
+
   const handleProcess = useCallback(async () => {
     if (processing) return;
     setProcessing(true);
@@ -278,6 +296,7 @@ export default function App() {
       settleResetOutcome(true);
       setActiveSection('inbox');
       setSelectedId(null);
+      setHeldReadyIds(new Set());
       setExpediente(null);
       setDetailFailure(null);
       setDetailRevision((current) => current + 1);
@@ -333,7 +352,7 @@ export default function App() {
 
   return (
     <>
-      <div className="frame">
+      <div className={`frame${activeSection === 'inbox' && !loading && !connectionError ? ' frame-with-action-bar' : ''}`}>
         <div className="demo-banner" role="note">Modo demostración · No se realizan pagos reales</div>
         <header className="masthead">
           <div className="brandline">
@@ -408,14 +427,20 @@ export default function App() {
               />
               <Expediente
                 key={`${selectedId ?? 'empty'}:${selectedExpediente?.row.status ?? ''}:${selectedExpediente?.record?.id ?? ''}`}
+                rows={rows}
+                selectedStatus={selectedStatus ?? null}
                 expediente={selectedExpediente}
                 loading={detailLoading}
                 error={detailError}
                 busy={actionBusy || processing}
+                includedInPaymentBatch={selectedExpediente?.row.status === 'ready' && !heldReadyIds.has(selectedExpediente.row.id)}
                 onApprove={handleApprove}
                 onReject={handleReject}
                 onResolveFlag={handleResolveFlag}
                 onReevaluate={handleReevaluate}
+                onSelectStatus={selectActionState}
+                onTogglePaymentBatch={togglePaymentBatch}
+                onOpenData={openData}
               />
             </div>
           </main> : activeSection === 'reglas' ? <Suspense fallback={<main><p role="status">Cargando reglas…</p></main>}><Reglas api={reglasApi} /></Suspense>
@@ -423,6 +448,9 @@ export default function App() {
             : activeSection === 'evaluacion' ? <Evaluacion result={evaluationResult} loading={evaluationLoading} error={evaluationError} />
               : <main><Suspense fallback={<p role="status">Cargando bitácora…</p>}><Bitacora api={bitacoraApi} /></Suspense></main>
         ) : null}
+        {!connectionError && !loading && activeSection === 'inbox' && displayedWorkspace && (
+          <ActionBar invoices={rows} heldReadyIds={heldReadyIds} busy={actionBusy || processing} />
+        )}
       </div>
       <Suspense fallback={null}>
         <RecibirPanel open={receiveOpen} onClose={() => setReceiveOpen(false)} api={receivingApi} />
