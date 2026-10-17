@@ -227,7 +227,23 @@ export function Expediente({
   if (loading) return <section className="panel expediente"><p className="record-loading">Abriendo expediente…</p></section>;
   if (error) return <section className="panel expediente"><p className="record-error">{error}</p></section>;
   if (!expediente) {
-    return <section className="panel expediente"><p className="record-loading">Selecciona una factura para abrir su expediente.</p></section>;
+    return (
+      <section id="expediente" className="panel expediente" aria-labelledby="record-empty-title">
+        <article className="record">
+          <div className="record-meta">
+            <span className="eyebrow">02 / Expediente · Decisión trazable</span>
+          </div>
+          <div className="record-lede">
+            <div>
+              <h2 id="record-empty-title" className="record-vendor">Expediente de factura</h2>
+              <p className="record-reason">
+                Selecciona una factura en la bandeja para revisar sus datos, comprobaciones y decisión.
+              </p>
+            </div>
+          </div>
+        </article>
+      </section>
+    );
   }
 
   const { row, record } = expediente;
