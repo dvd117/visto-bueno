@@ -1219,7 +1219,7 @@ textarea {
   .record-history li { flex-direction: column; gap: 2px; }
 }
 
-@media (min-width: 761px) {
+@media (min-width: 1131px) {
   .frame:has(.workspace) {
     display: flex;
     height: 100vh;
