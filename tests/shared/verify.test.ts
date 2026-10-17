@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ExtractionClaims, ExtractionResult, Vendor } from '../../src/shared/domain/types';
 import { normalize, normalizeAccount } from '../../src/shared/engine/normalize';
+import { evaluateRules } from '../../src/shared/engine/rules';
 import { verifyClaims } from '../../src/shared/engine/verify';
 
 const vendor: Vendor = {
@@ -40,6 +41,56 @@ describe('verifyClaims', () => {
   it('normalizes Unicode compatibility forms, punctuation, and spaces for identifiers', () => {
     expect(normalize('ＡＬ– 043')).toBe('al043');
     expect(normalizeAccount('Bancolombia 1234568890')).toBe(normalizeAccount('Bancolombia ···· 8890'));
+  });
+
+  it.each([
+    ['Banco Andino, cuenta ···· 1184', 'Banco Andino ···· 1184'],
+    ['Cuenta de ahorros Bancolombia ···· 7712', 'Bancolombia ···· 7712'],
+    ['Cuenta BBVA México ···· 2038', 'BBVA México ···· 2038'],
+    ['Cuenta Mercantil ···· 5206', 'Mercantil ···· 5206'],
+    ['Cuenta Bancolombia ···· 8890', 'Bancolombia ···· 8890'],
+  ])('ignores account labels but retains bank and suffix: %s', (source, registered) => {
+    expect(normalizeAccount(source)).not.toBe('');
+    expect(normalizeAccount(source)).toBe(normalizeAccount(registered));
+  });
+
+  it('does not let descriptors or punctuation satisfy bank identity or suffix matching', () => {
+    const registered = normalizeAccount('Banco Andino ···· 1184');
+
+    expect(normalizeAccount('Cuenta de ahorros ···· 1184')).toBe('');
+    expect(normalizeAccount('de ahorros corriente ···· 1184')).toBe('');
+    expect(normalizeAccount('···· 1184')).toBe('');
+    expect(normalizeAccount('Banco ···· 1184')).toBe('');
+    expect(normalizeAccount('Mercantil ···· 1184')).not.toBe(registered);
+    expect(normalizeAccount('Banco Andino ···· 1185')).not.toBe(registered);
+  });
+
+  it('preserves bank identity in normalization and stops R2 for a different bank with the same suffix', () => {
+    const sourceAccount = 'Mercantil Bank ···· 1234';
+    const registeredAccount = 'Banco Mercantil ···· 1234';
+
+    expect(normalizeAccount(registeredAccount)).not.toBe(normalizeAccount(sourceAccount));
+
+    const result = evaluateRules({
+      vendor: { ...vendor, payoutAccount: registeredAccount },
+      contracts: [],
+      money: { currency: 'USD', minor: 10_000 },
+      claims: claims({ payoutAccount: sourceAccount }),
+      treasury: { balanceUsdMinor: 1_000_000, fx: [{ currency: 'USD', perUsd: '1', date: '2026-10-15' }] },
+      budgets: [],
+      rules: {
+        version: 1, perPaymentLimitUsdMinor: 200_000, monthlyLimitUsdMinor: 1_000_000,
+        approvalThresholdUsdMinor: 100_000, fuzzyDuplicateWindowDays: 60, preset: 'equilibrado',
+      },
+      ledger: {
+        committedUsdMinor: () => 0, reservedUsdMinor: () => 0,
+        committedByCostCenter: () => 0, reservedByCostCenter: () => 0,
+        hasInvoiceId: () => false, hasCommitmentForContractPeriod: () => false, recentByVendor: () => [],
+      },
+      today: '2026-10-16',
+    });
+
+    expect(result.checks.find(({ id }) => id === 'R2')).toMatchObject({ passed: false, effect: 'stop' });
   });
 
   it('verifies literal source claims and matches a vendor by tax id', () => {
