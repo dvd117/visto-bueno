@@ -180,9 +180,10 @@ describe('Bandeja and Expediente', () => {
 
     render(<App />);
 
-    expect(await screen.findByText('Frenada')).not.toBeNull();
-    expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
-    expect(await screen.findByText('Qué hacer')).not.toBeNull();
+    const expediente = await screen.findByRole('region', { name: 'Nube Andina S.A.S.' });
+    await within(expediente).findByRole('complementary', { name: 'Qué hacer' });
+    expect(await within(expediente).findByRole('status', { name: 'Frenada' })).not.toBeNull();
+    expect(within(expediente).queryByRole('button', { name: 'Aprobar' })).toBeNull();
   });
 
   it('keeps approval disabled until identity and reason exist', async () => {
@@ -241,7 +242,8 @@ describe('Bandeja and Expediente', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Procesar/i }));
 
-    expect(await screen.findByText('Lista para pagar')).not.toBeNull();
+    const invoiceRow = await screen.findByRole('button', { name: /AL-042/ });
+    expect(await within(invoiceRow).findByRole('status', { name: 'Lista para pagar' })).not.toBeNull();
     await waitFor(() => {
       const readyMetric = screen.getByText('Listas para pagar').parentElement?.parentElement;
       expect(readyMetric && within(readyMetric).getByText('1')).not.toBeNull();
