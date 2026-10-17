@@ -46,6 +46,18 @@ describe('OpenAPI document', () => {
     expect(document.components?.securitySchemes?.workspaceCookie).toMatchObject({
       type: 'apiKey', in: 'cookie', name: 'workspace_id',
     });
+    for (const path of ['/api/export/payments.csv', '/api/export/reconciliation.csv']) {
+      expect(document.paths?.[path]?.get).toMatchObject({
+        parameters: [
+          { name: 'batch', in: 'query', required: false, schema: { type: 'string' } },
+          {
+            name: 'ready', in: 'query', required: false, style: 'form', explode: true,
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+        ],
+        responses: { '200': { content: { 'text/csv': { schema: { type: 'string' } } } } },
+      });
+    }
 
     const registeredApiRoutes = app.routes.filter(({ method, path }) =>
       path.startsWith('/api/') && path !== '/api/openapi.json' && method !== 'ALL');
