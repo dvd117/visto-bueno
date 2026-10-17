@@ -3,7 +3,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app } from './server/app';
+import { app, serverRuntime } from './server/app';
 
 const distPath = resolve(process.cwd(), 'dist');
 if (existsSync(distPath)) {
@@ -17,7 +17,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  serve(
+  const server = serve(
     {
       fetch: app.fetch,
       hostname: '0.0.0.0',
@@ -27,4 +27,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
       console.log(`[server] listening on port ${info.port}`);
     },
   );
+  const shutdown = () => {
+    server.close(() => serverRuntime.dispose());
+  };
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
 }

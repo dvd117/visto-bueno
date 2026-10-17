@@ -24,6 +24,8 @@ COPY --from=build --chown=app:app /app/dist ./dist
 COPY --from=build --chown=app:app /app/src/server.ts ./src/server.ts
 COPY --from=build --chown=app:app /app/src/server ./src/server
 COPY --from=build --chown=app:app /app/src/shared ./src/shared
+COPY --from=build --chown=app:app /app/fixtures ./fixtures
+COPY --from=build --chown=app:app /app/recordings ./recordings
 COPY --chown=app:app package*.json ./
 
 USER app

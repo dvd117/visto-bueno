@@ -2,13 +2,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Datos, { type DatosApi, type DataRowMap, type DataTable, type DataTableValues } from '../../src/client/features/datos/Datos';
 
+// JSDOM rendering can exceed Vitest's 5s default when the full suite is parallel.
+const parallelTimeoutMs = 15_000;
+
 const data: DataTableValues = {
   vendors: [{
     id: 'nube-andina', name: 'Nube Andina S.A.S.', taxId: '901.234.567-8', country: 'CO',
     payoutCurrency: 'USD', payoutAccount: 'Bancolombia ···· 8890', status: 'allowed', version: 1,
   }],
   contracts: [],
-  budgets: [],
+  budgets: [{ costCenter: 'ingenieria', month: '2026-10', approvedUsdMinor: 85_000 }],
   treasury: { balanceUsdMinor: 480_000, fx: [{ currency: 'USD', perUsd: '1', date: '2026-10-15' }] },
 };
 
@@ -40,7 +43,32 @@ describe('Preparar datos', () => {
     await waitFor(() => expect(api.putRow).toHaveBeenCalledWith('vendors', expect.objectContaining({
       id: 'nube-andina', payoutAccount: 'Bancolombia ···· 4412', version: 1,
     })));
-  });
+  }, parallelTimeoutMs);
+
+  it('rejects inline amounts with more than two decimal places instead of rounding', async () => {
+    const api = makeApi();
+    render(<Datos api={api} />);
+
+    const amount = await screen.findByLabelText('Presupuesto aprobado (USD) — ingenieria · 2026-10');
+    fireEvent.change(amount, { target: { value: '850.001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios de ingenieria · 2026-10' }));
+
+    expect(await screen.findByRole('alert')).toBeDefined();
+    expect(api.putRow).not.toHaveBeenCalled();
+  }, parallelTimeoutMs);
+
+  it('converts exact inline decimal amounts to safe integer minor units', async () => {
+    const api = makeApi();
+    render(<Datos api={api} />);
+
+    const amount = await screen.findByLabelText('Presupuesto aprobado (USD) — ingenieria · 2026-10');
+    fireEvent.change(amount, { target: { value: '850.50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios de ingenieria · 2026-10' }));
+
+    await waitFor(() => expect(api.putRow).toHaveBeenCalledWith('budgets', expect.objectContaining({
+      costCenter: 'ingenieria', month: '2026-10', approvedUsdMinor: 85_050,
+    })));
+  }, parallelTimeoutMs);
 
   it('shows the single error summary returned after a CSV upload', async () => {
     const uploadCsv = vi.fn(async () => ({
@@ -55,5 +83,5 @@ describe('Preparar datos', () => {
 
     await waitFor(() => expect(uploadCsv).toHaveBeenCalledWith('vendors', file));
     expect((await screen.findByRole('alert')).textContent).toContain('El CSV tiene errores en las filas 2 y 4.');
-  });
+  }, parallelTimeoutMs);
 });

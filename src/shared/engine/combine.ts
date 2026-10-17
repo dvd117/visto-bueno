@@ -59,7 +59,7 @@ export function combine(input: CombineInput): Decision {
   const resolved = new Set(input.resolvedFlagIds);
   const stop = checks.find((check) => check.effect === 'stop');
   const reviewChecks = checks.filter((check) => check.effect === 'review');
-  const unresolvedReviews = reviewChecks.filter((check) => !resolved.has(check.id));
+  const unresolvedReviews = reviewChecks.filter((check) => check.id === 'jev_unavailable' || !resolved.has(check.id));
   const approval = checks.find((check) => check.effect === 'approval');
   const resolvedReview = reviewChecks.find((check) => resolved.has(check.id));
 

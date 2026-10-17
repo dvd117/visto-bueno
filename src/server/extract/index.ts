@@ -3,9 +3,10 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import type { ExtractionClaims, ExtractionResult, SourceKind } from '../../shared/domain/types';
-import { extractClaims, isRateLimited, isTimeout } from './gemini';
+import { ProviderCallLimitError, type ProviderAttemptHook } from '../model-attempt';
+import { extractClaims, isRateLimited, isTimeout, resolveGeminiModel } from './gemini';
 import { readPdf } from './pdf';
-import { extractionClaimsSchema } from './schema';
+import { EXTRACTION_CONTRACT_VERSION, extractionClaimsSchema } from './schema';
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MODEL_TEXT_LIMIT = 8000;
@@ -17,7 +18,9 @@ interface Recording {
   claims: ExtractionClaims;
 }
 
-export async function extract(input: { kind: SourceKind; bytes?: Buffer; text?: string }): Promise<ExtractionResult> {
+export async function extract(input: {
+  kind: SourceKind; bytes?: Buffer; text?: string; mode?: Mode; onAttempt?: ProviderAttemptHook;
+}): Promise<ExtractionResult> {
   const { kind } = input;
   if ((kind === 'pdf' || kind === 'image') && !input.bytes) return failure(kind, 'unreadable');
   if (input.bytes && input.bytes.length > MAX_FILE_BYTES) return failure(kind, 'too_large');
@@ -46,9 +49,15 @@ export async function extract(input: { kind: SourceKind; bytes?: Buffer; text?: 
     return failure(kind, 'unreadable');
   }
 
-  const mode = getMode();
+  const mode = getMode(input.mode);
   if (!mode) return failure(kind, 'unreadable');
-  const hash = createHash('sha256').update(kind).update('\0').update(content).digest('hex');
+  const hash = createHash('sha256')
+    .update('visto-bueno-extraction\0')
+    .update(EXTRACTION_CONTRACT_VERSION).update('\0')
+    .update(resolveGeminiModel()).update('\0')
+    .update(kind).update('\0')
+    .update(content)
+    .digest('hex');
   const result = { sourceText, sourceKind: kind } as const;
 
   if (mode === 'replay') {
@@ -57,11 +66,17 @@ export async function extract(input: { kind: SourceKind; bytes?: Buffer; text?: 
   }
 
   try {
-    const claims = await extractClaims({ sourceKind: kind, sourceText: sourceText.slice(0, MODEL_TEXT_LIMIT), image });
+    const claims = await extractClaims({
+      sourceKind: kind,
+      sourceText: sourceText.slice(0, MODEL_TEXT_LIMIT),
+      image,
+      onAttempt: input.onAttempt,
+    });
     if (!claims) return failure(kind, 'unreadable');
     if (mode === 'record') await writeRecording(hash, claims);
     return { ok: true, ...result, claims };
   } catch (error) {
+    if (error instanceof ProviderCallLimitError) throw error;
     if (isRateLimited(error)) return failure(kind, 'rate_limited');
     if (isTimeout(error)) return failure(kind, 'timeout');
     return failure(kind, 'unreadable');
@@ -72,8 +87,8 @@ function failure(sourceKind: SourceKind, error: 'rate_limited' | 'timeout' | 'un
   return { ok: false, error, sourceKind };
 }
 
-function getMode(): Mode | null {
-  const mode = process.env.EXTRACT_MODE ?? 'replay';
+function getMode(override?: Mode): Mode | null {
+  const mode = override ?? process.env.EXTRACT_MODE ?? 'replay';
   return mode === 'record' || mode === 'replay' || mode === 'live' ? mode : null;
 }
 

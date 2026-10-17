@@ -70,6 +70,18 @@ function expectFail(result: ReturnType<typeof evaluateRules>, id: string, effect
   expect(getCheck(result, id)).toMatchObject({ passed: false, effect });
 }
 
+const accountMaskCases = ['X', 'XX', 'x', 'xx', '*', '****', '·', '····', '•', '••••', '#', '?', '█']
+  .flatMap((marker) => [
+    { marker, digits: '8890', allowed: true },
+    { marker, digits: '18890', allowed: false },
+    { marker, digits: '11112228890', allowed: false },
+  ]);
+
+const multiAccountCandidates = [
+  'Banco Andino 11112228890 y Banco Andino 99990008890',
+  'Cuenta de ahorros Banco Andino 11112228890 y cuenta corriente Banco Andino 99990008890',
+];
+
 describe('evaluateRules', () => {
   it('returns all hard rules in stable R1–R16 order, all passing for a valid invoice', () => {
     const result = evaluate();
@@ -89,13 +101,48 @@ describe('evaluateRules', () => {
   it('R2 passes a matching bank account and stops with masked mismatch evidence', () => {
     expectPass(evaluate(), 'R2');
     expectPass(evaluate({ claims: claims({ payoutAccount: 'Banco Andino 1234568890' }) }), 'R2');
+    const unidentifiable = evaluate({
+      vendor: { ...vendor, payoutAccount: '···· 8890' },
+      claims: claims({ payoutAccount: '···· 8890' }),
+    });
+    expectFail(unidentifiable, 'R2', 'stop');
+    expect(getCheck(unidentifiable, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· —' });
+    expectFail(evaluate({ claims: claims({ payoutAccount: '8890' }) }), 'R2', 'stop');
+    expectFail(evaluate({ claims: claims({ payoutAccount: 'Bancolombia ···· 8890' }) }), 'R2', 'stop');
     const result = evaluate({ claims: claims({ payoutAccount: 'Bancolombia ···· 4412' }) });
     expectFail(result, 'R2', 'stop');
     expect(getCheck(result, 'R2')).toMatchObject({
       evidence: { invoice: '···· 4412', record: '···· 8890' },
       reason: 'Verifica el cambio con el proveedor por un canal seguro, actualiza su cuenta en Preparar datos y re-evalúa',
     });
+    const ambiguous = evaluate({ claims: claims({ payoutAccount: 'Bancolombia 99991234567 - 8890' }) });
+    expectFail(ambiguous, 'R2', 'stop');
+    expect(getCheck(ambiguous, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· 8890' });
     expectFail(evaluate({ claims: claims({ payoutAccount: null }) }), 'R2', 'stop');
+  });
+
+  it('R2 fails closed when a standalone X is ambiguous before a full account number', () => {
+    const result = evaluate({ claims: claims({ payoutAccount: 'Banco Andino X 11112228890' }) });
+    expectFail(result, 'R2', 'stop');
+    expect(getCheck(result, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· 8890' });
+  });
+
+  it.each([
+    'Banco Andino XX 11112228890',
+    'Banco Andino XXXX 11112228890',
+  ])('R2 fails closed for an X mask before five or more visible digits: %s', (payoutAccount) => {
+    expectFail(evaluate({ claims: claims({ payoutAccount }) }), 'R2', 'stop');
+  });
+
+  it.each(accountMaskCases)('R2 allows only up to four visible digits after mask $marker ($digits)', ({ marker, digits, allowed }) => {
+    const result = evaluate({ claims: claims({ payoutAccount: `Banco Andino ${marker} ${digits}` }) });
+    expect(getCheck(result, 'R2').passed).toBe(allowed);
+    if (allowed) expectPass(result, 'R2');
+    else expectFail(result, 'R2', 'stop');
+  });
+
+  it.each(multiAccountCandidates)('R2 fails closed when a candidate contains multiple full accounts: %s', (payoutAccount) => {
+    expectFail(evaluate({ claims: claims({ payoutAccount }) }), 'R2', 'stop');
   });
 
   it('R3 stops when there is no active contract or multiple overlapping contracts', () => {

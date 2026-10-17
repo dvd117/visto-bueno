@@ -13,7 +13,7 @@ import './recibir.css';
 export interface RecibirApi {
   createInvoiceText(text: string): Promise<InvoiceRow>;
   createInvoiceFile(file: File): Promise<InvoiceRow>;
-  process(ids: ProcessRequest['ids'], mode: NonNullable<ProcessRequest['mode']>): AsyncIterable<ProcessEvent>;
+  process(request: ProcessRequest): AsyncIterable<ProcessEvent>;
 }
 
 interface RecibirPanelProps {
@@ -56,8 +56,8 @@ export function RecibirPanel({ open, onClose, api }: RecibirPanelProps) {
 
   if (!open) return null;
 
-  async function runProcess(ids: string[] | undefined, mode: 'replay' | 'live') {
-    for await (const event of api.process(ids, mode)) {
+  async function runProcess(request: ProcessRequest) {
+    for await (const event of api.process(request)) {
       if (event.type === 'error') setError(event.message);
     }
   }
@@ -70,7 +70,7 @@ export function RecibirPanel({ open, onClose, api }: RecibirPanelProps) {
     setError(null);
     try {
       const invoice = await api.createInvoiceText(text);
-      await runProcess([invoice.id], 'live');
+      await runProcess({ ids: [invoice.id], mode: 'live' });
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -91,7 +91,7 @@ export function RecibirPanel({ open, onClose, api }: RecibirPanelProps) {
     setError(null);
     try {
       const invoice = await api.createInvoiceFile(file);
-      await runProcess([invoice.id], 'live');
+      await runProcess({ ids: [invoice.id], mode: 'live' });
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -105,7 +105,7 @@ export function RecibirPanel({ open, onClose, api }: RecibirPanelProps) {
     setBusy(true);
     setError(null);
     try {
-      await runProcess(undefined, 'replay');
+      await runProcess({ mode: 'replay', examples: true });
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {

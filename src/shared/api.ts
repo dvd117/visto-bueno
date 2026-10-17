@@ -16,7 +16,7 @@ export interface RunStats { invoices: number; ms: number; costUsd: string; mode:
 
 export type ProcessEvent =
   | { type: 'decided'; row: InvoiceRow; counters: Counters }
-  | { type: 'error'; invoiceId: string; message: string }
+  | { type: 'error'; invoiceId: string; message: string; status?: 429 }
   | { type: 'done'; stats: RunStats };
 
 export interface Comparison { field: string; invoice: string | null; record: string | null; differs: boolean }
@@ -50,7 +50,7 @@ export interface WorkspaceSummary {
 }
 
 /** POST /api/process (response is an SSE stream of ProcessEvent) */
-export interface ProcessRequest { ids?: string[]; mode?: 'replay' | 'live' }
+export interface ProcessRequest { ids?: string[]; mode?: 'replay' | 'live'; examples?: true }
 
 /** POST /api/invoices with JSON (multipart `file` is the other form) */
 export interface NewInvoiceText { text: string }

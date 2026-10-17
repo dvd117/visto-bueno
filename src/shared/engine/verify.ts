@@ -1,6 +1,6 @@
 import { parseAmount } from '../domain/money';
 import type { CheckResult, Currency, ExtractionClaims, ExtractionResult, Money, Vendor } from '../domain/types';
-import { normalize, normalizeAccount } from './normalize';
+import { analyzeAccount, normalize, normalizeAccount } from './normalize';
 
 const CURRENCIES: readonly Currency[] = ['USD', 'COP', 'MXN'];
 
@@ -36,10 +36,18 @@ function uniqueNormalized(values: Array<string | null | undefined>): Set<string>
   return new Set(values.filter((value): value is string => Boolean(value?.trim())).map(normalize));
 }
 
-function uniqueAccounts(values: Array<string | null | undefined>): Set<string> {
-  return new Set(values.filter((value): value is string => Boolean(value?.trim())).map((value) => {
-    return normalizeAccount(value) || `raw:${normalize(value)}`;
-  }));
+function hasSingleUnambiguousAccount(values: Array<string | null | undefined>): boolean {
+  const candidates = values.filter((value): value is string => Boolean(value?.trim())).map((value) => {
+    const account = analyzeAccount(value);
+    return { value, account };
+  });
+  if (candidates.some(({ account }) => account.ambiguous)) return false;
+
+  const keys = new Set(candidates.map(({ value, account }) => account.key || `raw:${normalize(value)}`));
+  if (keys.size > 1) return false;
+
+  const visibleDigits = new Set(candidates.flatMap(({ account }) => account.visibleDigits));
+  return visibleDigits.size < 2;
 }
 
 function uniqueTotalValues(values: Array<string | null | undefined>, currency: Currency | null): Set<string> {
@@ -58,12 +66,13 @@ function hasLiteralWithWhitespaceNormalization(sourceText: string, value: string
 }
 
 function matchVendor(claims: ExtractionClaims, vendors: Vendor[]): Vendor | null {
-  const taxId = claims.payeeTaxId ? normalize(claims.payeeTaxId) : '';
-  if (taxId) {
+  if (claims.payeeTaxId?.trim()) {
+    const taxId = normalize(claims.payeeTaxId);
     const byTaxId = vendors.filter((vendor) => normalize(vendor.taxId) === taxId);
-    if (byTaxId.length === 1) return byTaxId[0];
-    if (byTaxId.length > 1) return null;
+    return byTaxId.length === 1 ? byTaxId[0] : null;
   }
+
+  if (claims.taxIdsFound.some((candidate) => candidate.trim() !== '')) return null;
 
   const account = claims.payoutAccount ? normalizeAccount(claims.payoutAccount) : '';
   if (!account) return null;
@@ -125,8 +134,8 @@ export function verifyClaims(
     }
   }
 
-  const accounts = uniqueAccounts([...claims.accountsFound, claims.payoutAccount]);
-  const multipleAccounts = accounts.size > 1;
+  const singleAccount = hasSingleUnambiguousAccount([...claims.accountsFound, claims.payoutAccount]);
+  const multipleAccounts = !singleAccount;
   checks.push(check(
     'two_accounts', 'Una sola cuenta bancaria', !multipleAccounts, multipleAccounts ? 'stop' : 'none',
     multipleAccounts ? 'La factura muestra dos cuentas bancarias distintas' : 'La factura muestra como máximo una cuenta bancaria.',

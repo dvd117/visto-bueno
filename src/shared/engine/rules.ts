@@ -56,8 +56,9 @@ function periodFor(contract: Contract, invoiceDate: string): string {
 }
 
 function maskAccount(account: string | null): string {
-  const digits = account?.match(/\d/g)?.join('') ?? '';
-  return `···· ${digits.length >= 4 ? digits.slice(-4) : '—'}`;
+  const key = account ? normalizeAccount(account) : '';
+  const suffix = key.match(/:([0-9]{4})$/u)?.[1];
+  return `···· ${suffix ?? '—'}`;
 }
 
 function monthFromDate(date: string | null): string | null {
@@ -112,8 +113,9 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
   checks.push(check('R1', 'Proveedor autorizado', allowed, allowed ? 'none' : 'stop',
     allowed ? 'El proveedor está en la lista permitida.' : 'El proveedor no está en la lista permitida o está bloqueado.'));
 
-  const accountMatches = !vendor || (Boolean(claims.payoutAccount)
-    && normalizeAccount(claims.payoutAccount!) === normalizeAccount(vendor.payoutAccount));
+  const invoiceKey = claims.payoutAccount ? normalizeAccount(claims.payoutAccount) : '';
+  const registeredKey = vendor ? normalizeAccount(vendor.payoutAccount) : '';
+  const accountMatches = !vendor || (invoiceKey !== '' && registeredKey !== '' && invoiceKey === registeredKey);
   const accountEvidence = vendor && claims.payoutAccount
     ? { invoice: maskAccount(claims.payoutAccount), record: maskAccount(vendor.payoutAccount) }
     : undefined;

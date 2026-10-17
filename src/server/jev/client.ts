@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { APITimeoutError, TypeSafeClient } from '@typesafe-ai/sdk';
 import type { EntryType, Questions } from '@typesafe-ai/sdk';
 import type { JevAnswer, JevAnswers, JevQuestionId } from '../../shared/domain/types';
+import { ProviderCallLimitError, type ProviderAttemptHook } from '../model-attempt';
 
 type JevMode = 'replay' | 'record' | 'live';
 type JevAnswerMap = Partial<Record<JevQuestionId, JevAnswer>>;
@@ -12,6 +13,7 @@ interface AskJevInput {
   state: object;
   questions: Record<string, object>;
   mode?: JevMode;
+  onAttempt?: ProviderAttemptHook;
 }
 
 interface JevRecording {
@@ -136,6 +138,16 @@ function getMode(mode?: JevMode): JevMode | null {
   return value === 'replay' || value === 'record' || value === 'live' ? value : null;
 }
 
+function validQuestions(questions: Record<string, object>): boolean {
+  const entries = Object.entries(questions);
+  return entries.length > 0 && entries.every(([id, question]) =>
+    QUESTION_IDS.has(id as JevQuestionId)
+      && isRecord(question)
+      && ['noul', 'choice', 'score'].includes(String(question.type))
+      && typeof question.instructions === 'string',
+  );
+}
+
 async function replay(path: string, questions: Record<string, object>): Promise<JevAnswers> {
   let source: string;
   try {
@@ -159,7 +171,7 @@ async function replay(path: string, questions: Record<string, object>): Promise<
 export async function askJev(input: AskJevInput): Promise<JevAnswers> {
   try {
     const mode = getMode(input?.mode);
-    if (!mode || !input || typeof input.state !== 'object' || input.state === null || !isRecord(input.questions)) {
+    if (!mode || !input || !isRecord(input.state) || !isRecord(input.questions) || !validQuestions(input.questions)) {
       return { ok: false, error: 'malformed' };
     }
     const model = process.env.JEV_MODEL?.trim() || DEFAULT_MODEL;
@@ -188,6 +200,7 @@ export async function askJev(input: AskJevInput): Promise<JevAnswers> {
           reject(TIMEOUT);
         }, REQUEST_TIMEOUT_MS);
       });
+      input.onAttempt?.();
       const response = client.systemOne(
         {
           state: input.state as NonNullable<EntryType>,
@@ -198,6 +211,7 @@ export async function askJev(input: AskJevInput): Promise<JevAnswers> {
       );
       result = await Promise.race([response, timeout]);
     } catch (error) {
+      if (error instanceof ProviderCallLimitError) throw error;
       if (error === TIMEOUT || error instanceof APITimeoutError) return { ok: false, error: 'timeout' };
       return { ok: false, error: 'http_error' };
     } finally {
@@ -227,7 +241,8 @@ export async function askJev(input: AskJevInput): Promise<JevAnswers> {
       }
     }
     return { ok: true, ...recording, recorded: mode === 'record' };
-  } catch {
+  } catch (error) {
+    if (error instanceof ProviderCallLimitError) throw error;
     return { ok: false, error: 'malformed' };
   }
 }

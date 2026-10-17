@@ -24,6 +24,7 @@ vi.mock('unpdf', () => ({ extractText: mocks.extractText }));
 
 import { extract } from '../../src/server/extract/index';
 import { readPdf } from '../../src/server/extract/pdf';
+import { ProviderCallLimitError } from '../../src/server/model-attempt';
 
 const claims = {
   amountsFound: ['USD 100.00'],
@@ -108,11 +109,13 @@ describe('invoice extraction', () => {
   });
 
   it('rejects files larger than 2 MB before parsing or calling Gemini', async () => {
-    const result = await extract({ kind: 'image', bytes: Buffer.alloc(2 * 1024 * 1024 + 1) });
+    const onAttempt = vi.fn();
+    const result = await extract({ kind: 'image', bytes: Buffer.alloc(2 * 1024 * 1024 + 1), onAttempt });
 
     expect(result).toEqual({ ok: false, error: 'too_large', sourceKind: 'image' });
     expect(mocks.extractText).not.toHaveBeenCalled();
     expect(mocks.generateContent).not.toHaveBeenCalled();
+    expect(onAttempt).not.toHaveBeenCalled();
   });
 
   it('truncates text to 8,000 characters and sends the pinned extraction rules', async () => {
@@ -134,8 +137,30 @@ describe('invoice extraction', () => {
     expect(systemInstruction).toMatch(/exact substrings/i);
     expect(systemInstruction).toMatch(/ISO/i);
     expect(systemInstruction).toMatch(/do not normalize amounts/i);
+    expect(systemInstruction).toMatch(/full.*bank|bank.*name/i);
+    expect(systemInstruction).toMatch(/never infer|do not infer/i);
+    expect(systemInstruction).toMatch(/amountsFound.*total|total.*amountsFound/i);
+    expect(systemInstruction).toMatch(/rateRaw/i);
+    const schema = JSON.stringify(request.config?.responseJsonSchema);
+    expect(schema).toMatch(/full.*bank|bank.*name/i);
+    expect(schema).toMatch(/total.*candidate|candidate.*total/i);
     expect(request.config?.responseMimeType).toBe('application/json');
     expect(request.config?.responseJsonSchema).toBeDefined();
+  });
+
+  it('runs the attempt hook immediately before each real Gemini request', async () => {
+    const order: string[] = [];
+    const onAttempt = vi.fn(() => order.push('attempt'));
+    mocks.generateContent.mockImplementation(async () => {
+      order.push('request');
+      return { text: JSON.stringify(claims) };
+    });
+
+    await extract({ kind: 'text', text: sourceText, onAttempt });
+
+    expect(order).toEqual(['attempt', 'request']);
+    expect(onAttempt).toHaveBeenCalledOnce();
+    expect(requestArgs().config?.httpOptions).toMatchObject({ retryOptions: { attempts: 1 } });
   });
 
   it('sends image bytes to Gemini with their detected MIME type', async () => {
@@ -168,16 +193,67 @@ describe('invoice extraction', () => {
     expect(requestArgs().model).toBe('gemini-3.1-flash-lite');
   });
 
+  it('does not replay an extraction recorded under a different Gemini model', async () => {
+    await useTemporaryRecordingsDirectory();
+    vi.stubEnv('EXTRACT_MODE', 'record');
+    vi.stubEnv('GEMINI_MODEL', 'test-model-v1');
+    mockClaimsResponse();
+
+    const recorded = await extract({ kind: 'text', text: sourceText });
+
+    expect(recorded).toMatchObject({ ok: true, sourceKind: 'text' });
+    expect(mocks.generateContent).toHaveBeenCalledOnce();
+
+    vi.stubEnv('EXTRACT_MODE', 'replay');
+    vi.stubEnv('GEMINI_MODEL', 'test-model-v2');
+    const drifted = await extract({ kind: 'text', text: sourceText });
+
+    expect(drifted).toEqual({ ok: false, error: 'unreadable', sourceKind: 'text' });
+    expect(mocks.generateContent).toHaveBeenCalledOnce();
+  });
+
   it('retries a 429 twice, then returns rate_limited', async () => {
     vi.useFakeTimers();
+    const onAttempt = vi.fn();
     mocks.generateContent.mockRejectedValue(Object.assign(new Error('Too Many Requests'), { status: 429 }));
 
-    const resultPromise = extract({ kind: 'text', text: sourceText });
+    const resultPromise = extract({ kind: 'text', text: sourceText, onAttempt });
     await vi.runAllTimersAsync();
     const result = await resultPromise;
 
     expect(mocks.generateContent).toHaveBeenCalledTimes(3);
+    expect(onAttempt).toHaveBeenCalledTimes(3);
     expect(result).toEqual({ ok: false, error: 'rate_limited', sourceKind: 'text' });
+  });
+
+  it('does not issue a retry when the quota hook denies that attempt', async () => {
+    vi.useFakeTimers();
+    const denied = new ProviderCallLimitError('quota denied');
+    const onAttempt = vi.fn().mockImplementationOnce(() => undefined).mockImplementationOnce(() => { throw denied; });
+    mocks.generateContent.mockRejectedValue(Object.assign(new Error('Too Many Requests'), { status: 429 }));
+
+    const resultPromise = extract({ kind: 'text', text: sourceText, onAttempt });
+    const rejection = expect(resultPromise).rejects.toBe(denied);
+    await vi.runAllTimersAsync();
+
+    await rejection;
+    expect(onAttempt).toHaveBeenCalledTimes(2);
+    expect(mocks.generateContent).toHaveBeenCalledOnce();
+  });
+
+  it('does not call the attempt hook without a key or during replay', async () => {
+    const onAttempt = vi.fn();
+    vi.stubEnv('GEMINI_API_KEY', '');
+    await expect(extract({ kind: 'text', text: sourceText, onAttempt })).resolves.toEqual({
+      ok: false, error: 'unreadable', sourceKind: 'text',
+    });
+
+    vi.stubEnv('EXTRACT_MODE', 'replay');
+    await expect(extract({ kind: 'text', text: sourceText, onAttempt })).resolves.toEqual({
+      ok: false, error: 'unreadable', sourceKind: 'text',
+    });
+    expect(onAttempt).not.toHaveBeenCalled();
+    expect(mocks.generateContent).not.toHaveBeenCalled();
   });
 
   it('returns unreadable when the response does not match the claims schema', async () => {
