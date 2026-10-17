@@ -94,10 +94,19 @@ const decisionActionSchema = nonBlankProperties(zodSchema(actionSchema), ['appro
 const flagResolutionSchema = nonBlankProperties(zodSchema(resolutionSchema), ['choice', 'reason', 'approver']);
 const processRequestBase = zodSchema(processSchema);
 const processIds = propertySchema(processRequestBase, 'ids');
+const processIdItem = { ...(processIds.items as JsonSchema) };
+// IDs are trimmed before max(80), so a raw JSON Schema maxLength would reject
+// whitespace-padded values that the handler accepts. Encode the trimmed limit in the pattern.
+delete processIdItem.maxLength;
 const processRequestSchema = withProperties(processRequestBase, {
   ids: {
     ...processIds,
-    items: { ...(processIds.items as JsonSchema), pattern: '\\S' },
+    items: {
+      ...processIdItem,
+      description: 'Se recorta antes de validar el límite de 80 caracteres.',
+      pattern: '^\\s*[\\s\\S]{0,79}\\S\\s*$',
+      'x-maxLengthAfterTrim': 80,
+    },
   },
 }, {
   description: 'examples=true procesa los ejemplos sembrados en replay y excluye ids; mode=live requiere ids.',

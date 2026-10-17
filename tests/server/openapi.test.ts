@@ -88,7 +88,18 @@ describe('OpenAPI document', () => {
     expect(fx?.items?.properties?.date).toMatchObject({ format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
     expect(fx?.allOf).toHaveLength(3);
     expect(fx?.allOf?.[0]).toMatchObject({ minContains: 0, maxContains: 1 });
-    expect(schemas.ProcessRequest?.properties?.ids?.items).toMatchObject({ minLength: 1, pattern: '\\S' });
+    const processId = schemas.ProcessRequest?.properties?.ids?.items;
+    expect(processId).toMatchObject({
+      minLength: 1,
+      pattern: '^\\s*[\\s\\S]{0,79}\\S\\s*$',
+      'x-maxLengthAfterTrim': 80,
+    });
+    expect(processId?.maxLength).toBeUndefined();
+    const processIdPattern = new RegExp(processId?.pattern as string);
+    expect(processIdPattern.test(`${' '.repeat(40)}AL-030${' '.repeat(40)}`)).toBe(true);
+    expect(processIdPattern.test(' '.repeat(3))).toBe(false);
+    expect(processIdPattern.test('A'.repeat(80))).toBe(true);
+    expect(processIdPattern.test('A'.repeat(81))).toBe(false);
     expect(schemas.ProcessRequest?.allOf).toHaveLength(2);
   });
 
