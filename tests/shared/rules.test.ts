@@ -187,8 +187,8 @@ describe('evaluateRules', () => {
   it.each(unicodeAccountCases)(
     'R2 normalizes $script digits with mask $marker (four digits match; full account stops)',
     ({ marker, fourDigits, fullDigits }) => {
-      expectPass(evaluate({ claims: claims({ payoutAccount: `Banco Andino ${marker} ${fourDigits}` }) }), 'R2');
-      expectFail(evaluate({ claims: claims({ payoutAccount: `Banco Andino ${marker} ${fullDigits}` }) }), 'R2', 'stop');
+      expectPass(evaluate({ claims: claims({ payoutAccount: `Banco Altocauce ${marker} ${fourDigits}` }) }), 'R2');
+      expectFail(evaluate({ claims: claims({ payoutAccount: `Banco Altocauce ${marker} ${fullDigits}` }) }), 'R2', 'stop');
     },
   );
 
