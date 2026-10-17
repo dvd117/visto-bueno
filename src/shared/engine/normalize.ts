@@ -3,16 +3,56 @@ export function normalize(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
 }
 
-/** Compare named bank words plus the last four digits, whether or not the source masks the account. */
+const ACCOUNT_LABEL = String.raw`cuenta(?:\s+de\s+ahorros?|\s+corriente)?`;
+const ACCOUNT_LABEL_AT_START = new RegExp(
+  String.raw`^[^\p{L}\p{N}]*${ACCOUNT_LABEL}(?![\p{L}\p{N}])[^\p{L}\p{N}]*`,
+  'iu',
+);
+const ACCOUNT_LABEL_BEFORE_ACCOUNT = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])${ACCOUNT_LABEL}(?![\p{L}\p{N}])(?=[^\p{L}]*$)`,
+  'iu',
+);
+
+interface AccountParts {
+  key: string;
+  digits: string;
+  masked: boolean;
+}
+
+function parseAccount(value: string): AccountParts | null {
+  if (/\p{N}/u.test(value.replace(/[0-9]/g, ''))) return null;
+
+  let accountText = value.normalize('NFKC')
+    .replace(ACCOUNT_LABEL_AT_START, ' ')
+    .replace(ACCOUNT_LABEL_BEFORE_ACCOUNT, ' ');
+  accountText = accountText.replace(/[^\p{L}\p{N}]*$/u, '');
+
+  const numberMatch = /[0-9]+(?:[ -][0-9]+)*$/u.exec(accountText);
+  if (!numberMatch || numberMatch.index === undefined) return null;
+
+  const digits = numberMatch[0].replace(/[ -]/g, '');
+  if (digits.length < 4) return null;
+
+  let bankName = accountText.slice(0, numberMatch.index);
+  if (/[0-9]/u.test(bankName)) return null;
+
+  const mask = /(?:^|[\s·•*])(?:[·•*]+|x+)[\s·•*]*$/iu.exec(bankName);
+  if (mask) bankName = bankName.slice(0, mask.index);
+
+  const normalizedBank = normalize(bankName);
+  const nonInstitutionLabels = /^(?:banco|bancos|bank|banks|bancario|bancaria|bancarios|bancarias|cuentas?|deahorros?|corriente|deahorroscorriente)$/u;
+  if (!normalizedBank || nonInstitutionLabels.test(normalizedBank)) return null;
+
+  return { key: `${normalizedBank}:${digits.slice(-4)}`, digits, masked: Boolean(mask) };
+}
+
+/** Compare named bank words plus the last four digits; reject ambiguous or malformed account strings. */
 export function normalizeAccount(value: string): string {
-  const descriptorsRemoved = value.normalize('NFKC').replace(
-    /\bcuentas?(?:\s+de\s+ahorros?|\s+corriente)?\b|\b(?:corriente|de\s+ahorros?)\b/giu,
-    ' ',
-  );
-  const normalized = normalize(descriptorsRemoved);
-  const bankWords = normalized.replace(/\d/g, '');
-  const digits = normalized.replace(/\D/g, '');
-  const hasInstitutionName = !/^(?:banco|bancos|bank|banks|bancario|bancaria|bancarios|bancarias)$/u.test(bankWords);
-  if (!bankWords || !hasInstitutionName || digits.length < 4) return '';
-  return `${bankWords}:${digits.slice(-4)}`;
+  return parseAccount(value)?.key ?? '';
+}
+
+/** Full digits are available only when the text contains an unmasked number of at least five digits. */
+export function unmaskedAccountDigits(value: string): string | null {
+  const account = parseAccount(value);
+  return account && !account.masked && account.digits.length >= 5 ? account.digits : null;
 }

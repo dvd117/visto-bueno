@@ -1,6 +1,6 @@
 import { parseAmount } from '../domain/money';
 import type { CheckResult, Currency, ExtractionClaims, ExtractionResult, Money, Vendor } from '../domain/types';
-import { normalize, normalizeAccount } from './normalize';
+import { normalize, normalizeAccount, unmaskedAccountDigits } from './normalize';
 
 const CURRENCIES: readonly Currency[] = ['USD', 'COP', 'MXN'];
 
@@ -37,9 +37,18 @@ function uniqueNormalized(values: Array<string | null | undefined>): Set<string>
 }
 
 function uniqueAccounts(values: Array<string | null | undefined>): Set<string> {
-  return new Set(values.filter((value): value is string => Boolean(value?.trim())).map((value) => {
-    return normalizeAccount(value) || `raw:${normalize(value)}`;
-  }));
+  const candidates = values.filter((value): value is string => Boolean(value?.trim())).map((value) => {
+    const key = normalizeAccount(value);
+    return { key: key || `raw:${normalize(value)}`, fullDigits: key ? unmaskedAccountDigits(value) : null };
+  });
+  const keys = new Set(candidates.map(({ key }) => key));
+  if (keys.size !== 1) return keys;
+
+  const fullDigits = new Set(candidates.flatMap(({ fullDigits }) => fullDigits ? [fullDigits] : []));
+  if (fullDigits.size < 2) return keys;
+
+  const [key] = keys;
+  return new Set([...fullDigits].map((digits) => `${key}:full:${digits}`));
 }
 
 function uniqueTotalValues(values: Array<string | null | undefined>, currency: Currency | null): Set<string> {
@@ -58,12 +67,13 @@ function hasLiteralWithWhitespaceNormalization(sourceText: string, value: string
 }
 
 function matchVendor(claims: ExtractionClaims, vendors: Vendor[]): Vendor | null {
-  const taxId = claims.payeeTaxId ? normalize(claims.payeeTaxId) : '';
-  if (taxId) {
+  if (claims.payeeTaxId?.trim()) {
+    const taxId = normalize(claims.payeeTaxId);
     const byTaxId = vendors.filter((vendor) => normalize(vendor.taxId) === taxId);
-    if (byTaxId.length === 1) return byTaxId[0];
-    if (byTaxId.length > 1) return null;
+    return byTaxId.length === 1 ? byTaxId[0] : null;
   }
+
+  if (claims.taxIdsFound.some((candidate) => candidate.trim() !== '')) return null;
 
   const account = claims.payoutAccount ? normalizeAccount(claims.payoutAccount) : '';
   if (!account) return null;

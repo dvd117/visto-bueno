@@ -89,6 +89,12 @@ describe('evaluateRules', () => {
   it('R2 passes a matching bank account and stops with masked mismatch evidence', () => {
     expectPass(evaluate(), 'R2');
     expectPass(evaluate({ claims: claims({ payoutAccount: 'Banco Andino 1234568890' }) }), 'R2');
+    const unidentifiable = evaluate({
+      vendor: { ...vendor, payoutAccount: '···· 8890' },
+      claims: claims({ payoutAccount: '···· 8890' }),
+    });
+    expectFail(unidentifiable, 'R2', 'stop');
+    expect(getCheck(unidentifiable, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· —' });
     expectFail(evaluate({ claims: claims({ payoutAccount: '8890' }) }), 'R2', 'stop');
     expectFail(evaluate({ claims: claims({ payoutAccount: 'Bancolombia ···· 8890' }) }), 'R2', 'stop');
     const result = evaluate({ claims: claims({ payoutAccount: 'Bancolombia ···· 4412' }) });
@@ -97,6 +103,9 @@ describe('evaluateRules', () => {
       evidence: { invoice: '···· 4412', record: '···· 8890' },
       reason: 'Verifica el cambio con el proveedor por un canal seguro, actualiza su cuenta en Preparar datos y re-evalúa',
     });
+    const ambiguous = evaluate({ claims: claims({ payoutAccount: 'Bancolombia 99991234567 - 8890' }) });
+    expectFail(ambiguous, 'R2', 'stop');
+    expect(getCheck(ambiguous, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· 8890' });
     expectFail(evaluate({ claims: claims({ payoutAccount: null }) }), 'R2', 'stop');
   });
 
