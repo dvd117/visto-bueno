@@ -37,6 +37,8 @@ const urgentJev: JevAnswers = {
   },
 };
 
+const unavailableJev: JevAnswers = { ok: false, error: 'timeout' };
+
 type VendorKey = 'nube' | 'norte' | 'datos';
 
 const vendorClaims: Record<VendorKey, {
@@ -179,6 +181,77 @@ describe('transactional safety and adversarial cases', () => {
     expect(result.record.decision.checks.find((check) => check.id === 'R14')).toMatchObject({ passed: false, effect: 'stop' });
     expect(getInvoice(db, workspaceId, 'PENDING-NORTE')?.status).toBe('stopped');
     expect(ledgerView(db, workspaceId).reservedUsdMinor('2026-10')).toBe(0);
+  });
+
+  it('does not allow resolving a failed JEV evaluation', () => {
+    const workspaceId = 'jev-unavailable-resolution';
+    const invoiceId = 'JEV-UNAVAILABLE-RESOLVE';
+    ensureWorkspace(db, workspaceId);
+    const record = queueAndDecide(db, workspaceId, invoiceId, 'nube', {}, unavailableJev);
+
+    expect(record.decision.status).toBe('review_required');
+    expect(record.decision.canApprove).toBe(false);
+    expect(record.decision.flags.map(({ id }) => id)).toContain('jev_unavailable');
+    expect(() => resolveFlag(db, workspaceId, invoiceId, 'jev_unavailable', {
+      choice: 'La evaluación no es necesaria', reason: 'Revisión manual', approver: 'Demo Reviewer',
+    })).toThrow(/correct.*re-evaluat/i);
+    expect(getInvoice(db, workspaceId, invoiceId)?.status).toBe('review_required');
+  });
+
+  it('keeps JEV failure blocking after another flag is resolved and refuses approval', () => {
+    const workspaceId = 'jev-unavailable-approval';
+    const invoiceId = 'JEV-UNAVAILABLE-APPROVE';
+    ensureWorkspace(db, workspaceId);
+    const record = queueAndDecide(db, workspaceId, invoiceId, 'nube', { dueDate: '2026-10-15' }, unavailableJev);
+    expect(record.decision.flags.map(({ id }) => id)).toEqual(expect.arrayContaining(['R10', 'jev_unavailable']));
+
+    const resolved = resolveFlag(db, workspaceId, invoiceId, 'R10', {
+      choice: 'Vencimiento confirmado', reason: 'Revisión manual', approver: 'Demo Reviewer',
+    });
+    expect(resolved.decision.status).toBe('review_required');
+    expect(resolved.decision.canApprove).toBe(false);
+    expect(resolved.decision.flags.map(({ id }) => id)).toContain('jev_unavailable');
+
+    const approval = approveInvoice(db, workspaceId, invoiceId, {
+      approver: 'Demo Reviewer', reason: 'Intento tras resolver otra bandera', idempotencyKey: 'jev-failure-approval',
+    });
+    expect(approval).toMatchObject({ ok: false, status: 409 });
+    expect(approval.record.decision.status).toBe('stopped');
+    expect(getInvoice(db, workspaceId, invoiceId)?.status).toBe('stopped');
+  });
+
+  it('approval revalidation never accepts a forged resolution for JEV failure', () => {
+    const workspaceId = 'jev-unavailable-revalidation';
+    const invoiceId = 'JEV-UNAVAILABLE-REVALIDATE';
+    ensureWorkspace(db, workspaceId);
+    const record = queueAndDecide(db, workspaceId, invoiceId, 'nube', { dueDate: '2026-10-15' }, unavailableJev);
+
+    // Simulate a legacy resolution row and record that claim JEV failure was cleared.
+    db.prepare(`INSERT INTO flag_resolutions(workspace_id, invoice_id, flag_id, resolution_json, created_at)
+      VALUES (?, ?, 'jev_unavailable', ?, ?)`)
+      .run(workspaceId, invoiceId, JSON.stringify({ choice: 'legacy', reason: 'legacy', by: 'legacy', at: record.createdAt }), record.createdAt);
+    const resolved = resolveFlag(db, workspaceId, invoiceId, 'R10', {
+      choice: 'Vencimiento confirmado', reason: 'Revisión manual', approver: 'Demo Reviewer',
+    });
+    expect(resolved.decision.status).toBe('review_required');
+    expect(resolved.decision.canApprove).toBe(false);
+    expect(resolved.decision.flags.map(({ id }) => id)).toContain('jev_unavailable');
+
+    const latest = getInvoice(db, workspaceId, invoiceId)!.latestRecord!;
+    db.prepare('UPDATE decision_records SET record_json = ? WHERE workspace_id = ? AND id = ?')
+      .run(JSON.stringify({
+        ...latest,
+        decision: { ...latest.decision, status: 'approval_required', canApprove: true, flags: [] },
+      }), workspaceId, latest.id);
+    db.prepare("UPDATE invoices SET status = 'approval_required' WHERE workspace_id = ? AND id = ?")
+      .run(workspaceId, invoiceId);
+
+    const approval = approveInvoice(db, workspaceId, invoiceId, {
+      approver: 'Demo Reviewer', reason: 'Revalidación debe bloquear JEV fallida', idempotencyKey: 'jev-failure-revalidation',
+    });
+    expect(approval).toMatchObject({ ok: false, status: 409 });
+    expect(approval.record.decision.status).toBe('stopped');
+    expect(getInvoice(db, workspaceId, invoiceId)?.status).toBe('stopped');
   });
 
   it('rechecks the cost-center budget after a competing commitment and budget reduction', () => {

@@ -49,6 +49,7 @@ const NON_RESOLVABLE_CHECK_IDS = new Set([
   'sum_mismatch',
   'missing_payee',
   'extraction_failed',
+  'jev_unavailable',
 ]);
 
 function recordOrThrow(invoice: StoredInvoice): DecisionRecord {
@@ -388,7 +389,20 @@ export function approveInvoice(
     validateAction(by);
     const invoice = invoiceOrThrow(db, workspaceId, invoiceId);
     const previous = recordOrThrow(invoice);
-    if (invoice.status !== 'approval_required') return conflictingRecord(previous);
+    const jevUnavailable = invoice.jev?.ok === false
+      || previous.decision.checks.some((check) => check.id === 'jev_unavailable');
+    if (invoice.status !== 'approval_required'
+      && !(invoice.status === 'review_required' && jevUnavailable)) return conflictingRecord(previous);
+
+    if (invoice.status === 'review_required' && jevUnavailable) {
+      if (idempotencyExists(db, workspaceId, by.idempotencyKey)) return conflictingRecord(previous);
+      const stopped = stopForApproval(
+        db, workspaceId, invoice, previous, 'jev_unavailable',
+        'La evaluación JEV no se completó; no se puede aprobar esta factura.', undefined, by,
+      );
+      return conflictingRecord(stopped);
+    }
+    if (jevUnavailable && idempotencyExists(db, workspaceId, by.idempotencyKey)) return conflictingRecord(previous);
 
     if (previous.decision.amountUsdMinor === null) {
       const stopped = stopForApproval(
@@ -404,7 +418,7 @@ export function approveInvoice(
       return conflictingRecord(stopped);
     }
     if (idempotencyExists(db, workspaceId, by.idempotencyKey)) return conflictingRecord(previous);
-    if (!previous.decision.canApprove) return conflictingRecord(previous);
+    if (!previous.decision.canApprove && !jevUnavailable) return conflictingRecord(previous);
     if (!invoice.extraction || !invoice.jev) {
       const stopped = stopForApproval(
         db, workspaceId, invoice, previous, 'approval_inputs_missing',
