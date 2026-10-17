@@ -1,0 +1,476 @@
+.reglas-screen {
+  box-sizing: border-box;
+  width: min(100%, 1280px);
+  margin: 0 auto;
+  padding: 30px clamp(18px, 3vw, 42px) 48px;
+  color: var(--ink);
+}
+
+.reglas-heading {
+  padding-bottom: 19px;
+  border-bottom: 1px solid var(--line-bold);
+}
+
+.reglas-eyebrow {
+  margin: 0;
+  color: var(--soft);
+  font-size: 10px;
+  font-weight: 770;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.reglas-heading h2 {
+  margin: 5px 0 3px;
+  font-size: clamp(25px, 3vw, 32px);
+  font-weight: 790;
+  letter-spacing: -0.05em;
+  line-height: 1.05;
+}
+
+.reglas-heading > p:last-child {
+  margin: 8px 0 0;
+  color: var(--soft);
+}
+
+.reglas-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.85fr);
+  gap: 22px 30px;
+  padding-top: 23px;
+}
+
+.reglas-edit-column {
+  display: grid;
+  align-content: start;
+  gap: 25px;
+}
+
+.reglas-panel {
+  min-width: 0;
+  border-top: 3px solid var(--line-bold);
+}
+
+.reglas-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reglas-section-heading h3,
+.reglas-fixed-panel h3,
+.reglas-impact-heading h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+}
+
+.reglas-section-heading > span {
+  color: var(--soft);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.reglas-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 17px 21px;
+  padding-top: 17px;
+}
+
+.reglas-field {
+  min-width: 0;
+}
+
+.reglas-field > label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.reglas-field > input,
+.reglas-input-wrap {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line-bold);
+  background: var(--page);
+}
+
+.reglas-field > input,
+.reglas-input-wrap input {
+  padding: 8px 10px;
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.reglas-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+}
+
+.reglas-input-wrap > span {
+  color: var(--soft);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.reglas-input-wrap input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border: 0;
+  padding-left: 0;
+  outline: none;
+  background: transparent;
+}
+
+.reglas-input-wrap:focus-within,
+.reglas-field > input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.reglas-field input[aria-invalid='true'] {
+  border-color: var(--stopped);
+}
+
+.reglas-input-wrap:has(input[aria-invalid='true']) {
+  border-color: var(--stopped);
+}
+
+.reglas-field input:disabled,
+.reglas-presets input:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.reglas-help {
+  margin: 6px 0 0;
+  color: var(--soft);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.reglas-error {
+  margin: 8px 0 0;
+  padding-left: 8px;
+  border-left: 3px solid var(--stopped);
+  color: var(--stopped);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.reglas-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 13px 0 0;
+  border: 0;
+  padding: 0;
+}
+
+.reglas-presets legend {
+  margin-bottom: 7px;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.reglas-preset-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-height: 66px;
+  border: 1px solid var(--line);
+  padding: 9px;
+  cursor: pointer;
+}
+
+.reglas-preset-option:has(input:checked) {
+  border-color: var(--line-bold);
+  background: var(--wash);
+}
+
+.reglas-preset-option input {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 2px 0 0;
+  accent-color: var(--ink);
+}
+
+.reglas-preset-option span {
+  display: grid;
+  gap: 3px;
+}
+
+.reglas-preset-option strong {
+  font-size: 11px;
+}
+
+.reglas-preset-option small {
+  color: var(--soft);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.reglas-advanced {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.reglas-advanced summary {
+  padding: 9px 0;
+  font-size: 11px;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.reglas-advanced > p {
+  margin: 0 0 9px;
+  color: var(--soft);
+  font-size: 10px;
+}
+
+.reglas-criteria {
+  margin-bottom: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.reglas-criteria-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(88px, 1fr) minmax(88px, 1fr);
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding: 7px 4px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reglas-criteria-head {
+  color: var(--soft);
+  font-weight: 700;
+}
+
+.reglas-fixed-panel {
+  align-self: start;
+  padding-top: 10px;
+}
+
+.reglas-fixed-panel h3 {
+  font-size: 16px;
+}
+
+.reglas-fixed-intro {
+  margin: 6px 0 0;
+  color: var(--soft);
+  font-size: 11px;
+}
+
+.reglas-fixed-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reglas-fixed-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.reglas-fixed-list li > div {
+  display: grid;
+  gap: 4px;
+}
+
+.reglas-fixed-list strong {
+  font-size: 11px;
+}
+
+.reglas-fixed-list li > div > span {
+  color: var(--soft);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.reglas-fixed-list small {
+  color: var(--soft);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-align: right;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.reglas-impact {
+  grid-column: 1 / -1;
+  border-top: 3px solid var(--line-bold);
+  border-bottom: 1px solid var(--line-bold);
+  padding: 11px 0 13px;
+}
+
+.reglas-impact-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reglas-impact-heading h3 {
+  font-size: 16px;
+}
+
+.reglas-impact-heading p {
+  margin: 0;
+  color: var(--soft);
+  font-size: 10px;
+  text-align: right;
+}
+
+.reglas-status {
+  margin: 10px 0 0;
+  color: var(--soft);
+  font-size: 11px;
+}
+
+.reglas-impact-result {
+  margin: 11px 0 0;
+  line-height: 1.7;
+}
+
+.reglas-impact-count {
+  font-weight: 680;
+}
+
+.reglas-impact-count--ready,
+.reglas-impact-safe {
+  color: var(--ready);
+}
+
+.reglas-impact-count--approval {
+  color: var(--approval);
+}
+
+.reglas-impact-count--review {
+  color: var(--review);
+}
+
+.reglas-impact-count--stopped {
+  color: var(--stopped);
+}
+
+.reglas-impact-safe {
+  font-weight: 750;
+}
+
+.reglas-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.reglas-primary {
+  min-height: 40px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 9px 14px;
+  background: var(--ink);
+  color: var(--page);
+  font: inherit;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.reglas-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.reglas-saved {
+  margin: 8px 0 0;
+  color: var(--ready);
+  font-weight: 680;
+}
+
+.reglas-primary:focus-visible,
+.reglas-presets input:focus-visible,
+.reglas-advanced summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.reglas-screen :is(input, button, summary):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .reglas-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reglas-impact,
+  .reglas-actions {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .reglas-screen {
+    padding: 20px 14px 32px;
+  }
+
+  .reglas-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reglas-presets {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reglas-preset-option {
+    min-height: 0;
+  }
+
+  .reglas-fixed-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .reglas-fixed-list small {
+    text-align: left;
+  }
+
+  .reglas-impact-heading,
+  .reglas-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reglas-impact-heading p {
+    text-align: left;
+  }
+
+  .reglas-criteria-row {
+    grid-template-columns: minmax(80px, 0.9fr) minmax(76px, 1fr) minmax(76px, 1fr);
+    gap: 4px;
+    font-size: 9px;
+  }
+}
