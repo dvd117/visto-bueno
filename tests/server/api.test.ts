@@ -270,6 +270,21 @@ describe('T11 API', () => {
       expect(decisions.map(({ fixture, status }) => [fixture.invoiceId, status]))
         .toEqual(fixtures.map(({ invoiceId, expected }) => [invoiceId, expected]));
     }
+    const readyIds = decisions.filter(({ status }) => status === 'ready').map(({ fixture }) => fixture.invoiceId);
+    expect(readyIds.length).toBeGreaterThan(0);
+    const batchQuery = new URLSearchParams({ batch: '1' });
+    batchQuery.append('ready', readyIds[0]!);
+    const batchResponse = await app.request(`/api/export/payments.csv?${batchQuery}`, { headers: { cookie } });
+    const batchCsv = await batchResponse.text();
+    expect(batchResponse.status).toBe(200);
+    expect(batchCsv.split('\n')).toHaveLength(2);
+
+    const reconciliationResponse = await app.request(`/api/export/reconciliation.csv?${batchQuery}`, { headers: { cookie } });
+    const reconciliationCsv = await reconciliationResponse.text();
+    expect(reconciliationResponse.status).toBe(200);
+    expect(reconciliationCsv.split('\n')[0]).toContain('rules_version,vendor_version,contract_version,fx_date');
+    expect(reconciliationCsv).toContain(readyIds[0]!);
+    for (const heldId of readyIds.slice(1)) expect(reconciliationCsv).not.toContain(heldId);
     expect(reserveCall).not.toHaveBeenCalled();
   });
 
@@ -307,6 +322,14 @@ describe('T11 API', () => {
       body: JSON.stringify({ approver: 'Demo', reason: 'Revisado', idempotencyKey: 'stop-approval' }),
     });
     expect(approval.status).toBe(409);
+
+    const rejection = await app.request('/api/invoices/AL-039/reject', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ approver: 'Demo', reason: 'La cuenta no coincide', idempotencyKey: 'stop-rejection' }),
+    });
+    expect(rejection.status).toBe(200);
+    expect((await rejection.json() as { row: { status: string } }).row.status).toBe('rejected');
   });
 
   it('requires the registered account suffix for image approval over HTTP', async () => {

@@ -17,7 +17,7 @@ import {
 import { resetWorkspace } from '../db/workspace';
 import { getCounters, invoiceRows, originalMoney, toExpediente, toInvoiceRow } from '../format';
 import { ensureExampleInvoices } from '../fixtures';
-import { logCsv, paymentsCsv, reportMd, type PaymentExportItem } from '../export/builders';
+import { logCsv, paymentsCsv, reconciliationCsv, reportMd, type PaymentExportItem } from '../export/builders';
 import { parseTable, templateCsv, type CsvTable } from '../csv';
 import type { ServerEnv } from '../middleware/workspace';
 import { processBatch, type PipelineOptions, type ProcessMode } from '../pipeline';
@@ -435,7 +435,20 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
   });
 
   router.get('/log', (c) => c.json(getAuditLog(db, c.get('workspaceId'))));
-  router.get('/export/payments.csv', (c) => c.body(paymentsCsv(paymentItems(db, c.get('workspaceId'))), 200, { 'Content-Type': 'text/csv; charset=utf-8' }));
+  const exportBatch = (url: string): ReadonlySet<string> | undefined => {
+    const query = new URL(url).searchParams;
+    return query.get('batch') === '1' ? new Set(query.getAll('ready')) : undefined;
+  };
+  router.get('/export/payments.csv', (c) => c.body(
+    paymentsCsv(paymentItems(db, c.get('workspaceId')), exportBatch(c.req.url)),
+    200,
+    { 'Content-Type': 'text/csv; charset=utf-8' },
+  ));
+  router.get('/export/reconciliation.csv', (c) => c.body(
+    reconciliationCsv(paymentItems(db, c.get('workspaceId')), exportBatch(c.req.url)),
+    200,
+    { 'Content-Type': 'text/csv; charset=utf-8' },
+  ));
   router.get('/export/log.csv', (c) => c.body(logCsv(getAuditLog(db, c.get('workspaceId'))), 200, { 'Content-Type': 'text/csv; charset=utf-8' }));
   router.get('/export/report.md', (c) => c.body(reportMd(getAuditLog(db, c.get('workspaceId'))), 200, { 'Content-Type': 'text/markdown; charset=utf-8' }));
 

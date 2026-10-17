@@ -510,8 +510,8 @@ export function rejectInvoice(db: Db, workspaceId: string, invoiceId: string, by
     const invoice = invoiceOrThrow(db, workspaceId, invoiceId);
     const record = recordOrThrow(invoice);
     if (idempotencyExists(db, workspaceId, by.idempotencyKey)) throw new Error('Action already used.');
-    if (invoice.status !== 'approval_required' && invoice.status !== 'review_required') {
-      throw new Error('Only pending invoices can be rejected.');
+    if (invoice.status !== 'approval_required' && invoice.status !== 'review_required' && invoice.status !== 'stopped') {
+      throw new Error('Only pending or stopped invoices can be rejected.');
     }
     const now = nowIso();
     db.prepare("UPDATE invoices SET status = 'rejected', updated_at = ? WHERE workspace_id = ? AND id = ?")

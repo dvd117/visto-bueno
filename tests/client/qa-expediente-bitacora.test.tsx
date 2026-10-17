@@ -42,14 +42,20 @@ function makeExpediente(): ExpedienteData {
 function renderExpediente(expediente: ExpedienteData) {
   return render(
     <Expediente
+      rows={[expediente.row]}
+      selectedStatus={expediente.row.status}
       expediente={expediente}
       loading={false}
       error={null}
       busy={false}
+      includedInPaymentBatch
       onApprove={async (_action: DecisionAction) => undefined}
       onReject={async (_action: DecisionAction) => undefined}
       onResolveFlag={async (_flagId: string, _resolution: FlagResolution) => undefined}
       onReevaluate={async () => undefined}
+      onSelectStatus={() => undefined}
+      onTogglePaymentBatch={() => undefined}
+      onOpenData={() => undefined}
     />,
   );
 }
@@ -269,8 +275,8 @@ describe('QA: Expediente document tabs', () => {
     const expediente = makeExpediente();
     render(
       <>
-        <Expediente expediente={expediente} loading={false} error={null} busy={false} onApprove={async () => undefined} onReject={async () => undefined} onResolveFlag={async () => undefined} onReevaluate={async () => undefined} />
-        <Expediente expediente={expediente} loading={false} error={null} busy={false} onApprove={async () => undefined} onReject={async () => undefined} onResolveFlag={async () => undefined} onReevaluate={async () => undefined} />
+        <Expediente rows={[expediente.row]} selectedStatus={expediente.row.status} includedInPaymentBatch onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined} expediente={expediente} loading={false} error={null} busy={false} onApprove={async () => undefined} onReject={async () => undefined} onResolveFlag={async () => undefined} onReevaluate={async () => undefined} />
+        <Expediente rows={[expediente.row]} selectedStatus={expediente.row.status} includedInPaymentBatch onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined} expediente={expediente} loading={false} error={null} busy={false} onApprove={async () => undefined} onReject={async () => undefined} onResolveFlag={async () => undefined} onReevaluate={async () => undefined} />
       </>,
     );
 
@@ -324,6 +330,64 @@ describe('QA: Expediente document tabs', () => {
     expect((reject as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('keeps stopped invoices rejectable or correctable, never approvable', () => {
+    const expediente = makeExpediente();
+    expediente.row.status = 'stopped';
+    const onReject = vi.fn(async () => undefined);
+    const onOpenData = vi.fn();
+    vi.stubGlobal('crypto', { randomUUID: () => 'stopped-rejection-key' });
+    render(
+      <Expediente
+        rows={[expediente.row]} selectedStatus="stopped" expediente={expediente}
+        loading={false} error={null} busy={false} includedInPaymentBatch={false}
+        onApprove={async () => undefined} onReject={onReject}
+        onResolveFlag={async () => undefined} onReevaluate={async () => undefined}
+        onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={onOpenData}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'Rechazar' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Tu nombre/), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText('Motivo de rechazo'), { target: { value: 'La cuenta no coincide' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preparar datos' }));
+    expect(onOpenData).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Rechazar' }));
+    expect(onReject).toHaveBeenCalledWith(expect.objectContaining({ approver: 'Ana', reason: 'La cuenta no coincide' }));
+  });
+
+  it('routes correction-only review flags away from an API action that must fail', () => {
+    const expediente = makeExpedienteWithChecks('AL-042', []);
+    expediente.record!.decision.flags = [{
+      id: 'flag-account', checkId: 'source_payoutAccount', reason: 'No se pudo confirmar la cuenta en el documento.',
+    }];
+    renderExpediente(expediente);
+
+    expect(screen.queryByLabelText('Decisión sobre esta alerta')).toBeNull();
+    expect(screen.getByText('Corrige este dato en Preparar datos y vuelve a evaluar; esta alerta no se resuelve manualmente.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Preparar datos' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Re-evaluar esta factura' })).toBeTruthy();
+  });
+
+  it('shows include or hold only for a ready invoice', () => {
+    const expediente = makeExpediente();
+    expediente.row.status = 'ready';
+    const onTogglePaymentBatch = vi.fn();
+    render(
+      <Expediente
+        rows={[expediente.row]} selectedStatus="ready" expediente={expediente}
+        loading={false} error={null} busy={false} includedInPaymentBatch
+        onApprove={async () => undefined} onReject={async () => undefined}
+        onResolveFlag={async () => undefined} onReevaluate={async () => undefined}
+        onSelectStatus={() => undefined} onTogglePaymentBatch={onTogglePaymentBatch} onOpenData={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retirar del lote' }));
+    expect(onTogglePaymentBatch).toHaveBeenCalledWith('AL-042');
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
+  });
+
   it('requires and submits the image account last four digits before approval', () => {
     const expediente = makeExpediente();
     expediente.row.status = 'approval_required';
@@ -348,21 +412,28 @@ describe('QA: Expediente document tabs', () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'image-approval-key' });
     render(
       <Expediente
+        rows={[expediente.row]}
+        selectedStatus={expediente.row.status}
         expediente={expediente} loading={false} error={null} busy={false}
+        includedInPaymentBatch={false}
         onApprove={onApprove} onReject={async () => undefined}
         onResolveFlag={async () => undefined} onReevaluate={async () => undefined}
+        onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined}
       />,
     );
 
     const approve = screen.getByRole('button', { name: 'Aprobar' }) as HTMLButtonElement;
+    const reject = screen.getByRole('button', { name: 'Rechazar' }) as HTMLButtonElement;
     const accountDigits = screen.getByLabelText(/Últimos 4 dígitos de la cuenta visible en la imagen/);
     expect(approve.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Tu nombre/), { target: { value: 'Ana' } });
     fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Revisé la imagen' } });
+    expect(reject.disabled).toBe(true);
     fireEvent.change(accountDigits, { target: { value: '889' } });
     expect(approve.disabled).toBe(true);
     fireEvent.change(accountDigits, { target: { value: '8890' } });
     expect(approve.disabled).toBe(false);
+    expect(reject.disabled).toBe(false);
 
     fireEvent.click(approve);
     expect(onApprove).toHaveBeenCalledWith(expect.objectContaining({ accountLast4: '8890' }));

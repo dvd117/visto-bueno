@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LogEntry } from '../../src/shared/api';
 import type { Decision, DecisionRecord, InvoiceStatus, Money, Rules, Vendor } from '../../src/shared/domain/types';
-import { logCsv, paymentsCsv, reportMd } from '../../src/server/export/builders';
+import { logCsv, paymentsCsv, reconciliationCsv, reportMd } from '../../src/server/export/builders';
 
 const rules: Rules = {
   version: 3,
@@ -98,6 +98,61 @@ describe('export builders', () => {
     const csv = paymentsCsv([paymentItem('approved', 'quoted')]);
     expect(csv).toContain('"Cuenta, ""Norte""\nNueva"');
     expect(csv).toContain('"María, ""Finanzas"""');
+  });
+
+  it.each(['=1+1', '+1+1', '-1+1', '@SUM(A1:A2)'])(
+    'neutralizes formula-leading approver names in reconciliation CSV (%s)',
+    (approverName) => {
+      const item = paymentItem('approved', 'formula', simpleVendor);
+      item.authorizedBy = approverName;
+
+      const csv = reconciliationCsv([item]);
+
+      expect(csv).toContain(`,'${approverName},formula,seal-formula`);
+    },
+  );
+
+  it('neutralizes formula-like names after leading whitespace and quotes tabs', () => {
+    const item = paymentItem('approved', 'formula', simpleVendor);
+    item.authorizedBy = ' \t=1+1';
+
+    const csv = reconciliationCsv([item]);
+
+    expect(csv).toContain(`,"' \t=1+1",formula,seal-formula`);
+  });
+
+  it('filters a selected payment batch to chosen ready invoices and all approved invoices', () => {
+    const csv = paymentsCsv([
+      paymentItem('ready', 'ready-included', simpleVendor),
+      paymentItem('ready', 'ready-held', simpleVendor),
+      paymentItem('approved', 'approved', simpleVendor),
+      paymentItem('stopped', 'stopped'),
+    ], new Set(['invoice-ready-included']));
+
+    expect(csv).toContain('seal-ready-included');
+    expect(csv).toContain('seal-approved');
+    expect(csv).not.toContain('ready-held');
+    expect(csv).not.toContain('stopped');
+  });
+
+  it('exports reconciliation evidence only for eligible payments', () => {
+    const ready = paymentItem('ready', 'ready-reconcile', simpleVendor);
+    ready.record.decision.headline = 'Pago dentro de las reglas.';
+    ready.record.decision.checks = [{
+      id: 'R1', kind: 'rule', label: 'Proveedor autorizado', passed: true, outcome: 'passed',
+      effect: 'none', reason: 'El proveedor está en la lista permitida.',
+    }];
+    const csv = reconciliationCsv([
+      ready,
+      paymentItem('approved', 'approved-reconcile', simpleVendor),
+      paymentItem('approval_required', 'exception'),
+    ], new Set(['invoice-ready-reconcile']));
+
+    expect(csv.split('\n')[0]).toBe('invoice_id,status,decision_reason,check_reasons,vendor_tax_id,payout_account,payout_currency,amount_original,currency_original,amount_usd,rules_version,vendor_version,contract_version,fx_date,authorized_by,decision_id,seal');
+    expect(csv).toContain('invoice-ready-reconcile,ready,Pago dentro de las reglas.,R1 (passed) El proveedor está en la lista permitida.');
+    expect(csv).toContain(',COP,1234.56,COP,29.60,3,1,1,2026-10-15,');
+    expect(csv).toContain('approved-reconcile');
+    expect(csv).not.toContain('exception');
   });
 
   it('sorts the audit log chronologically and includes seals', () => {
