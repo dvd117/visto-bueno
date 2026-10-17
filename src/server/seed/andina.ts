@@ -21,7 +21,7 @@ export function seed(): {
 } {
   return {
     vendors: [
-      { id: 'nube-andina', name: 'Nube Andina Tecnología S. de R.L.', taxId: 'NAT010101AB1', country: 'MX', payoutCurrency: 'USD', payoutAccount: 'Banco Ventaluz ···· 8890', status: 'allowed', version: 1 },
+      { id: 'nube-andina', name: 'Nube Andina Tecnología S. de R.L.', taxId: 'NAT010101AB6', country: 'MX', payoutCurrency: 'USD', payoutAccount: 'Banco Ventaluz ···· 8890', status: 'allowed', version: 1 },
       { id: 'valentina-ruiz', name: 'Estudio Bruma S.A.S.', taxId: '989.876.543-5', country: 'CO', payoutCurrency: 'COP', payoutAccount: 'Banco Ventaluz ···· 7712', status: 'allowed', version: 1 },
       { id: 'carlos-mendez', name: 'Codaluz Digital S. de R.L.', taxId: 'COD010101AA2', country: 'MX', payoutCurrency: 'MXN', payoutAccount: 'Banco Brumavela ···· 2038', status: 'allowed', version: 1 },
       { id: 'imprenta-caribe', name: 'Imprenta Caribe C.A.', taxId: 'J-40123456-1', country: 'VE', payoutCurrency: 'USD', payoutAccount: 'Banco Cielarroyo ···· 6130', status: 'allowed', version: 1 },

@@ -31,7 +31,7 @@ const jev: JevAnswers = {
 function extraction(invoiceId: string, changes: Partial<ExtractionClaims> = {}, date = '2026-10-16', due = date): ExtractionResult {
   const amountRaw = changes.amountRaw === undefined ? 'USD 850.00' : changes.amountRaw;
   const payoutAccount = changes.payoutAccount === undefined ? 'Banco Ventaluz ···· 8890' : changes.payoutAccount;
-  const payeeTaxId = changes.payeeTaxId === undefined ? 'NAT010101AB1' : changes.payeeTaxId;
+  const payeeTaxId = changes.payeeTaxId === undefined ? 'NAT010101AB6' : changes.payeeTaxId;
   const baseClaims: ExtractionClaims = {
     amountsFound: amountRaw ? [amountRaw] : [],
     accountsFound: payoutAccount ? [payoutAccount] : [],

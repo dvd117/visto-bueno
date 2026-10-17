@@ -45,7 +45,7 @@ const vendorClaims: Record<VendorKey, {
   payeeName: string; payeeTaxId: string; payoutAccount: string; amountRaw: string; description: string;
 }> = {
   nube: {
-    payeeName: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.', payeeTaxId: 'NAT010101AB1', payoutAccount: 'Banco Ventaluz ···· 8890',
+    payeeName: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.', payeeTaxId: 'NAT010101AB6', payoutAccount: 'Banco Ventaluz ···· 8890',
     amountRaw: 'USD 850.00', description: 'Hosting administrado y respaldo de infraestructura',
   },
   norte: {

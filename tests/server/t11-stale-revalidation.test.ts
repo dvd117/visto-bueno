@@ -30,11 +30,11 @@ function invoiceInput(invoiceId: string, answers = jev) {
   const claims: ExtractionClaims = {
     amountsFound: ['USD 850.00'],
     accountsFound: ['Banco Ventaluz ···· 8890'],
-    taxIdsFound: ['NAT010101AB1'],
+    taxIdsFound: ['NAT010101AB6'],
     invoiceIdsFound: [invoiceId],
     currenciesFound: ['USD'],
     payeeName: 'Nube Andina Tecnología S. de R.L.',
-    payeeTaxId: 'NAT010101AB1',
+    payeeTaxId: 'NAT010101AB6',
     payoutAccount: 'Banco Ventaluz ···· 8890',
     invoiceId,
     invoiceDate: '2026-10-16',
@@ -50,7 +50,7 @@ function invoiceInput(invoiceId: string, answers = jev) {
     hasMultipleCurrenciesShown: false,
     evidenceQuotes: {
       amountRaw: 'USD 850.00', payoutAccount: 'Banco Ventaluz ···· 8890',
-      payeeTaxId: 'NAT010101AB1', invoiceId,
+      payeeTaxId: 'NAT010101AB6', invoiceId,
     },
     suspiciousPassages: [],
   };

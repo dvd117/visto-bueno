@@ -155,9 +155,9 @@ describe('T11 API', () => {
 
   it('requires the registered account suffix for image approval over HTTP', async () => {
     const claims: ExtractionClaims = {
-      amountsFound: ['USD 850.00'], accountsFound: ['Banco Ventaluz ···· 8890'], taxIdsFound: ['NAT010101AB1'],
+      amountsFound: ['USD 850.00'], accountsFound: ['Banco Ventaluz ···· 8890'], taxIdsFound: ['NAT010101AB6'],
       invoiceIdsFound: ['IMG-API-001'], currenciesFound: ['USD'], payeeName: 'Nube Andina Tecnología S. de R.L.',
-      payeeTaxId: 'NAT010101AB1', payoutAccount: 'Banco Ventaluz ···· 8890', invoiceId: 'IMG-API-001',
+      payeeTaxId: 'NAT010101AB6', payoutAccount: 'Banco Ventaluz ···· 8890', invoiceId: 'IMG-API-001',
       invoiceDate: '2026-10-16', dueDate: '2026-10-20', currency: 'USD', amountRaw: 'USD 850.00',
       subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null, description: 'Hosting',
       documentTypeHint: 'factura', hasMultipleCurrenciesShown: false, evidenceQuotes: {}, suspiciousPassages: [],

@@ -4,7 +4,7 @@ export const invoiceTemplates = [
     label: 'Cobro por WhatsApp con urgencia · MX · USD',
     content: `MENSAJE DE WHATSAPP — COBRO DE OCTUBRE
 Proveedor: Nube Andina Tecnología S. de R.L.
-RFC: NAT010101AB1
+RFC: NAT010101AB6
 Factura: WA-NA-2026-10-02
 Fecha de emisión: 2026-10-16
 Fecha de vencimiento: 2026-10-25

@@ -53,7 +53,7 @@ function claimsFromFixture(id: string, source: string): ExtractionClaims {
       description: 'Servicios de consultoría de infraestructura',
     },
     'AL-042': {
-      payeeName: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.', taxId: 'NAT010101AB1', account: 'Banco Ventaluz, cuenta de ahorros ···· 4412',
+      payeeName: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.', taxId: 'NAT010101AB6', account: 'Banco Ventaluz, cuenta de ahorros ···· 4412',
       invoiceId: 'AL-042', date: '15/10/2026', due: '25/10/2026', amount: 'USD 850,00', currency: 'USD',
       description: 'Hosting administrado, octubre de 2026',
     },

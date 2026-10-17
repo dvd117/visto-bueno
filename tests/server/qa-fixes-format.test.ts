@@ -14,11 +14,11 @@ function makeInvoice(overrides: Partial<StoredInvoice> = {}): StoredInvoice {
   const claims: ExtractionClaims = {
     amountsFound: ['USD 780.00'],
     accountsFound: ['Bancolombia ···· 4412'],
-    taxIdsFound: ['NAT010101AB1'],
+    taxIdsFound: ['NAT010101AB6'],
     invoiceIdsFound: ['AL-030'],
     currenciesFound: ['USD'],
     payeeName: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.',
-    payeeTaxId: 'NAT010101AB1',
+    payeeTaxId: 'NAT010101AB6',
     payoutAccount: 'Banco Ventaluz ···· 4412',
     invoiceId: 'AL-030',
     invoiceDate: '2026-10-16',
@@ -144,7 +144,7 @@ describe('integrated QA formatter fixes', () => {
       'Presupuesto restante',
     ]);
     expect(rows.get('Beneficiario')).toMatchObject({ invoice: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.', record: 'Nube Andina Tecnología S. de R.L.', differs: false });
-    expect(rows.get('Identificador fiscal')).toMatchObject({ invoice: 'NAT010101AB1', record: 'NAT010101AB1', differs: false });
+    expect(rows.get('Identificador fiscal')).toMatchObject({ invoice: 'NAT010101AB6', record: 'NAT010101AB6', differs: false });
     expect(rows.get('Cuenta bancaria (últimos 4)')).toMatchObject({ invoice: '···· 4412', record: '···· 8890', differs: true });
     expect(rows.get('Monto facturado / monto contractual')).toMatchObject({ invoice: 'USD 780,00', record: 'USD 850,00', differs: true });
     expect(rows.get('Fecha de factura vs. período del contrato')).toMatchObject({ invoice: '2026-10-16', record: '2026-01-01 a 2026-12-31', differs: false });
