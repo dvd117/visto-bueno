@@ -36,6 +36,7 @@ const invoiceRowSchema: z.ZodType<InvoiceRow> = z.object({
   due: z.string().nullable(),
   status: invoiceStatusSchema,
   reason: z.string(),
+  subtitle: z.string().optional(),
   sourceKind: sourceKindSchema,
   reevaluatedFrom: invoiceStatusSchema.optional(),
 });

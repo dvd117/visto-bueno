@@ -4,7 +4,7 @@ import type { DecisionRecord, InvoiceStatus, Rules, SourceKind } from './domain/
 
 export interface InvoiceRow {
   id: string; payee: string; concept: string; /** formatted */ amount: string;
-  amountUsd: string | null; due: string | null; status: InvoiceStatus; reason: string; sourceKind: SourceKind;
+  amountUsd: string | null; due: string | null; status: InvoiceStatus; reason: string; subtitle?: string; sourceKind: SourceKind;
   reevaluatedFrom?: InvoiceStatus;
 }
 

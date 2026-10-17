@@ -144,6 +144,37 @@ afterEach(() => {
 });
 
 describe('Bandeja and Expediente', () => {
+  it('shows the decision subtitle in both the row and expediente status', async () => {
+    const row = { ...makeRow('review_required'), subtitle: 'Duda en los datos' };
+    const expediente = makeExpediente(row);
+    if (!expediente.record) throw new Error('Expected a decision record.');
+    expediente.record.decision = {
+      ...expediente.record.decision,
+      status: 'review_required',
+      checks: [{
+        id: 'missing_amount',
+        kind: 'verify',
+        label: 'Monto presente',
+        passed: false,
+        effect: 'review',
+        reason: 'La factura no contiene un monto verificable.',
+      }],
+      flags: [{ id: 'missing_amount', checkId: 'missing_amount', reason: 'La factura no contiene un monto verificable.' }],
+    };
+    installApi([row], expediente);
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText('Duda en los datos')).toHaveLength(2));
+    const statuses = screen.getAllByRole('status', { name: 'Requiere revisión' });
+    expect(statuses).toHaveLength(2);
+    for (const status of statuses) {
+      const descriptionId = status.getAttribute('aria-describedby');
+      expect(descriptionId).toBeTruthy();
+      expect(document.getElementById(descriptionId!)?.textContent).toBe('Duda en los datos');
+    }
+  });
+
   it('does not show an approve control for a stopped invoice', async () => {
     installApi([makeRow('stopped')]);
 

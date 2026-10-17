@@ -78,6 +78,50 @@ const COPY_BY_CHECK: Record<string, Partial<Record<DecisionStatus, DecisionCopy>
   },
 };
 
+const SUBTITLE_BY_CHECK: Readonly<Record<string, string | undefined>> = {
+  extraction_failed: 'Duda en los datos',
+  source_amountRaw: 'Duda en los datos',
+  source_payoutAccount: 'Duda en los datos',
+  source_payeeTaxId: 'Duda en los datos',
+  source_invoiceId: 'Duda en los datos',
+  multiple_tax_ids: 'Duda en los datos',
+  multiple_totals: 'Duda en los datos',
+  multiple_currencies: 'Duda en los datos',
+  sum_mismatch: 'Duda en los datos',
+  missing_amount: 'Duda en los datos',
+  missing_payee: 'Duda en los datos',
+  ambiguous_amount: 'Duda en los datos',
+  R10: 'Duda en los datos',
+  jev_unavailable: 'Evaluación incompleta',
+  instructs_agent: 'Instrucción en la factura',
+  artificial_urgency: 'Urgencia por confirmar',
+  scope_match: 'Alcance por confirmar',
+  fuzzy_duplicate: 'Posible duplicado',
+  document_type: 'Tipo de documento',
+  image_confirmation: 'No verificable en imagen',
+  R6: 'Monto variable',
+  R15: 'Excede el límite automático',
+};
+
 export function copyForDecision(status: DecisionStatus, decidingCheckId?: string): DecisionCopy {
   return (decidingCheckId ? COPY_BY_CHECK[decidingCheckId]?.[status] : undefined) ?? DEFAULT_COPY[status];
+}
+
+export function subtitleForDecision(decision: Pick<Decision, 'status' | 'checks' | 'flags'>): string | undefined {
+  if (decision.status === 'review_required') {
+    const unresolvedIds = new Set(decision.flags.map((flag) => flag.checkId));
+    const decidingCheck = decision.checks.find((check) => check.effect === 'review' && unresolvedIds.has(check.id));
+    return decidingCheck ? SUBTITLE_BY_CHECK[decidingCheck.id] : undefined;
+  }
+
+  if (decision.status !== 'approval_required') return undefined;
+
+  const approvalCheck = decision.checks.find((check) => check.effect === 'approval');
+  if (approvalCheck) return SUBTITLE_BY_CHECK[approvalCheck.id];
+
+  const unresolvedIds = new Set(decision.flags.map((flag) => flag.checkId));
+  const resolvedReview = decision.checks.find((check) => (
+    check.effect === 'review' && check.id !== 'jev_unavailable' && !unresolvedIds.has(check.id)
+  ));
+  return resolvedReview ? 'Aprobación tras revisión' : undefined;
 }

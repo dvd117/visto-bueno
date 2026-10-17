@@ -97,6 +97,7 @@ export function Bandeja({
                 <span className="invoice-state">
                   <StatusChip
                     status={row.status}
+                    subtitle={row.subtitle}
                     animate={Boolean(rowRevisions[row.id])}
                     delay={index % 4 * 0.06}
                     revision={rowRevisions[row.id] ?? 0}

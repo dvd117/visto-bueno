@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ExtractionClaims } from '../../src/shared/domain/types';
+import type { CheckResult, DecisionRecord, ExtractionClaims } from '../../src/shared/domain/types';
 import { ensureWorkspace } from '../../src/server/db/workspace';
 import { openDb, type StoredInvoice } from '../../src/server/db/db';
 import { toExpediente, toInvoiceRow } from '../../src/server/format';
@@ -62,6 +62,45 @@ function makeInvoice(overrides: Partial<StoredInvoice> = {}): StoredInvoice {
 }
 
 describe('integrated QA formatter fixes', () => {
+  it('adds the decision subtitle to the row only while its decision status is current', () => {
+    const decisionRecord: DecisionRecord = {
+      id: 'record-1',
+      invoiceId: 'AL-030',
+      decision: {
+        status: 'approval_required',
+        checks: [{
+          id: 'R15', kind: 'rule', label: 'Umbral de aprobación humana', passed: true, effect: 'approval',
+          reason: 'El monto supera el umbral y requiere aprobación humana.',
+        } satisfies CheckResult],
+        flags: [],
+        canApprove: true,
+        headline: 'Requiere tu aprobación',
+        nextStep: 'Aprueba o rechaza esta factura con un motivo.',
+        amountUsdMinor: 78_000,
+        contractId: 'nube-hosting-monthly',
+        costCenter: 'operaciones',
+      },
+      rulesSnapshot: {
+        version: 3,
+        perPaymentLimitUsdMinor: 1_000_000,
+        monthlyLimitUsdMinor: 5_000_000,
+        approvalThresholdUsdMinor: 30_000,
+        fuzzyDuplicateWindowDays: 60,
+        preset: 'equilibrado',
+      },
+      dataVersions: { fxDate: '2026-10-16' },
+      jev: { ok: false, error: 'missing_recording' },
+      seal: '8f3a1c',
+      createdAt: '2026-10-16T00:00:00.000Z',
+    };
+
+    const current = toInvoiceRow(makeInvoice({ status: 'approval_required', latestRecord: decisionRecord }));
+    const approved = toInvoiceRow(makeInvoice({ status: 'approved', latestRecord: decisionRecord }));
+
+    expect(current.subtitle).toBe('Excede el límite automático');
+    expect(approved.subtitle).toBeUndefined();
+  });
+
   it('truncates a long queued snippet at a word boundary and marks the truncation', () => {
     const sourceText = 'Factura para Andina Labs, servicios de infraestructura y soporte técnico durante octubre de 2026. '.repeat(3);
     const row = toInvoiceRow(makeInvoice({ status: 'queued', extraction: null, sourceText }));
