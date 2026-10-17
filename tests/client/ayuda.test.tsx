@@ -89,6 +89,7 @@ describe('ComoDecide', () => {
       reader.readAsText(downloaded as Blob);
     });
     expect(text).toContain('# Cómo decide el agente');
+    expect(text).toContain('> Guía de la demo para finanzas. Describe cómo decide Visto Bueno hoy; no sustituye la factura ni los registros de tu empresa. No se realizan pagos reales.');
     expect(text).toContain('## El recorrido: seis pasos');
     expect(text).toContain('**Frenada.**');
     expect(text).toContain('Identidad declarada');

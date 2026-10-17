@@ -12,7 +12,7 @@ interface GuideSection {
   entries: readonly GuideEntry[];
 }
 
-const notice = 'Borrador para finanzas. Explica el comportamiento previsto. Confirma cada paso en la demo antes de confiar en él; esta guía no sustituye la factura ni los registros de tu empresa.';
+const notice = 'Guía de la demo para finanzas. Describe cómo decide Visto Bueno hoy; no sustituye la factura ni los registros de tu empresa. No se realizan pagos reales.';
 const introduction = 'Visto Bueno organiza la revisión de una factura antes de preparar una decisión. No hace pagos.';
 
 const sections: readonly GuideSection[] = [
