@@ -1,0 +1,49 @@
+import type { IncomingMessage } from 'node:http';
+import { randomUUID } from 'node:crypto';
+import type { MiddlewareHandler } from 'hono';
+import type { Db } from '../db/db';
+import { ensureWorkspace } from '../db/workspace';
+import { ensureExampleInvoices } from '../fixtures';
+import { getClientIp } from './ip';
+
+export type ServerEnv = {
+  Bindings: { incoming?: IncomingMessage };
+  Variables: { workspaceId: string; clientIp: string | null; requestBytes: Uint8Array };
+};
+
+export interface WorkspaceMiddlewareOptions {
+  seedExamples?: boolean;
+  trustProxy?: string | boolean;
+  remoteAddress?: (incoming: IncomingMessage | undefined) => string | null | undefined;
+}
+
+function cookieValue(header: string | undefined): string | null {
+  const item = header?.split(';').map((value) => value.trim()).find((value) => value.startsWith('workspace_id='));
+  if (!item) return null;
+  const value = item.slice('workspace_id='.length);
+  return /^[A-Za-z0-9_-]{1,80}$/.test(value) ? value : null;
+}
+
+export function createWorkspaceMiddleware(db: Db, options: WorkspaceMiddlewareOptions = {}): MiddlewareHandler<ServerEnv> {
+  return async (c, next) => {
+    const existingId = cookieValue(c.req.header('cookie'));
+    const workspaceId = existingId ?? randomUUID();
+    ensureWorkspace(db, workspaceId);
+    if (options.seedExamples !== false) ensureExampleInvoices(db, workspaceId);
+
+    const remoteAddress = options.remoteAddress
+      ? options.remoteAddress(c.env?.incoming)
+      : c.env?.incoming?.socket.remoteAddress;
+    c.set('workspaceId', workspaceId);
+    c.set('clientIp', getClientIp({
+      forwardedFor: c.req.header('x-forwarded-for'),
+      remoteAddress,
+    }, { trustProxy: options.trustProxy }));
+
+    if (!existingId) {
+      const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+      c.header('Set-Cookie', `workspace_id=${workspaceId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`);
+    }
+    await next();
+  };
+}

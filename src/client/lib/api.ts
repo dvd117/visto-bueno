@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js';
 import { z } from 'zod';
 import type {
   ApiError,
@@ -8,13 +9,18 @@ import type {
   Expediente,
   FlagResolution,
   InvoiceRow,
+  LogEntry,
   NewInvoiceText,
   ProcessEvent,
   ProcessRequest,
   RunStats,
   WorkspaceSummary,
 } from '../../shared/api';
-import type { DecisionRecord, Rules } from '../../shared/domain/types';
+import type { Budget, Contract, DecisionRecord, FxRate, Rules, Treasury, Vendor } from '../../shared/domain/types';
+import type { BitacoraApi } from '../features/bitacora/Bitacora';
+import type {
+  CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi,
+} from '../features/datos/Datos';
 
 const invoiceStatusSchema = z.enum([
   'queued', 'ready', 'approval_required', 'review_required', 'stopped', 'approved', 'rejected', 'stale',
@@ -157,9 +163,67 @@ const conflictSchema: z.ZodType<ConflictResponse> = z.object({ error: z.literal(
 
 const processEventSchema: z.ZodType<ProcessEvent> = z.discriminatedUnion('type', [
   z.object({ type: z.literal('decided'), row: invoiceRowSchema, counters: countersSchema }),
-  z.object({ type: z.literal('error'), invoiceId: z.string(), message: z.string() }),
+  z.object({ type: z.literal('error'), invoiceId: z.string(), message: z.string(), status: z.literal(429).optional() }),
   z.object({ type: z.literal('done'), stats: runStatsSchema }),
 ]);
+
+const safeInteger = z.number().int().refine(Number.isSafeInteger, 'Debe ser un entero seguro.');
+const positiveInteger = safeInteger.min(1);
+const nonNegativeInteger = safeInteger.min(0);
+const currencySchema = z.enum(['USD', 'COP', 'MXN']);
+const costCenterSchema = z.enum(['ingenieria', 'diseno', 'operaciones', 'legal']);
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+});
+const vendorSchema: z.ZodType<Vendor> = z.object({
+  id: z.string().min(1), name: z.string().min(1), taxId: z.string().min(1),
+  country: z.enum(['CO', 'MX', 'VE', 'US']), payoutCurrency: currencySchema,
+  payoutAccount: z.string().min(1), status: z.enum(['allowed', 'blocked']), version: positiveInteger,
+}).strict();
+const contractSchema: z.ZodType<Contract> = z.object({
+  id: z.string().min(1), vendorId: z.string().min(1), scope: z.string().min(1),
+  type: z.enum(['fixed', 'variable']), currency: currencySchema,
+  amountMinor: positiveInteger.optional(), rateMinor: positiveInteger.optional(),
+  unit: z.string().min(1).optional(), maxUnitsPerPeriod: positiveInteger.optional(),
+  billingFrequency: z.enum(['monthly', 'one_time', 'annual']), costCenter: costCenterSchema,
+  start: isoDateSchema, end: isoDateSchema, version: positiveInteger,
+}).strict().superRefine((contract, context) => {
+  if (contract.start > contract.end) context.addIssue({ code: 'custom', path: ['end'], message: 'Invalid range.' });
+  if (contract.type === 'fixed' && (contract.amountMinor === undefined || contract.rateMinor !== undefined
+    || contract.unit !== undefined || contract.maxUnitsPerPeriod !== undefined)) {
+    context.addIssue({ code: 'custom', path: ['type'], message: 'Invalid fixed contract.' });
+  }
+  if (contract.type === 'variable' && (contract.rateMinor === undefined || !contract.unit
+    || contract.maxUnitsPerPeriod === undefined || contract.amountMinor !== undefined)) {
+    context.addIssue({ code: 'custom', path: ['type'], message: 'Invalid variable contract.' });
+  }
+});
+const budgetSchema: z.ZodType<Budget> = z.object({
+  costCenter: costCenterSchema, month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  approvedUsdMinor: nonNegativeInteger,
+}).strict();
+const fxSchema: z.ZodType<FxRate> = z.object({
+  currency: currencySchema,
+  perUsd: z.string().regex(/^\d+(?:\.\d+)?$/).refine((value) => new Decimal(value).isPositive()),
+  date: isoDateSchema,
+}).strict();
+const treasurySchema: z.ZodType<Treasury> = z.object({
+  balanceUsdMinor: nonNegativeInteger, fx: z.array(fxSchema).min(1).max(20),
+}).strict().superRefine((treasury, context) => {
+  const currencies = treasury.fx.map(({ currency }) => currency);
+  if (new Set(currencies).size !== currencies.length) {
+    context.addIssue({ code: 'custom', path: ['fx'], message: 'Duplicate FX currency.' });
+  }
+});
+const dataSchemas: Record<DataTable, z.ZodType<unknown>> = {
+  vendors: z.array(vendorSchema), contracts: z.array(contractSchema),
+  budgets: z.array(budgetSchema), treasury: treasurySchema,
+};
+const logEntrySchema: z.ZodType<LogEntry> = z.object({
+  at: z.string(), invoiceId: z.string(), status: invoiceStatusSchema,
+  headline: z.string(), seal: z.string(), by: z.string().nullable(),
+}).strict();
 
 export class ApiRequestError extends Error {
   readonly status: number;
@@ -298,6 +362,43 @@ export async function processInvoices(
   }
 }
 
+export async function* processInvoiceEvents(
+  request: ProcessRequest,
+  onEvent: (event: ProcessEvent) => void,
+): AsyncGenerator<ProcessEvent> {
+  const events: ProcessEvent[] = [];
+  let wake: (() => void) | undefined;
+  let finished = false;
+  let failure: unknown;
+  void processInvoices(request, (event) => {
+    events.push(event);
+    onEvent(event);
+    wake?.();
+    wake = undefined;
+  }).then(
+    () => { finished = true; wake?.(); wake = undefined; },
+    (cause: unknown) => { failure = cause; finished = true; wake?.(); wake = undefined; },
+  );
+
+  while (true) {
+    if (events.length > 0) {
+      yield events.shift()!;
+      continue;
+    }
+    if (finished) {
+      if (failure !== undefined) throw failure;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      wake = resolve;
+      if (events.length > 0 || finished) {
+        wake = undefined;
+        resolve();
+      }
+    });
+  }
+}
+
 function decisionActionUrl(id: string, action: 'approve' | 'reject'): string {
   return `/api/invoices/${encodeURIComponent(id)}/${action}`;
 }
@@ -321,4 +422,61 @@ export function resolveFlag(id: string, flagId: string, resolution: FlagResoluti
 export function reevaluateInvoice(id: string): Promise<Expediente> {
   return requestJson(`/api/invoices/${encodeURIComponent(id)}/reevaluate`, expedienteSchema, jsonInit('POST'));
 }
+
+export async function getTable<T extends DataTable>(table: T): Promise<DataTableValues[T]> {
+  const result: unknown = await requestJson(`/api/data/${table}`, dataSchemas[table]);
+  return result as DataTableValues[T];
+}
+
+export async function putRow<T extends DataTable>(table: T, row: DataRowMap[T]): Promise<DataRowMap[T]> {
+  const result: unknown = await requestJson(`/api/data/${table}`, dataSchemas[table], jsonInit('PUT', row));
+  return result as DataRowMap[T];
+}
+
+export async function uploadCsv(table: CsvTable, file: File): Promise<DataUploadResult> {
+  const body = new FormData();
+  body.append('file', file);
+  const response = await fetch(`/api/data/${table}/csv`, { method: 'POST', body });
+  if (response.ok) {
+    try {
+      const result: unknown = await response.json();
+      if (z.object({ ok: z.literal(true) }).strict().safeParse(result).success) return { ok: true };
+    } catch {
+      // Fall through to a safe invalid-response error.
+    }
+    throw new ApiRequestError('El servidor devolvió una respuesta inválida.', response.status);
+  }
+  const cause = await readError(response);
+  if (cause.payload && 'message' in cause.payload) return { ok: false, error: cause.payload };
+  return { ok: false, error: { error: 'invalid_csv', message: cause.message } };
+}
+
+export function templateUrl(table: CsvTable): string {
+  return `/api/data/${table}/template.csv`;
+}
+
+export function getLog(): Promise<LogEntry[]> {
+  return requestJson('/api/log', z.array(logEntrySchema));
+}
+
+async function getExportText(path: string): Promise<string> {
+  const response = await fetch(path);
+  if (!response.ok) throw await readError(response);
+  return response.text();
+}
+
+export function exportPaymentsCsv(): Promise<string> {
+  return getExportText('/api/export/payments.csv');
+}
+
+export function exportLogCsv(): Promise<string> {
+  return getExportText('/api/export/log.csv');
+}
+
+export function exportReportMd(): Promise<string> {
+  return getExportText('/api/export/report.md');
+}
+
+export const datosApi: DatosApi = { getTable, putRow, uploadCsv, templateUrl };
+export const bitacoraApi: BitacoraApi = { getLog, exportPaymentsCsv, exportLogCsv, exportReportMd };
 

@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
-import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow, WorkspaceSummary } from '../../shared/api';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow, ProcessEvent, WorkspaceSummary } from '../../shared/api';
 import {
   ApiRequestError,
+  bitacoraApi,
   approveInvoice,
   createInvoice,
+  datosApi,
   getExpediente,
   getInvoices,
   getWorkspace,
+  processInvoiceEvents,
   processInvoices,
   reevaluateInvoice,
   rejectInvoice,
@@ -17,7 +19,15 @@ import {
 import { Bandeja } from '../features/bandeja/Bandeja';
 import { Counters } from '../features/bandeja/Counters';
 import { Expediente } from '../features/expediente/Expediente';
+import type { RecibirApi } from '../features/recibir/RecibirPanel';
 import './app.css';
+
+type AppSection = 'inbox' | 'datos' | 'bitacora';
+
+const Bitacora = lazy(async () => ({ default: (await import('../features/bitacora/Bitacora')).Bitacora }));
+const Datos = lazy(() => import('../features/datos/Datos'));
+const RecibirPanel = lazy(async () => ({ default: (await import('../features/recibir/RecibirPanel')).RecibirPanel }));
+const ComoDecide = lazy(async () => ({ default: (await import('../features/ayuda/ComoDecide')).ComoDecide }));
 
 function errorMessage(error: unknown): string {
   if (error instanceof TypeError) return 'No pude conectar con el servidor';
@@ -42,9 +52,11 @@ export default function App() {
   const [detailRevision, setDetailRevision] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [activeSection, setActiveSection] = useState<AppSection>('inbox');
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [rowRevisions, setRowRevisions] = useState<Record<string, number>>({});
   const [toast, setToast] = useState('');
-  const fileInput = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const selectedStatus = rows.find((row) => row.id === selectedId)?.status;
   const detailKey = JSON.stringify([selectedId, selectedStatus]);
@@ -99,6 +111,18 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(''), 3200);
   }, []);
 
+  const handleProcessEvent = useCallback((event: ProcessEvent) => {
+    if (event.type === 'decided') {
+      setRows((current) => replaceRow(current, event.row));
+      setWorkspace((current) => current ? { ...current, counters: event.counters } : current);
+      setRowRevisions((current) => ({ ...current, [event.row.id]: (current[event.row.id] ?? 0) + 1 }));
+    } else if (event.type === 'error') {
+      showToast(event.message);
+    } else {
+      setWorkspace((current) => current ? { ...current, lastRun: event.stats } : current);
+    }
+  }, [showToast]);
+
   const selectInvoice = useCallback((id: string) => {
     if (id === selectedId) return;
     setSelectedId(id);
@@ -110,23 +134,42 @@ export default function App() {
     if (processing) return;
     setProcessing(true);
     try {
-      await processInvoices({ mode: 'replay' }, (event) => {
-        if (event.type === 'decided') {
-          setRows((current) => replaceRow(current, event.row));
-          setWorkspace((current) => current ? { ...current, counters: event.counters } : current);
-          setRowRevisions((current) => ({ ...current, [event.row.id]: (current[event.row.id] ?? 0) + 1 }));
-        } else if (event.type === 'error') {
-          showToast(event.message);
-        } else {
-          setWorkspace((current) => current ? { ...current, lastRun: event.stats } : current);
-        }
-      });
+      await processInvoices({ mode: 'replay' }, handleProcessEvent);
     } catch (error) {
       showToast(errorMessage(error));
     } finally {
       setProcessing(false);
     }
-  }, [processing, showToast]);
+  }, [processing, handleProcessEvent, showToast]);
+
+  const receivingApi = useMemo<RecibirApi>(() => ({
+    async createInvoiceText(text) {
+      const row = await createInvoice({ text });
+      setRows((current) => replaceRow(current, row));
+      setSelectedId(row.id);
+      setExpediente(null);
+      setDetailFailure(null);
+      return row;
+    },
+    async createInvoiceFile(file) {
+      const row = await createInvoice(file);
+      setRows((current) => replaceRow(current, row));
+      setSelectedId(row.id);
+      setExpediente(null);
+      setDetailFailure(null);
+      return row;
+    },
+    async *process(ids, mode) {
+      if (processing) throw new ApiRequestError('Ya hay una evaluación en curso. Inténtalo al terminar.', 409);
+      setProcessing(true);
+      try {
+        yield* processInvoiceEvents({ ids, mode }, handleProcessEvent);
+      } finally {
+        setProcessing(false);
+        await loadWorkspace(false);
+      }
+    },
+  }), [handleProcessEvent, loadWorkspace, processing]);
 
   const handleDropFiles = useCallback(async (files: File[]) => {
     if (files.length === 0 || actionBusy) return;
@@ -148,16 +191,12 @@ export default function App() {
     }
   }, [actionBusy, loadWorkspace, showToast]);
 
-  const handleFileSelection = (event: ChangeEvent<HTMLInputElement>) => {
-    void handleDropFiles(Array.from(event.target.files ?? []));
-    event.target.value = '';
-  };
-
   const handleReset = useCallback(async () => {
     if (actionBusy || processing) return;
     setActionBusy(true);
     try {
       await resetWorkspace();
+      setActiveSection('inbox');
       setExpediente(null);
       setDetailFailure(null);
       setDetailRevision((current) => current + 1);
@@ -211,7 +250,7 @@ export default function App() {
 
   return (
     <>
-      <main className="frame">
+      <div className="frame">
         <div className="demo-banner" role="note">Modo demostración · No se realizan pagos reales</div>
         <header className="masthead">
           <div className="brandline">
@@ -223,22 +262,22 @@ export default function App() {
             </div>
           </div>
           <nav className="navigation" aria-label="Secciones">
-            <a href="#inbox" aria-current="page">Bandeja</a>
+            <a href="#inbox" aria-current={activeSection === 'inbox' ? 'page' : undefined} onClick={(event) => {
+              event.preventDefault(); setActiveSection('inbox'); void loadWorkspace(false);
+            }}>Bandeja</a>
             <a href="#reglas">Reglas</a>
-            <a href="#datos">Preparar datos</a>
-            <a href="#bitacora">Bitácora</a>
+            <a href="#datos" aria-current={activeSection === 'datos' ? 'page' : undefined} onClick={(event) => {
+              event.preventDefault(); setActiveSection('datos'); void loadWorkspace(false);
+            }}>Preparar datos</a>
+            <a href="#bitacora" aria-current={activeSection === 'bitacora' ? 'page' : undefined} onClick={(event) => {
+              event.preventDefault(); setActiveSection('bitacora'); void loadWorkspace(false);
+            }}>Bitácora</a>
           </nav>
           <div className="header-actions">
-            <input
-              ref={fileInput}
-              className="visually-hidden"
-              type="file"
-              accept="application/pdf,image/png,image/jpeg"
-              multiple
-              aria-label="Seleccionar facturas ficticias"
-              onChange={handleFileSelection}
-            />
-            <button className="button button-primary" type="button" disabled={actionBusy} onClick={() => fileInput.current?.click()}>
+            <button className="button button-secondary" type="button" onClick={() => setHelpOpen(true)}>
+              Cómo decide
+            </button>
+            <button className="button button-primary" type="button" disabled={actionBusy || processing} onClick={() => setReceiveOpen(true)}>
               + Recibir factura
             </button>
             <button className="button button-secondary" type="button" disabled={actionBusy || processing} onClick={() => void handleReset()}>
@@ -248,16 +287,16 @@ export default function App() {
         </header>
 
         {connectionError ? (
-          <section className="offline-state" role="alert">
+          <main><section className="offline-state" role="alert">
             <p className="eyebrow">Bandeja no disponible</p>
             <h2>No pude conectar con el servidor</h2>
             <p>Las facturas y sus decisiones no están disponibles. No se muestran datos de ejemplo.</p>
             <button className="button button-primary" type="button" onClick={() => void loadWorkspace(true)}>Intentar de nuevo</button>
-          </section>
+          </section></main>
         ) : loading ? (
-          <p className="page-loading" role="status">Conectando con el servidor…</p>
+          <main><p className="page-loading" role="status">Conectando con el servidor…</p></main>
         ) : displayedWorkspace ? (
-          <>
+          activeSection === 'inbox' ? <main>
             <Counters counters={displayedWorkspace.counters} lastRun={displayedWorkspace.lastRun} />
             <div className="workspace">
               <Bandeja
@@ -268,7 +307,7 @@ export default function App() {
                 rowRevisions={rowRevisions}
                 onSelect={selectInvoice}
                 onProcess={() => void handleProcess()}
-                onReceive={() => fileInput.current?.click()}
+                onReceive={() => setReceiveOpen(true)}
                 onDropFiles={(files) => void handleDropFiles(files)}
               />
               <Expediente
@@ -283,9 +322,14 @@ export default function App() {
                 onReevaluate={handleReevaluate}
               />
             </div>
-          </>
+          </main> : activeSection === 'datos' ? <Suspense fallback={<main><p role="status">Cargando datos…</p></main>}><Datos api={datosApi} /></Suspense>
+            : <main><Suspense fallback={<p role="status">Cargando bitácora…</p>}><Bitacora api={bitacoraApi} /></Suspense></main>
         ) : null}
-      </main>
+      </div>
+      <Suspense fallback={null}>
+        <RecibirPanel open={receiveOpen} onClose={() => setReceiveOpen(false)} api={receivingApi} />
+        <ComoDecide open={helpOpen} onClose={() => setHelpOpen(false)} />
+      </Suspense>
       {toast && <div className="toast" role="status">{toast}</div>}
     </>
   );

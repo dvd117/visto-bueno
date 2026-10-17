@@ -8,7 +8,7 @@ const data: DataTableValues = {
     payoutCurrency: 'USD', payoutAccount: 'Bancolombia ···· 8890', status: 'allowed', version: 1,
   }],
   contracts: [],
-  budgets: [],
+  budgets: [{ costCenter: 'ingenieria', month: '2026-10', approvedUsdMinor: 85_000 }],
   treasury: { balanceUsdMinor: 480_000, fx: [{ currency: 'USD', perUsd: '1', date: '2026-10-15' }] },
 };
 
@@ -39,6 +39,31 @@ describe('Preparar datos', () => {
 
     await waitFor(() => expect(api.putRow).toHaveBeenCalledWith('vendors', expect.objectContaining({
       id: 'nube-andina', payoutAccount: 'Bancolombia ···· 4412', version: 1,
+    })));
+  });
+
+  it('rejects inline amounts with more than two decimal places instead of rounding', async () => {
+    const api = makeApi();
+    render(<Datos api={api} />);
+
+    const amount = await screen.findByLabelText('Presupuesto aprobado (USD) — ingenieria · 2026-10');
+    fireEvent.change(amount, { target: { value: '850.001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios de ingenieria · 2026-10' }));
+
+    expect(await screen.findByRole('alert')).toBeDefined();
+    expect(api.putRow).not.toHaveBeenCalled();
+  });
+
+  it('converts exact inline decimal amounts to safe integer minor units', async () => {
+    const api = makeApi();
+    render(<Datos api={api} />);
+
+    const amount = await screen.findByLabelText('Presupuesto aprobado (USD) — ingenieria · 2026-10');
+    fireEvent.change(amount, { target: { value: '850.50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios de ingenieria · 2026-10' }));
+
+    await waitFor(() => expect(api.putRow).toHaveBeenCalledWith('budgets', expect.objectContaining({
+      costCenter: 'ingenieria', month: '2026-10', approvedUsdMinor: 85_050,
     })));
   });
 

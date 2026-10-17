@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import type { ExtractionClaims, SourceKind } from '../../shared/domain/types';
+import { ProviderCallLimitError, type ProviderAttemptHook } from '../model-attempt';
 import { extractionClaimsSchema, geminiExtractionSchema } from './schema';
 
 const MAX_RETRIES = 2;
@@ -20,6 +21,7 @@ export interface GeminiInput {
   sourceKind: SourceKind;
   sourceText: string;
   image?: { bytes: Buffer; mimeType: string };
+  onAttempt?: ProviderAttemptHook;
 }
 
 export async function extractClaims(input: GeminiInput): Promise<ExtractionClaims | null> {
@@ -37,6 +39,7 @@ export async function extractClaims(input: GeminiInput): Promise<ExtractionClaim
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     try {
+      input.onAttempt?.();
       const response = await ai.models.generateContent({
         model,
         contents: [{ role: 'user', parts: documentPart }],
@@ -45,7 +48,8 @@ export async function extractClaims(input: GeminiInput): Promise<ExtractionClaim
           responseMimeType: 'application/json',
           responseJsonSchema: geminiExtractionSchema,
           temperature: 0,
-          httpOptions: { timeout: REQUEST_TIMEOUT_MS },
+          // Keep retries in this bounded loop so every request passes the quota hook.
+          httpOptions: { timeout: REQUEST_TIMEOUT_MS, retryOptions: { attempts: 1 } },
         },
       });
       if (!response.text) {
@@ -69,6 +73,7 @@ export async function extractClaims(input: GeminiInput): Promise<ExtractionClaim
       }
       return parsed.data;
     } catch (error) {
+      if (error instanceof ProviderCallLimitError) throw error;
       if (getStatus(error) === 429 && attempt < MAX_RETRIES) {
         await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** attempt));
         continue;

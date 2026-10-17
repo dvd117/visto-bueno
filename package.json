@@ -8,6 +8,7 @@
     "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "record:jev": "tsx scripts/record-jev-set.ts",
     "start": "tsx src/server.ts",
     "test": "vitest run"
   },

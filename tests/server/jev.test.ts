@@ -13,6 +13,7 @@ vi.mock('@typesafe-ai/sdk', () => ({
 }));
 
 import { askJev } from '../../src/server/jev/client';
+import { ProviderCallLimitError } from '../../src/server/model-attempt';
 
 const root = process.cwd();
 let testRoot = '';
@@ -71,13 +72,15 @@ describe('askJev', () => {
     writeFileSync(path, JSON.stringify({ answers: sdkResult.answers, inputTokens: 17, latencyMs: 42 }));
     vi.stubEnv('TYPESAFE_API_KEY', '');
 
-    await expect(askJev({ ...request, mode: 'replay' })).resolves.toEqual({
+    const onAttempt = vi.fn();
+    await expect(askJev({ ...request, mode: 'replay', onAttempt })).resolves.toEqual({
       ok: true,
       answers: sdkResult.answers,
       latencyMs: 42,
       recorded: true,
       inputTokens: 17,
     });
+    expect(onAttempt).not.toHaveBeenCalled();
     expect(systemOne).not.toHaveBeenCalled();
   });
 
@@ -99,18 +102,25 @@ describe('askJev', () => {
 
   it('returns missing_recording when replay has no matching file', async () => {
     vi.stubEnv('TYPESAFE_API_KEY', '');
+    const onAttempt = vi.fn();
 
-    await expect(askJev({ ...request, mode: 'replay' })).resolves.toEqual({
+    await expect(askJev({ ...request, mode: 'replay', onAttempt })).resolves.toEqual({
       ok: false,
       error: 'missing_recording',
     });
+    expect(onAttempt).not.toHaveBeenCalled();
     expect(systemOne).not.toHaveBeenCalled();
   });
 
   it('records a live SDK response under the canonical request hash', async () => {
-    systemOne.mockResolvedValue(sdkResult);
+    const order: string[] = [];
+    const onAttempt = vi.fn(() => order.push('attempt'));
+    systemOne.mockImplementation(async () => {
+      order.push('request');
+      return sdkResult;
+    });
 
-    const result = await askJev({ ...request, mode: 'record' });
+    const result = await askJev({ ...request, mode: 'record', onAttempt });
     const path = recordingPath(request.state, request.questions);
 
     expect(result).toMatchObject({ ok: true, answers: sdkResult.answers, recorded: true, inputTokens: 17 });
@@ -119,11 +129,23 @@ describe('askJev', () => {
     expect(Number.isFinite(JSON.parse(recording).latencyMs)).toBe(true);
     expect(recording).not.toContain('test-key');
     expect(recording).not.toContain('AL-037');
+    expect(onAttempt).toHaveBeenCalledOnce();
+    expect(order).toEqual(['attempt', 'request']);
     expect(systemOne).toHaveBeenCalledOnce();
     expect(systemOne).toHaveBeenCalledWith(
       { state: request.state, questions: request.questions, model: 'test-model' },
-      expect.objectContaining({ timeout: 3_000, signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ timeout: 3_000, retry: { maxRetries: 0 }, signal: expect.any(AbortSignal) }),
     );
+  });
+
+  it('does not reserve quota for an invalid request', async () => {
+    const onAttempt = vi.fn();
+
+    await expect(askJev({ ...request, state: [] as unknown as object, mode: 'live', onAttempt }))
+      .resolves.toEqual({ ok: false, error: 'malformed' });
+
+    expect(onAttempt).not.toHaveBeenCalled();
+    expect(systemOne).not.toHaveBeenCalled();
   });
 
   it('maps malformed SDK responses to malformed without throwing', async () => {
@@ -144,14 +166,27 @@ describe('askJev', () => {
 
   it.each(['live', 'record'] as const)('returns no_key in %s mode when the key is missing', async (mode) => {
     vi.stubEnv('TYPESAFE_API_KEY', '');
+    const onAttempt = vi.fn();
 
-    await expect(askJev({ ...request, mode })).resolves.toEqual({ ok: false, error: 'no_key' });
+    await expect(askJev({ ...request, mode, onAttempt })).resolves.toEqual({ ok: false, error: 'no_key' });
+    expect(onAttempt).not.toHaveBeenCalled();
     expect(systemOne).not.toHaveBeenCalled();
   });
 
   it('maps SDK failures to http_error without throwing', async () => {
+    const onAttempt = vi.fn();
     systemOne.mockRejectedValue(new Error('provider failed'));
 
-    await expect(askJev({ ...request, mode: 'live' })).resolves.toEqual({ ok: false, error: 'http_error' });
+    await expect(askJev({ ...request, mode: 'live', onAttempt })).resolves.toEqual({ ok: false, error: 'http_error' });
+    expect(onAttempt).toHaveBeenCalledOnce();
+  });
+
+  it('does not issue a request when the quota hook denies it', async () => {
+    const denied = new ProviderCallLimitError('quota denied');
+    const onAttempt = vi.fn(() => { throw denied; });
+
+    await expect(askJev({ ...request, mode: 'live', onAttempt })).rejects.toBe(denied);
+    expect(onAttempt).toHaveBeenCalledOnce();
+    expect(systemOne).not.toHaveBeenCalled();
   });
 });
