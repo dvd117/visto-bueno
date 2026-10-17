@@ -1,0 +1,29 @@
+.datos-page .datos-control {
+  box-sizing: border-box;
+  color: #191919;
+  font: inherit;
+}
+
+.datos-page .datos-save-button {
+  color: #ffffff;
+  background-color: #191919;
+}
+
+.datos-page .datos-save-button:focus-visible {
+  outline: 3px solid #191919;
+  outline-offset: 3px;
+}
+
+.datos-page .datos-save-button:disabled {
+  border-color: #555555;
+  color: #555555;
+  background-color: #f5f5f5;
+  cursor: wait;
+  opacity: 1;
+}
+
+.datos-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}

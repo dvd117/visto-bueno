@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Decimal from 'decimal.js';
 import type { ApiError } from '../../../shared/api';
 import type { Budget, Contract, CostCenter, Currency, FxRate, Treasury, Vendor } from '../../../shared/domain/types';
+import './datos.css';
 
 export type DataTable = 'vendors' | 'contracts' | 'budgets' | 'treasury';
 export type CsvTable = 'vendors' | 'contracts' | 'budgets' | 'fx';
@@ -94,8 +95,8 @@ function EditableTable<T>({
   onSave(row: T, original: T): Promise<void>;
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table aria-label={label} className="w-full min-w-[760px] border-collapse text-left text-xs">
+    <div className="datos-table-scroll overflow-x-auto">
+      <table aria-label={label} className="datos-table w-full min-w-[760px] border-collapse text-left text-xs">
         <thead className="border-y-[3px] border-line-bold bg-wash text-[10px] font-bold uppercase tracking-[0.12em] text-soft">
           <tr>
             {columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3">{column.label}</th>)}
@@ -159,8 +160,9 @@ function EditableRow<T>({
           ) : column.options ? (
             <select
               aria-label={`${column.label} — ${label}`}
-              className="w-full min-w-24 border border-line bg-page px-2 py-1 text-ink focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink"
+              className="datos-control w-full min-w-24 border border-line bg-page px-2 py-1 text-ink focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink"
               value={draft[column.key] ?? ''}
+              style={{ minWidth: `${Math.max(12, (column.options.find((option) => option.value === draft[column.key])?.label ?? column.label).length + 4)}ch` }}
               onChange={(event) => {
                 const value = event.currentTarget.value;
                 setDraft((current) => ({ ...current, [column.key]: value }));
@@ -171,9 +173,10 @@ function EditableRow<T>({
           ) : (
             <input
               aria-label={`${column.label} — ${label}`}
-              className="w-full min-w-24 border border-line bg-page px-2 py-1 text-ink focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink"
+              className="datos-control w-full min-w-24 border border-line bg-page px-2 py-1 text-ink focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink"
               type={column.inputType ?? 'text'}
               value={draft[column.key] ?? ''}
+              style={{ minWidth: `${Math.max(12, (draft[column.key] ?? column.value(row)).length + 4)}ch` }}
               onChange={(event) => {
                 const value = event.currentTarget.value;
                 setDraft((current) => ({ ...current, [column.key]: value }));
@@ -185,7 +188,7 @@ function EditableRow<T>({
       <td className="whitespace-nowrap px-3 py-2">
         <button
           type="button"
-          className="bg-ink px-3 py-2 font-semibold text-white focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-wait disabled:opacity-60"
+          className="datos-save-button bg-ink px-3 py-2 font-semibold text-white focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-wait disabled:opacity-60"
           disabled={saving}
           onClick={() => void save()}
         >
@@ -363,7 +366,7 @@ export default function Datos({ api }: { api: DatosApi }) {
   }
 
   return (
-    <main className="mx-auto max-w-[1510px] px-4 py-8 text-ink sm:px-6">
+    <main className="datos-page mx-auto max-w-[1510px] px-4 py-8 text-ink sm:px-6">
       <header className="mb-8 border-b border-line pb-5">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-soft">03 / CONFIGURACIÓN DE DATOS</p>
         <h1 className="text-3xl font-extrabold tracking-tight">Preparar datos</h1>
