@@ -153,12 +153,13 @@ describe('Andina seed', () => {
       vendorId: 'valentina-ruiz', billingFrequency: 'one_time', costCenter: 'diseno',
       start: '2026-10-21', end: '2026-10-31',
     });
-    expect(labels.filter((label) => label.expected === 'ready')).toHaveLength(8);
+    expect(labels.filter((label) => label.expected === 'ready')).toHaveLength(7);
     expect(labels.filter((label) => label.expected === 'approval_required')).toHaveLength(3);
-    expect(labels.filter((label) => label.expected === 'review_required')).toHaveLength(2);
+    expect(labels.filter((label) => label.expected === 'review_required')).toHaveLength(3);
     expect(labels.filter((label) => label.expected === 'stopped')).toHaveLength(7);
     const labelsById = new Map(labels.map((label) => [label.invoiceId, label]));
-    expect(labelsById.get('AL-037')).toMatchObject({ sourceKind: 'pdf', expected: 'ready', reasonCheck: 'R5' });
+    // AL-037 passes every deterministic rule; its genuine JEV scope_match answer (below the confidence floor) routes it to review.
+    expect(labelsById.get('AL-037')).toMatchObject({ sourceKind: 'pdf', expected: 'review_required', reasonCheck: 'jev:scope_match' });
     expect(labelsById.get('AL-038')).toMatchObject({ expected: 'approval_required', reasonCheck: 'R6' });
     expect(labelsById.get('AL-040')).toMatchObject({ expected: 'ready', reasonCheck: 'jev:fuzzy_duplicate' });
     expect(labelsById.get('AL-034')).toMatchObject({ sourceKind: 'pdf', expected: 'stopped', reasonCheck: 'jev:document_type' });
