@@ -1,0 +1,14 @@
+Correo recibido
+De: facturacion@norteclaro.example
+Asunto: Servicios profesionales de octubre
+
+Cuenta de cobro para Andina Labs Inc. (datos de prueba)
+Beneficiario: Norte Claro Soluciones S.A.S.
+NIT: 900.000.202-5
+Identificador de factura: AL-031
+Fecha: 12/10/2026
+Vence: 27/10/2026
+
+Concepto: Consultoría de seguridad de aplicaciones, octubre de 2026
+Total a pagar: USD 950,00
+Cuenta de abono: Banco Andino ···· 2295

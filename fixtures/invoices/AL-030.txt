@@ -1,0 +1,14 @@
+Correo de facturación
+De: cuentas@pixelpatio.example
+Asunto: Factura de diseño de interfaz · octubre
+
+Factura para Andina Labs Inc. (empresa ficticia)
+Beneficiario: Pixel Patio S.A.S.
+NIT: 900.000.101-3
+Factura número: AL-030
+Fecha de emisión: 10/10/2026
+Fecha de vencimiento: 25/10/2026
+
+Servicio: Diseño y mantenimiento de interfaz, octubre de 2026
+Monto total: USD 780,00
+Datos de pago: Banco Andino, cuenta ···· 1184
