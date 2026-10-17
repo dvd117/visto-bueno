@@ -524,6 +524,9 @@ export function resolveFlag(
     }
     if (db.prepare('SELECT 1 FROM flag_resolutions WHERE workspace_id = ? AND invoice_id = ? AND flag_id = ?')
       .get(workspaceId, invoiceId, flagId)) throw new Error(`Flag already resolved: ${flagId}`);
+    if (!invoice.extraction || !invoice.jev) {
+      throw new Error('Cannot re-evaluate current invoice data to resolve this flag.');
+    }
 
     const at = nowIso();
     const resolved = { choice: resolution.choice, reason: resolution.reason, by: resolution.approver, at };
@@ -532,42 +535,27 @@ export function resolveFlag(
       .run(workspaceId, invoiceId, flagId, JSON.stringify(resolved), at);
     const resolvedFlagIds = db.prepare('SELECT flag_id FROM flag_resolutions WHERE workspace_id = ? AND invoice_id = ?')
       .all(workspaceId, invoiceId).map((row) => (row as { flag_id: string }).flag_id);
-    const checks = previous.decision.checks;
-    const decision = combine({
-      verify: checks.filter((check) => check.kind === 'verify'),
-      rules: checks.filter((check) => check.kind === 'rule'),
-      jev: checks.filter((check) => check.kind === 'judgment'),
+    const refreshed = evaluate(
+      db,
+      workspaceId,
+      invoice,
+      { extraction: invoice.extraction, jev: invoice.jev },
+      { today: invoice.evaluatedToday ?? DEFAULT_DEMO_TODAY },
       resolvedFlagIds,
-    });
+    );
+    const decision = refreshed.record.decision;
     const next = buildRecord({
-      id: randomUUID(), invoiceId,
-      invoiceHash: invoice.invoiceHash ?? sha256(invoiceId),
-      decision: {
-        ...decision,
-        amountUsdMinor: previous.decision.amountUsdMinor,
-        contractId: previous.decision.contractId,
-        costCenter: previous.decision.costCenter,
-      },
-      rulesSnapshot: previous.rulesSnapshot,
-      dataVersions: previous.dataVersions,
-      jev: previous.jev,
+      ...refreshed.record,
+      id: randomUUID(),
+      invoiceHash: invoice.invoiceHash ?? refreshed.invoiceHash,
+      decision,
       createdAt: at,
       supersedes: previous.id,
     });
-    insertRecord(db, workspaceId, next);
-    db.prepare('UPDATE invoices SET status = ?, latest_record_id = ?, updated_at = ? WHERE workspace_id = ? AND id = ?')
-      .run(next.decision.status, next.id, at, workspaceId, invoiceId);
-    writeCommitment(db, workspaceId, invoiceId,
-      next.decision.status === 'stopped' ? null : next.decision.status === 'ready' ? 'committed' : 'reserved',
-      {
-        vendorId: invoice.vendorId,
-        contractId: invoice.contractId,
-        period: invoice.contractPeriod,
-        month: invoice.month,
-        costCenter: invoice.costCenter,
-        amountUsdMinor: invoice.amountUsdMinor,
-        normalizedInvoiceId: invoice.normalizedInvoiceId,
-      });
+    writeEvaluation(db, workspaceId, { ...refreshed, record: next }, decision.status);
+    const commitmentState = decision.status === 'stopped' ? null
+      : decision.status === 'ready' ? 'committed' : 'reserved';
+    writeCommitment(db, workspaceId, invoiceId, commitmentState, commitmentFields(refreshed));
     writeAudit(db, workspaceId, {
       invoiceId, event: 'flag_resolved', status: next.decision.status, actor: resolution.approver,
       reason: resolution.reason, headline: next.decision.headline, seal: next.seal, recordId: next.id,
@@ -585,13 +573,17 @@ export function markStale(
     touchWorkspace(db, workspaceId);
     if (!scope.rules && !scope.vendorId && !scope.contractId) throw new Error('A stale scope is required.');
     const pending = db.prepare(`SELECT id FROM invoices WHERE workspace_id = ?
-      AND status IN ('approval_required', 'review_required')`).all(workspaceId) as Array<{ id: string }>;
+      AND status IN ('ready', 'approval_required', 'review_required')`).all(workspaceId) as Array<{ id: string }>;
+    const contractVendorId = scope.contractId === undefined
+      ? undefined
+      : getWorkspaceData(db, workspaceId).contracts.find(({ id }) => id === scope.contractId)?.vendorId;
     const timestamp = nowIso();
     for (const { id } of pending) {
       const invoice = invoiceOrThrow(db, workspaceId, id);
       const affected = scope.rules === true
         || (scope.vendorId !== undefined && invoice.vendorId === scope.vendorId)
-        || (scope.contractId !== undefined && invoice.contractId === scope.contractId);
+        || (scope.contractId !== undefined && (invoice.contractId === scope.contractId
+          || (contractVendorId !== undefined && invoice.vendorId === contractVendorId)));
       if (!affected) continue;
       db.prepare("UPDATE invoices SET status = 'stale', updated_at = ? WHERE workspace_id = ? AND id = ?")
         .run(timestamp, workspaceId, id);
