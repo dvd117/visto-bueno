@@ -135,7 +135,12 @@ export function Bitacora({ api }: BitacoraProps) {
 
       {error && <p role="alert" className="text-stopped">{error}</p>}
       {entries === null && !error && <p role="status" className="text-soft">Cargando bitácora…</p>}
-      {entries?.length === 0 && <p className="border-t-[3px] border-line-bold py-4 text-soft">Aún no hay registros en la bitácora.</p>}
+      {entries?.length === 0 && (
+        <p className="border-t-[3px] border-line-bold py-4 text-soft">
+          Aún no hay registros en la bitácora.{' '}
+          Ve a Bandeja, recibe una factura de prueba y pulsa Procesar para crear el primer registro.
+        </p>
+      )}
       {entries && entries.length > 0 && (
         <ol className="border-t-[3px] border-line-bold">
           {entries.map((entry, index) => (
