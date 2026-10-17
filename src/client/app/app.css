@@ -1228,6 +1228,10 @@ textarea {
     overflow: hidden;
   }
 
+  .frame:has(.workspace) > .masthead {
+    flex: none;
+  }
+
   .frame:has(.workspace) > main {
     display: flex;
     min-height: 0;
