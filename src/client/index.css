@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+/* Design tokens: docs/design/DESIGN.md (direction C, Expediente suizo). */
+:root {
+  --page: #ffffff; --sheet: #ffffff; --raised: #ffffff; --wash: #f5f5f5;
+  --ink: #191919; --soft: #555555; --faint: #6d6d6d;
+  --line: #d9d9d9; --line-bold: #1a1a1a; --focus: #191919;
+  --ready: #18734f; --approval: #986411; --review: #245e88; --stopped: #b12621;
+  --extract-bg: #ededed; --extract-border: #171717;
+  --suspect-bg: #f8e5e3; --suspect-text: #ad2c25;
+}
+
+@theme {
+  --color-page: #ffffff;
+  --color-wash: #f5f5f5;
+  --color-ink: #191919;
+  --color-soft: #555555;
+  --color-faint: #6d6d6d;
+  --color-line: #d9d9d9;
+  --color-line-bold: #1a1a1a;
+  --color-ready: #18734f;
+  --color-approval: #986411;
+  --color-review: #245e88;
+  --color-stopped: #b12621;
+  --color-suspect-bg: #f8e5e3;
+  --color-suspect-text: #ad2c25;
+  --color-extract-bg: #ededed;
+
+  --radius-none: 0;
+  --radius: 0;
+  --radius-xs: 0; --radius-sm: 0; --radius-md: 0; --radius-lg: 0; --radius-xl: 0; --radius-2xl: 0;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html {
+  font-variant-numeric: tabular-nums;
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { app } from './server';
+import { app } from '../src/server/app';
 
 describe('health endpoint', () => {
   it('returns a liveness response without external dependencies', async () => {

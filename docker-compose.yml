@@ -20,12 +20,17 @@ services:
       - "traefik.http.middlewares.${ROUTER_ID:?required}-robots.headers.customresponseheaders.X-Robots-Tag=${ROBOTS_TAG:-}"
       - "traefik.http.services.${ROUTER_ID:?required}.loadbalancer.server.port=3000"
       - "traefik.docker.network=dokploy-network"
+    volumes:
+      - visto-bueno-data:/app/data
     networks:
       - dokploy-network
     deploy:
       resources:
         limits:
           memory: 512M
+
+volumes:
+  visto-bueno-data:
 
 networks:
   dokploy-network:

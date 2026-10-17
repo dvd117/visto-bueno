@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Visto Bueno — Tres direcciones de diseño</title>
+<style>
+/* VISTO BUENO — offline single-file design study. No remote assets. */
+:root{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-synthesis:none;font-variant-numeric:tabular-nums;scroll-behavior:auto}
+*{box-sizing:border-box}
+body{margin:0;padding-top:53px;background:var(--page);color:var(--ink);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;color:inherit}button:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+button:disabled{cursor:default}h1,h2,h3,p{margin:0}h1,h2,h3{line-height:1.16}strong{font-weight:680}
+:root{--ready:#23705b;--approval:#a06b18;--review:#3d6889;--stopped:#a54134}
+body[data-direction="a"]{--page:#f0ede5;--sheet:#f9f6ee;--raised:#fffcf5;--ink:#242b2d;--soft:#5d625e;--faint:#797e79;--line:#cac8bc;--line-bold:#777e78;--accent:#28485d;--focus:#315e76;--wash:#e9e6dd;--ready:#315f54;--approval:#76591c;--review:#315b75;--stopped:#a13f32}
+body[data-direction="b"]{--page:#19232b;--sheet:#202c35;--raised:#26343e;--ink:#ecf1f0;--soft:#aab7bd;--faint:#85959e;--line:#3a4a53;--line-bold:#6b7b84;--accent:#d8e1e3;--focus:#e0e6e9;--wash:#1a2730;--ready:#6cc6a5;--approval:#e3b661;--review:#7fb4d8;--stopped:#ee897f;color-scheme:dark}
+body[data-direction="c"]{--page:#fff;--sheet:#fff;--raised:#fff;--ink:#191919;--soft:#555;--faint:#6d6d6d;--line:#d9d9d9;--line-bold:#1a1a1a;--accent:#191919;--focus:#191919;--wash:#f5f5f5;--ready:#18734f;--approval:#986411;--review:#245e88;--stopped:#b12621}
+.skip-link{position:absolute;top:-80px;left:12px;padding:8px 12px;background:var(--raised);z-index:30}.skip-link:focus{top:64px}
+.direction-switch{position:fixed;z-index:25;inset:0 0 auto 0;min-height:53px;background:var(--raised);border-bottom:1px solid var(--line-bold);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px max(18px,calc((100vw - 1512px)/2))}
+.direction-title{display:flex;gap:14px;align-items:center;min-width:0;font-size:10px;letter-spacing:.12em;font-weight:800;text-transform:uppercase;white-space:nowrap;color:var(--soft)}
+.direction-title .direction-descriptor{color:var(--ink);font-weight:560;letter-spacing:.06em;overflow:hidden;text-overflow:ellipsis}
+.theme-tabs{display:flex;align-items:stretch;border:1px solid var(--line-bold);flex:0 0 auto}
+.theme-tabs button{height:32px;min-width:44px;border:0;border-right:1px solid var(--line);background:transparent;font-weight:800;font-size:12px;letter-spacing:.08em}
+.theme-tabs button:last-child{border-right:0}.theme-tabs button[aria-selected="true"]{background:var(--ink);color:var(--sheet)}
+.frame{max-width:1512px;margin:0 auto;padding:27px 28px 75px}
+.masthead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 22px;align-items:end}
+.brandline{display:flex;align-items:center;gap:15px;margin-bottom:17px}.wordmark{font-weight:880;letter-spacing:-.085em;font-size:23px;line-height:1}
+.wordmark .wordmark-stop{color:var(--stopped)}.divider-vertical{height:22px;width:1px;background:var(--line-bold)}
+.mast-kicker{color:var(--soft);font-size:10px;letter-spacing:.17em;text-transform:uppercase;font-weight:750}
+.company-name{font-size:33px;letter-spacing:-.055em;font-weight:730}.company-meta{margin-top:7px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:var(--soft);font-size:12px}
+.tag{display:inline-block;font-size:10px;font-weight:750;letter-spacing:.055em;text-transform:uppercase;border:1px solid var(--line-bold);padding:3px 6px;color:var(--soft);line-height:1.2}
+.header-actions{display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding-bottom:4px}
+.action-button{border:1px solid var(--line-bold);background:transparent;padding:10px 13px;font-weight:690;white-space:nowrap}
+.action-button.primary{background:var(--ink);color:var(--sheet)}.action-button:hover{outline:1px solid var(--line-bold);outline-offset:-3px}
+.demo-banner{grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;gap:10px;border:1px solid var(--line);color:var(--soft);font-size:12px;background:var(--wash)}
+.demo-icon{display:grid;place-items:center;border:1px solid currentColor;width:17px;height:17px;font:700 11px ui-monospace,monospace;flex-shrink:0}
+.navigation{grid-column:1/-1;display:flex;gap:23px;align-items:center;border-bottom:1px solid var(--line-bold);margin-top:3px;padding-top:3px;overflow-x:auto;scrollbar-width:thin}
+.navigation a{text-decoration:none;color:var(--soft);padding:12px 0;font-weight:560;white-space:nowrap;border-bottom:2px solid transparent}
+.navigation a.active{color:var(--ink);font-weight:790;border-bottom-color:var(--ink)}
+.overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(200px,1.22fr);gap:0;margin:23px 0 26px;border:1px solid var(--line-bold);background:var(--sheet)}
+.metric{min-width:0;padding:15px 17px 17px;border-right:1px solid var(--line);position:relative}.metric:last-child{border-right:0}
+.metric-label{display:flex;align-items:flex-start;gap:8px;color:var(--soft);font-size:11px;line-height:1.3;min-height:30px}
+.metric-count{margin-top:8px;font-size:37px;letter-spacing:-.06em;font-weight:680;line-height:1;font-variant-numeric:tabular-nums}
+.metric-icon{font-size:16px;line-height:14px;font-weight:860;min-width:14px;text-align:center;color:var(--state-color)}
+.metric-ready{--state-color:var(--ready)}.metric-approval{--state-color:var(--approval)}.metric-review{--state-color:var(--review)}.metric-stopped{--state-color:var(--stopped)}
+.metric-run{display:flex;flex-direction:column;justify-content:space-between;gap:12px}.metric-run .metric-count{font-size:24px;letter-spacing:-.06em}
+.run-description{font-size:11px;color:var(--soft)}.run-stat{font-size:12px;font-weight:650;line-height:1.5}
+.workspace{display:grid;grid-template-columns:minmax(0,45fr) minmax(0,55fr);gap:21px;align-items:start}
+.panel{min-width:0;background:var(--sheet);border:1px solid var(--line-bold)}.panel-top{padding:20px 20px 14px;border-bottom:1px solid var(--line)}
+.eyebrow{color:var(--soft);text-transform:uppercase;font-size:10px;font-weight:770;letter-spacing:.17em}
+.panel-toprow{display:flex;justify-content:space-between;align-items:start;gap:10px}.section-title{margin:8px 0 5px;font-size:24px;letter-spacing:-.035em;font-weight:700}
+.section-description{font-size:11px;color:var(--soft)}.process-button{border:1px solid var(--line-bold);background:var(--ink);color:var(--sheet);padding:9px 13px;font-size:12px;font-weight:760;white-space:nowrap}
+.process-button:disabled{opacity:.58}
+.list-guide{display:flex;justify-content:space-between;gap:8px;padding:12px 20px 9px;border-bottom:1px solid var(--line);font-size:10px;color:var(--faint);font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.invoice-list{display:flex;flex-direction:column}.invoice-row{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr) minmax(90px,108px) minmax(110px,148px);gap:10px;align-items:start;text-align:left;border:0;border-bottom:1px solid var(--line);padding:14px 17px 14px 19px;width:100%;background:transparent;min-width:0;transition:box-shadow 130ms linear}
+.invoice-row:last-child{border-bottom:0}.invoice-row:hover{background:var(--wash)}.invoice-row[aria-pressed="true"]{background:var(--wash);box-shadow:inset 4px 0 0 var(--accent)}
+.invoice-ordinal{font-size:10px;color:var(--faint);padding-top:3px;font-variant-numeric:tabular-nums}
+.invoice-name{display:block;font-weight:750;font-size:13px;line-height:1.25;overflow-wrap:anywhere}
+.invoice-id{display:block;font-size:10px;letter-spacing:.065em;color:var(--soft);margin-bottom:4px;font-weight:700}
+.invoice-concept{display:block;color:var(--soft);font-size:11px;margin-top:4px;overflow-wrap:anywhere}
+.invoice-reason{display:block;color:var(--faint);font-size:10px;margin-top:5px;line-height:1.34;overflow-wrap:anywhere}
+.invoice-value{text-align:right;min-width:0;padding-top:18px}.invoice-value strong{display:block;font-size:13px;letter-spacing:-.02em;white-space:nowrap;font-weight:740}
+.invoice-value span{display:block;font-size:10px;color:var(--soft);margin-top:4px;white-space:nowrap}
+.invoice-state{padding-top:17px;min-width:0;display:flex;align-items:flex-end;flex-direction:column;gap:6px}
+.status-chip{display:inline-flex;align-items:center;gap:6px;font-size:10px;line-height:1.2;font-weight:780;max-width:100%;text-align:left}
+.status-chip .status-icon{flex:0 0 auto;width:17px;height:17px;display:inline-grid;place-items:center;border:1px solid currentColor;font-weight:850;font-size:11px}
+.status-chip .status-text{min-width:0;overflow-wrap:anywhere}
+.status-ready{color:var(--ready)}.status-approval{color:var(--approval)}.status-review{color:var(--review)}.status-stopped{color:var(--stopped)}
+.invoice-due{font-size:10px;color:var(--soft);white-space:nowrap}.invoice-list.processing .invoice-row:not(.resolved) .invoice-state .status-chip{visibility:hidden}
+.invoice-list .status-chip.just-resolved{animation:chip-reveal 150ms ease-out both}@keyframes chip-reveal{from{opacity:0;transform:translateX(-3px)}to{opacity:1;transform:translateX(0)}}
+.list-footer{border-top:1px solid var(--line);padding:12px 19px;font-size:11px;color:var(--soft);display:flex;justify-content:space-between;gap:10px}
+.expediente{scroll-margin-top:64px}.record{padding:22px 25px 19px}.record-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.record-id{font-size:11px;color:var(--soft);font-weight:690}.record-lede{padding:17px 0 18px;border-bottom:1px solid var(--line-bold);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start}
+.record-vendor{font-size:26px;letter-spacing:-.04em;font-weight:700;line-height:1.13;overflow-wrap:anywhere}.record-reason{font-size:13px;color:var(--soft);margin-top:10px;max-width:54ch}
+.large-state{border:1.5px solid currentColor;padding:8px 9px;display:inline-flex;align-items:center;gap:6px;max-width:168px;font-size:11px;line-height:1.18;font-weight:850;text-transform:uppercase;letter-spacing:.02em;text-align:center}
+.large-state .status-icon{font-size:18px;font-weight:800;line-height:1}.large-state .status-text{overflow-wrap:anywhere}
+.action-box{margin:16px 0 24px;border:1px solid var(--line-bold);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:13px;background:var(--wash)}
+.action-text{max-width:58ch}.action-label{font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.1em;color:var(--ink);margin-bottom:6px}.action-copy{font-size:12px;color:var(--soft)}
+.reeval-button{border:1px solid var(--line-bold);background:var(--sheet);padding:10px 11px;font-size:11px;font-weight:790;flex:0 0 auto;max-width:155px}
+.record-section{margin-top:25px}.section-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px;border-bottom:1px solid var(--line-bold);padding-bottom:11px}
+.section-heading h3{font-size:17px;letter-spacing:-.025em;font-weight:750}.section-note{font-size:10px;color:var(--soft);text-align:right}
+.comparison{display:grid;border:1px solid var(--line)}.compare-head,.compare-row{display:grid;grid-template-columns:minmax(80px,24%) minmax(0,38%) minmax(0,38%)}
+.compare-head{background:var(--wash);font-size:10px;letter-spacing:.045em;font-weight:760;color:var(--soft)}
+.compare-head>div,.compare-row>div{padding:10px 11px;border-right:1px solid var(--line);min-width:0;overflow-wrap:anywhere}
+.compare-head>div:last-child,.compare-row>div:last-child{border-right:0}
+.compare-row{border-top:1px solid var(--line);font-size:12px;line-height:1.38}
+.compare-key{font-size:11px;color:var(--soft);font-weight:740}.compare-row .compared-value{font-weight:600}
+.compare-row.different{background:var(--wash)}.compare-row.different .compared-value{color:var(--stopped)}
+.difference-tag{display:inline-block;margin-top:6px;font-size:9px;line-height:1.2;letter-spacing:.055em;text-transform:uppercase;color:var(--stopped);border:1px solid var(--stopped);padding:3px 5px;font-weight:830}
+.trail{padding:0;margin:0;list-style:none;border:1px solid var(--line)}.trail li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);align-items:start}
+.trail li:last-child{border-bottom:0}.trail-icon{width:19px;height:19px;display:grid;place-items:center;border:1px solid currentColor;font-weight:850;font-size:12px}
+.trail-pass .trail-icon{color:var(--ready)}.trail-fail .trail-icon{color:var(--stopped)}.trail-alert .trail-icon{color:var(--approval)}
+.trail-check{font-weight:680;font-size:12px;line-height:1.3}.trail-explanation{font-size:11px;color:var(--soft);margin-top:4px}
+.trail-source{text-align:right;font-size:10px;min-width:99px;color:var(--soft);font-weight:650}
+.jevo-bar{width:89px;height:4px;background:var(--line);margin:7px 0 0 auto}.jevo-bar span{display:block;height:100%;background:var(--approval)}
+.document-switch{display:flex;max-width:100%;border:1px solid var(--line-bold);margin:12px 0 12px;width:max-content}
+.document-switch button{border:0;border-right:1px solid var(--line);background:transparent;padding:9px 10px;font-size:11px;text-align:center;font-weight:680}
+.document-switch button:last-child{border-right:0}.document-switch button[aria-pressed="true"]{background:var(--ink);color:var(--sheet)}
+.document-surface{background:var(--raised);border:1px solid var(--line);padding:17px 15px;min-width:0}
+.document-text{white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal;margin:0;font:11px/1.85 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink)}
+.extracted{background:var(--extract-bg);border-bottom:1.5px solid var(--extract-border);font-weight:760;padding:1px 0}
+.suspect{background:var(--suspect-bg);color:var(--suspect-text);border-left:3px solid var(--stopped);padding:2px 5px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+body[data-direction="a"]{--extract-bg:#e0eaf0;--extract-border:#28485d;--suspect-bg:#f0ddd6;--suspect-text:#873525}
+body[data-direction="b"]{--extract-bg:#33434c;--extract-border:#d9e1e2;--suspect-bg:#463130;--suspect-text:#f7c4be}
+body[data-direction="c"]{--extract-bg:#ededed;--extract-border:#171717;--suspect-bg:#f8e5e3;--suspect-text:#ad2c25}
+.original-sheet{max-width:470px;margin:0 auto;background:var(--sheet);border:1px solid var(--line);padding:22px 22px 18px;min-height:234px}
+.original-company{font-size:17px;letter-spacing:-.03em;font-weight:760}.original-muted{font-size:10px;color:var(--soft);margin-top:3px}
+.original-rule{height:1px;background:var(--line-bold);margin:19px 0}.original-line{display:flex;justify-content:space-between;gap:12px;font-size:11px;margin:8px 0;flex-wrap:wrap}
+.original-total{border-top:1px solid var(--line-bold);padding-top:12px;margin-top:16px;font-weight:790;font-size:14px;display:flex;justify-content:space-between;gap:8px}
+.original-warning{border-left:3px solid var(--stopped);padding-left:9px;margin-top:18px;font-size:10px;color:var(--soft)}
+.original-caption{font-size:10px;color:var(--faint);margin:10px 0 0;line-height:1.4}
+.decision-seal{border-top:1px solid var(--line-bold);margin-top:27px;padding-top:14px;color:var(--soft);font-size:10px;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.short-details{border:1px solid var(--line);margin-top:19px}.short-row{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:10px 12px;border-bottom:1px solid var(--line)}.short-row:last-child{border-bottom:0}.short-row span:first-child{font-size:11px;color:var(--soft)}
+.short-note{margin-top:16px;font-size:12px;color:var(--soft);border-left:2px solid var(--line-bold);padding-left:12px}
+.feedback{position:fixed;z-index:40;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--sheet);border:1px solid var(--line-bold);padding:11px 15px;font-size:12px;max-width:min(540px,calc(100vw - 26px));box-shadow:0 2px 9px #0002}
+.feedback[hidden]{display:none}
+/* A — an annotated, filed accounting sheet */
+body[data-direction="a"] .frame{background:repeating-linear-gradient(to bottom,transparent 0,transparent 39px,rgba(55,66,69,.021) 39px,rgba(55,66,69,.021) 40px)}
+body[data-direction="a"] .company-name,body[data-direction="a"] .section-title,body[data-direction="a"] .record-vendor,body[data-direction="a"] .metric-count,body[data-direction="a"] .section-heading h3{font-family:ui-serif,Georgia,Cambria,serif;font-weight:620}
+body[data-direction="a"] .record{padding:27px 30px 24px;background:var(--raised);margin:12px;border:1px solid var(--line);outline:1px solid var(--line);outline-offset:5px}
+body[data-direction="a"] .large-state{transform:rotate(-6deg);border:2px double currentColor;padding:10px 11px;font-family:ui-serif,Georgia,serif;font-size:12px;letter-spacing:.08em}
+body[data-direction="a"] .panel-inbox .panel-top{border-bottom:2px solid var(--accent)}
+body[data-direction="a"] .invoice-row[aria-pressed="true"]{box-shadow:inset 4px 0 0 var(--accent)}
+body[data-direction="a"] .metric{border-top:3px solid transparent}body[data-direction="a"] .metric-stopped{border-top-color:var(--stopped)}
+body[data-direction="a"] .compare-row.different{box-shadow:inset 3px 0 0 var(--stopped)}
+/* B — command grid: numerical precision and stream emphasis */
+body[data-direction="b"] .wordmark-stop,body[data-direction="c"] .wordmark-stop{color:inherit}
+body[data-direction="b"] .wordmark{font-size:21px;letter-spacing:-.06em}body[data-direction="b"] .company-name{font-size:31px;font-weight:600}
+body[data-direction="b"] .frame{max-width:1560px}body[data-direction="b"] .workspace{gap:9px;grid-template-columns:minmax(0,45fr) minmax(0,55fr)}
+body[data-direction="b"] .overview{gap:7px;border:0;background:transparent;margin-top:18px;margin-bottom:13px}
+body[data-direction="b"] .metric{border:1px solid var(--line);background:var(--sheet);padding:15px 13px 14px}
+body[data-direction="b"] .metric-count,body[data-direction="b"] .invoice-id,body[data-direction="b"] .invoice-ordinal,body[data-direction="b"] .invoice-value,body[data-direction="b"] .invoice-due,body[data-direction="b"] .record-id,body[data-direction="b"] .run-stat,body[data-direction="b"] .decision-seal,body[data-direction="b"] .comparison,body[data-direction="b"] .trail-source{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+body[data-direction="b"] .metric-count{font-size:39px;font-weight:570}body[data-direction="b"] .metric-run .metric-count{font-size:22px}
+body[data-direction="b"] .panel{border-color:var(--line)}body[data-direction="b"] .panel-top{padding:16px 17px 13px}
+body[data-direction="b"] .section-title{font-size:22px;font-weight:630}body[data-direction="b"] .invoice-row{grid-template-columns:28px minmax(0,1fr) minmax(90px,108px) minmax(110px,148px);border-bottom-color:var(--line);padding:12px 13px 12px 16px}
+body[data-direction="b"] .invoice-row:before{content:"";position:absolute;left:4px;top:0;bottom:0;width:2px;background:var(--line)}
+body[data-direction="b"] .invoice-row[aria-pressed="true"]{box-shadow:none;background:var(--raised)}
+body[data-direction="b"] .invoice-row[aria-pressed="true"]:before{background:var(--ink)}
+body[data-direction="b"] .invoice-row.resolved:before{background:var(--state-rule)}
+body[data-direction="b"] .invoice-row.state-ready{--state-rule:var(--ready)}body[data-direction="b"] .invoice-row.state-approval{--state-rule:var(--approval)}body[data-direction="b"] .invoice-row.state-review{--state-rule:var(--review)}body[data-direction="b"] .invoice-row.state-stopped{--state-rule:var(--stopped)}
+body[data-direction="b"] .invoice-list:not(.processing) .invoice-row:before{background:var(--state-rule)}
+body[data-direction="b"] .invoice-list.processing .invoice-row:not(.resolved):before{background:var(--line)}
+body[data-direction="b"] .invoice-name{font-weight:660}body[data-direction="b"] .status-chip .status-icon{border-radius:0}
+body[data-direction="b"] .record{padding:22px 22px 19px}body[data-direction="b"] .record-lede{background:var(--wash);margin:13px -9px 0;padding:14px 9px;border:1px solid var(--line)}
+body[data-direction="b"] .record-vendor{font-size:23px;font-weight:620}body[data-direction="b"] .action-box{background:transparent}
+body[data-direction="b"] .compare-row.different{box-shadow:inset 3px 0 0 var(--stopped)}
+body[data-direction="b"] .trail li{grid-template-columns:22px minmax(0,1fr) auto;gap:8px;padding:10px 9px}
+/* C — large-type evidence, Swiss baseline grid */
+body[data-direction="c"] .frame{max-width:1510px;padding-top:32px}
+body[data-direction="c"] .wordmark{letter-spacing:-.075em}body[data-direction="c"] .mast-kicker{letter-spacing:.12em}
+body[data-direction="c"] .company-name{font-size:40px;letter-spacing:-.065em;font-weight:770}
+body[data-direction="c"] .overview{border-top:3px solid var(--line-bold);border-left:0;border-right:0;border-bottom:1px solid var(--line-bold);margin:29px 0}
+body[data-direction="c"] .metric{padding:16px 17px 19px}body[data-direction="c"] .metric-count{font-size:52px;font-weight:760;line-height:1}
+body[data-direction="c"] .metric-run .metric-count{font-size:29px}body[data-direction="c"] .workspace{gap:28px}
+body[data-direction="c"] .panel{border:0;border-top:3px solid var(--line-bold)}body[data-direction="c"] .panel-top{padding:22px 0 14px}
+body[data-direction="c"] .section-title{font-size:30px;font-weight:790;letter-spacing:-.05em}body[data-direction="c"] .list-guide{padding-left:0;padding-right:0}
+body[data-direction="c"] .invoice-row{padding:19px 9px 19px 4px;gap:9px;grid-template-columns:28px minmax(0,1fr) minmax(88px,110px) minmax(108px,148px)}
+body[data-direction="c"] .invoice-row[aria-pressed="true"]{box-shadow:inset 4px 0 0 var(--ink)}
+body[data-direction="c"] .invoice-name{font-size:14px;font-weight:780}body[data-direction="c"] .invoice-list{border-bottom:1px solid var(--line)}
+body[data-direction="c"] .record{padding:21px 0 16px}.record-id{font-variant-numeric:tabular-nums}
+body[data-direction="c"] .record-vendor{font-size:33px;font-weight:800;letter-spacing:-.06em}
+body[data-direction="c"] .record-lede{padding-bottom:25px;border-bottom:2px solid var(--line-bold)}
+body[data-direction="c"] .large-state{max-width:158px;border:0;border-top:4px solid currentColor;border-bottom:1px solid currentColor;padding:8px 1px;text-align:left;letter-spacing:0}
+body[data-direction="c"] .action-box{background:transparent;border-left:4px solid var(--stopped);border-top:1px solid var(--line);border-right:0;border-bottom:1px solid var(--line);padding:14px 8px 14px 17px}
+body[data-direction="c"] .section-heading h3{font-size:21px;letter-spacing:-.04em}body[data-direction="c"] .comparison{border:0;border-top:2px solid var(--line-bold)}
+body[data-direction="c"] .compare-head{background:transparent;color:var(--ink);font-weight:800;font-size:11px}
+body[data-direction="c"] .compare-head>div,body[data-direction="c"] .compare-row>div{border-right:0;padding:13px 9px}
+body[data-direction="c"] .compare-head>div:not(:last-child),body[data-direction="c"] .compare-row>div:not(:last-child){border-right:1px solid var(--line)}
+body[data-direction="c"] .compare-row{font-size:13px}body[data-direction="c"] .compare-row.different{background:#fff;border-top:3px solid var(--stopped);border-bottom:3px solid var(--stopped)}
+body[data-direction="c"] .compare-row.different .compare-key{font-size:13px;color:var(--stopped);font-weight:900}
+body[data-direction="c"] .compare-row.different .compared-value{font-weight:820;font-size:15px}
+body[data-direction="c"] .difference-tag{display:block;width:max-content}
+body[data-direction="c"] .record-section{margin-top:35px}
+@media(max-width:1130px){.frame{padding-inline:18px}.workspace{gap:13px}.record{padding:19px 16px}.invoice-row,body[data-direction="b"] .invoice-row,body[data-direction="c"] .invoice-row{grid-template-columns:20px minmax(0,1fr) minmax(80px,103px);gap:7px}.invoice-state{grid-column:2/-1;padding-top:0;flex-direction:row;align-items:center;justify-content:space-between}.invoice-value{padding-top:15px}.invoice-state .status-chip{max-width:70%}.record-lede{grid-template-columns:1fr}.large-state{width:max-content}.action-box{align-items:start;flex-direction:column}.reeval-button{max-width:none}.overview{grid-template-columns:repeat(4,minmax(0,1fr))}.metric-run{grid-column:1/-1;border-right:0;border-top:1px solid var(--line);flex-direction:row;align-items:center}.metric:nth-child(4){border-right:0}body[data-direction="b"] .metric-run{grid-column:1/-1}}
+@media(max-width:760px){.direction-title .direction-descriptor{display:none}.frame{padding:19px 15px 45px}.masthead{grid-template-columns:minmax(0,1fr)}.header-actions{justify-content:flex-start}.company-name,body[data-direction="c"] .company-name{font-size:30px}.brandline{margin-bottom:13px}.navigation{gap:22px}.overview{grid-template-columns:repeat(2,minmax(0,1fr));margin:19px 0;gap:0}body[data-direction="b"] .overview{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.metric{border-bottom:1px solid var(--line)}.metric:nth-child(2){border-right:0}.metric:nth-child(3),.metric:nth-child(4){border-bottom:0}.metric-run{grid-column:1/-1;border-top:1px solid var(--line)}body[data-direction="b"] .metric-run{grid-column:1/-1}.workspace,body[data-direction="b"] .workspace,body[data-direction="c"] .workspace{grid-template-columns:minmax(0,1fr);gap:20px}.invoice-row,body[data-direction="b"] .invoice-row,body[data-direction="c"] .invoice-row{grid-template-columns:28px minmax(0,1fr) minmax(100px,120px) minmax(120px,145px)}.invoice-state{grid-column:auto;padding-top:17px;flex-direction:column;align-items:flex-end}.invoice-state .status-chip{max-width:100%}.panel{width:100%}body[data-direction="a"] .record{margin:10px}body[data-direction="c"] .metric-count{font-size:43px}}
+@media(max-width:480px){body{padding-top:50px}.direction-switch{min-height:50px;padding:5px 12px}.direction-title{font-size:9px}.theme-tabs button{min-width:37px;height:31px}.frame{padding:16px 12px 40px}.company-name,body[data-direction="c"] .company-name{font-size:29px}.brandline{gap:10px}.wordmark{font-size:21px}.header-actions{gap:7px}.action-button{padding:9px 10px;font-size:11px}.navigation{gap:20px}.navigation a{font-size:12px}.metric{padding:12px 12px 14px}.metric-count,body[data-direction="c"] .metric-count{font-size:36px}.metric-label{font-size:10px;min-height:32px}.metric-run .metric-count,body[data-direction="b"] .metric-run .metric-count,body[data-direction="c"] .metric-run .metric-count{font-size:22px}.metric-run{align-items:start;flex-direction:column}.overview{margin:18px 0}.panel-top{padding:17px 13px 13px}.section-title,body[data-direction="c"] .section-title{font-size:25px}.list-guide{padding:9px 12px}.invoice-row,body[data-direction="b"] .invoice-row,body[data-direction="c"] .invoice-row{grid-template-columns:23px minmax(0,1fr) minmax(105px,122px);gap:6px;padding:12px 11px}.invoice-value{padding-top:19px}.invoice-value strong{font-size:12px}.invoice-name{font-size:12px}.invoice-reason{font-size:10px}.invoice-state{grid-column:2/-1;flex-direction:row;justify-content:space-between;align-items:center;padding-top:2px}.invoice-state .status-chip{max-width:77%}.invoice-id{margin-bottom:3px}.list-footer{padding-inline:12px}.record,body[data-direction="b"] .record,body[data-direction="c"] .record{padding:17px 12px}.record-vendor,body[data-direction="c"] .record-vendor{font-size:25px}.record-lede{grid-template-columns:1fr}.large-state{font-size:10px}body[data-direction="a"] .record{margin:9px;padding:16px 11px;outline-offset:3px}.action-box{padding:12px}.section-heading h3,body[data-direction="c"] .section-heading h3{font-size:17px}.compare-head,.compare-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.compare-head>div:first-child{display:none}.compare-head>div:nth-child(2),.compare-row>div:nth-child(2){border-left:0}.compare-row .compare-key{grid-column:1/-1;border-right:0;border-bottom:1px dashed var(--line);padding:7px 9px 5px}.compare-row>div{padding:10px 9px}.compare-row .compared-value{font-size:11px}.compare-row.different .compared-value,body[data-direction="c"] .compare-row.different .compared-value{font-size:13px}.trail li,body[data-direction="b"] .trail li{grid-template-columns:21px minmax(0,1fr);gap:8px}.trail-source{grid-column:2/-1;text-align:left;display:flex;align-items:center;gap:9px}.jevo-bar{margin:0;width:70px}.document-switch{width:100%}.document-switch button{flex:1;font-size:10px;padding:9px 5px}.document-surface{padding:12px 9px}.document-text{font-size:10px;line-height:1.85}.original-sheet{padding:14px}.short-row{grid-template-columns:88px minmax(0,1fr)}.section-note{font-size:9px}body[data-direction="c"] .compare-head>div,body[data-direction="c"] .compare-row>div{padding:10px 8px}body[data-direction="c"] .compare-row .compare-key{padding:7px 8px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}.invoice-list .status-chip.just-resolved{animation:none}}
+</style>
+</head>
+<body data-direction="a">
+<a class="skip-link" href="#inbox">Ir a la bandeja</a>
+<div class="direction-switch" aria-label="Comparar direcciones de diseño">
+  <div class="direction-title"><span>Tres direcciones / Visto Bueno</span><span class="direction-descriptor" id="directionDescriptor">A — Libro mayor</span></div>
+  <div class="theme-tabs" role="tablist" aria-label="Dirección visual">
+    <button type="button" role="tab" data-theme="a" aria-selected="true" aria-label="A · Libro mayor">A</button>
+    <button type="button" role="tab" data-theme="b" aria-selected="false" aria-label="B · Sala de control">B</button>
+    <button type="button" role="tab" data-theme="c" aria-selected="false" aria-label="C · Expediente suizo">C</button>
+  </div>
+</div>
+<main class="frame">
+  <header class="masthead">
+    <div>
+      <div class="brandline"><div class="wordmark" aria-label="Visto Bueno">visto<span class="wordmark-stop">.</span>bueno</div><div class="divider-vertical"></div><span class="mast-kicker">Cuentas por pagar / América Latina</span></div>
+      <h1 class="company-name">Andina Labs Inc.</h1>
+      <div class="company-meta"><span>Delaware · octubre 2026</span><span class="tag">Datos ficticios</span></div>
+    </div>
+    <div class="header-actions"><button id="receiveButton" type="button" class="action-button primary">+ Recibir factura</button><button id="resetButton" type="button" class="action-button">Reiniciar demo</button><input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.txt,.eml" hidden></div>
+    <div class="demo-banner" role="note"><span aria-hidden="true" class="demo-icon">i</span><span>Modo demostración · No se realizan pagos reales</span></div>
+    <nav class="navigation" aria-label="Secciones"><a class="active" href="#inbox" aria-current="page">Bandeja</a><a href="#decisionTrail">Reglas</a><a href="#nextAction">Preparar datos</a><a href="#decisionSeal">Bitácora</a></nav>
+  </header>
+  <section class="overview" aria-label="Resumen de estados">
+    <div class="metric metric-ready"><div class="metric-label"><span class="metric-icon" aria-hidden="true">✓</span><span>Listas para pagar</span></div><div class="metric-count" data-count="ready">7</div></div>
+    <div class="metric metric-approval"><div class="metric-label"><span class="metric-icon" aria-hidden="true">▣</span><span>Requieren tu aprobación</span></div><div class="metric-count" data-count="approval">4</div></div>
+    <div class="metric metric-review"><div class="metric-label"><span class="metric-icon" aria-hidden="true">?</span><span>Requieren revisión</span></div><div class="metric-count" data-count="review">3</div></div>
+    <div class="metric metric-stopped"><div class="metric-label"><span class="metric-icon" aria-hidden="true">×</span><span>Frenadas</span></div><div class="metric-count" data-count="stopped">6</div></div>
+    <div class="metric metric-run"><div><div class="eyebrow">Última ejecución / grabada</div><div class="metric-count">0,8 s</div></div><div class="run-stat">20 facturas en 0,8 s · US$0,0009 · respuestas grabadas</div></div>
+  </section>
+  <div class="workspace">
+    <section id="inbox" class="panel panel-inbox" aria-labelledby="inboxHeading">
+      <div class="panel-top"><div class="panel-toprow"><div><div class="eyebrow">01 / Entrada y clasificación</div><h2 id="inboxHeading" class="section-title">Bandeja de facturas</h2><p class="section-description">Octubre 2026 · 8 de 20 facturas visibles</p></div><button class="process-button" id="processButton" type="button">↻ Procesar</button></div></div>
+      <div class="list-guide"><span>Factura / concepto</span><span>Selecciona una fila para abrir su expediente ↓</span></div>
+      <div id="invoiceList" class="invoice-list" aria-label="Facturas"></div>
+      <div class="list-footer"><span>20 facturas clasificadas</span><span>8 mostradas · 4 estados</span></div>
+    </section>
+    <section id="expediente" class="panel expediente" aria-labelledby="recordTitle"><div id="recordContent" class="record"></div></section>
+  </div>
+</main>
+<div class="feedback" id="feedback" aria-live="polite" hidden></div>
+<script>
+(() => {
+  'use strict';
+  const invoices = [
+    {id:'AL-042', vendor:'Nube Andina S.A.S.', concept:'Hosting octubre', amount:'USD 850,00', usd:'850,00', due:'25 oct', state:'stopped', reason:'La cuenta bancaria no coincide con la registrada'},
+    {id:'AL-037', vendor:'Valentina Ruiz', concept:'Diseño UX, octubre', amount:'COP 4.800.000,00', usd:'1.150,72', due:'20 oct', state:'ready', reason:'Coincide con el contrato'},
+    {id:'AL-038', vendor:'Carlos Méndez', concept:'Backend, 62 h', amount:'MXN 62.000,00', usd:'3.286,40', due:'22 oct', state:'approval', reason:'Supera US$3.000 y las horas no están verificadas'},
+    {id:'AL-039', vendor:'"Proveedor Express LLC"', concept:'Servicios de consultoría', amount:'USD 9.900,00', usd:'9.900,00', due:'18 oct', state:'stopped', reason:'Beneficiario nuevo · intento de manipulación'},
+    {id:'AL-040', vendor:'Valentina Ruiz', concept:'Diseño UX, ajustes', amount:'COP 4.750.000,00', usd:'1.138,73', due:'28 oct', state:'review', reason:'Posible cobro duplicado del mismo trabajo'},
+    {id:'AL-041', vendor:'Imprenta Caribe C.A.', concept:'Material impreso', amount:'USD 310,00', usd:'310,00', due:'30 oct', state:'ready', reason:'Coincide con el contrato'},
+    {id:'AL-043', vendor:'Lex Delaware LLP', concept:'Registro anual', amount:'USD 1.200,00', usd:'1.200,00', due:'31 oct', state:'ready', reason:'Coincide con el contrato'},
+    {id:'AL-044', vendor:'Datos del Ávila C.A.', concept:'Soporte de datos', amount:'USD 640,00', usd:'640,00', due:'19 oct', state:'review', reason:'Pide pago inmediato sin motivo claro'}
+  ];
+  const states = {ready:{label:'Lista para pagar',glyph:'✓'},approval:{label:'Requiere tu aprobación',glyph:'▣'},review:{label:'Requiere revisión',glyph:'?'},stopped:{label:'Frenada',glyph:'×'}};
+  const totals = {ready:7,approval:4,review:3,stopped:6};
+  const themes = {a:'A — Libro mayor',b:'B — Sala de control',c:'C — Expediente suizo'};
+  const list = document.getElementById('invoiceList');
+  const record = document.getElementById('recordContent');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let selected = 'AL-042', documentView = 'text', timers = [], feedbackTimer;
+  const safe = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const statusChip = (state,large=false) => `<span class="${large?'large-state':'status-chip'} status-${state}"><span class="status-icon" aria-hidden="true">${states[state].glyph}</span><span class="status-text">${states[state].label}</span></span>`;
+  function renderList(){
+    list.innerHTML = invoices.map((inv,i) => `<button type="button" class="invoice-row state-${inv.state}" data-id="${inv.id}" aria-pressed="${inv.id===selected}" aria-label="${safe(inv.id)} · ${safe(inv.vendor)} · ${safe(inv.amount)} · ${safe(states[inv.state].label)}">
+      <span class="invoice-ordinal">${String(i+1).padStart(2,'0')}</span>
+      <span class="invoice-main"><span class="invoice-id">${inv.id}</span><span class="invoice-name">${safe(inv.vendor)}</span><span class="invoice-concept">${safe(inv.concept)}</span><span class="invoice-reason">${safe(inv.reason)}</span></span>
+      <span class="invoice-value"><strong>${safe(inv.amount)}</strong><span>US$${safe(inv.usd)}</span></span>
+      <span class="invoice-state">${statusChip(inv.state)}<span class="invoice-due">Vence ${safe(inv.due)}</span></span>
+    </button>`).join('');
+  }
+  function fullRecord(){
+    return `<div class="record-meta"><span class="eyebrow">02 / Expediente · Decisión trazable</span><span class="record-id">AL-042 · 15/10/2026</span></div>
+      <div class="record-lede"><div><h2 class="record-vendor" id="recordTitle">Nube Andina S.A.S.</h2><p class="record-reason">La cuenta bancaria de esta factura no coincide con la registrada para este proveedor.</p></div>${statusChip('stopped',true)}</div>
+      <aside class="action-box" id="nextAction"><div class="action-text"><div class="action-label">Qué hacer</div><p class="action-copy">Verifica el cambio con Nube Andina por un canal seguro, no por el correo que trajo esta factura. Si es legítimo, actualiza su cuenta en Preparar datos y re-evalúa.</p></div><button type="button" id="reevaluateButton" class="reeval-button">Re-evaluar esta factura</button></aside>
+      <section class="record-section" aria-labelledby="comparisonHeading"><div class="section-heading"><h3 id="comparisonHeading">Comparación con tus registros</h3><span class="section-note">1 diferencia · 6 campos</span></div>
+        <div class="comparison" role="table" aria-label="Comparación de la factura AL-042 con los registros"><div class="compare-head" role="row"><div role="columnheader">Dato</div><div role="columnheader">En la factura</div><div role="columnheader">En tus registros</div></div>
+          <div class="compare-row" role="row"><div class="compare-key" role="rowheader">Beneficiario</div><div class="compared-value" role="cell">Nube Andina S.A.S.</div><div class="compared-value" role="cell">Nube Andina S.A.S.</div></div>
+          <div class="compare-row" role="row"><div class="compare-key" role="rowheader">NIT</div><div class="compared-value" role="cell">901.234.567-8</div><div class="compared-value" role="cell">901.234.567-8</div></div>
+          <div class="compare-row different" role="row"><div class="compare-key" role="rowheader">Cuenta</div><div class="compared-value" role="cell">Bancolombia ···· 4412 <span class="difference-tag">No coincide</span></div><div class="compared-value" role="cell">Bancolombia ···· 8890 <span class="difference-tag">No coincide</span></div></div>
+          <div class="compare-row" role="row"><div class="compare-key" role="rowheader">Monto / contrato</div><div class="compared-value" role="cell">USD 850,00</div><div class="compared-value" role="cell">Contrato fijo USD 850,00 / mes</div></div>
+          <div class="compare-row" role="row"><div class="compare-key" role="rowheader">Período</div><div class="compared-value" role="cell">octubre 2026</div><div class="compared-value" role="cell">Sin cobro previo en octubre</div></div>
+          <div class="compare-row" role="row"><div class="compare-key" role="rowheader">Presupuesto Operaciones</div><div class="compared-value" role="cell">—</div><div class="compared-value" role="cell">Disponible US$4.150 de US$6.000</div></div>
+        </div></section>
+      <section class="record-section" aria-labelledby="trailHeading" id="decisionTrail"><div class="section-heading"><h3 id="trailHeading">Rastro de decisión</h3><span class="section-note">4 reglas · 2 juicios</span></div>
+        <ol class="trail">
+          <li class="trail-pass"><span class="trail-icon" aria-label="Pasa">✓</span><div><div class="trail-check">Proveedor en tu lista</div><div class="trail-explanation">Nube Andina S.A.S. figura en tus registros.</div></div><div class="trail-source">Regla</div></li>
+          <li class="trail-fail"><span class="trail-icon" aria-label="Falla">×</span><div><div class="trail-check">Cuenta bancaria registrada</div><div class="trail-explanation">La factura indica ···· 4412; tu registro dice ···· 8890</div></div><div class="trail-source">Regla</div></li>
+          <li class="trail-pass"><span class="trail-icon" aria-label="Pasa">✓</span><div><div class="trail-check">Contrato vigente y monto acordado</div><div class="trail-explanation">Contrato fijo: USD 850,00 / mes.</div></div><div class="trail-source">Regla</div></li>
+          <li class="trail-pass"><span class="trail-icon" aria-label="Pasa">✓</span><div><div class="trail-check">Presupuesto y saldo disponibles</div><div class="trail-explanation">Disponible US$4.150 de US$6.000 en Operaciones.</div></div><div class="trail-source">Regla</div></li>
+          <li class="trail-pass"><span class="trail-icon" aria-label="Pasa">✓</span><div><div class="trail-check">¿Intenta instruir al agente?</div><div class="trail-explanation">No se identifica una instrucción dirigida al agente.</div></div><div class="trail-source">Juicio · JEV 0,08<div class="jevo-bar" role="img" aria-label="JEV 0,08 de 1"><span style="width:8%"></span></div></div></li>
+          <li class="trail-alert"><span class="trail-icon" aria-label="Alerta">!</span><div><div class="trail-check">¿Presiona para pagar de inmediato?</div><div class="trail-explanation">Pide pagar hoy para evitar la suspensión del servicio.</div></div><div class="trail-source">Juicio · JEV 0,71<div class="jevo-bar" role="img" aria-label="JEV 0,71 de 1"><span style="width:71%"></span></div></div></li>
+        </ol></section>
+      <section class="record-section" aria-labelledby="documentHeading"><div class="section-heading"><h3 id="documentHeading">Documento</h3><span class="section-note">Factura electrónica · AL-042</span></div>
+        <div class="document-switch" role="group" aria-label="Vista del documento"><button type="button" data-document="original" aria-pressed="${documentView==='original'}">Documento original</button><button type="button" data-document="text" aria-pressed="${documentView==='text'}">Texto que leyó el agente</button></div>
+        <div class="document-surface" id="documentSurface">${documentView==='text'?documentText():originalDocument()}</div>
+      </section>
+      <footer class="decision-seal" id="decisionSeal">Sello #8f3a1c · Reglas v3 · 16 oct 2026, 21:14</footer>`;
+  }
+  function documentText(){return `<pre class="document-text"><span class="extracted">NUBE ANDINA S.A.S.</span>   NIT <span class="extracted">901.234.567-8</span>
+Factura electrónica <span class="extracted">AL-042</span> · Fecha: <span class="extracted">15/10/2026</span> · Vence: <span class="extracted">25/10/2026</span>
+Cliente: Andina Labs Inc.
+Hosting administrado, <span class="extracted">octubre 2026</span> ............ <span class="extracted">USD 850,00</span>
+Total a pagar: <span class="extracted">USD 850,00</span>
+Datos de pago: Bancolombia, cuenta de ahorros <span class="extracted">···· 4412</span>
+<span class="suspect">IMPORTANTE: cambiamos de banco este mes. Por favor paguen hoy a la nueva
+cuenta para evitar la suspensión del servicio.</span></pre>`}
+  function originalDocument(){return `<div class="original-sheet" aria-label="Representación visual de la factura"><div class="original-company">NUBE ANDINA S.A.S.</div><div class="original-muted">NIT 901.234.567-8</div><div class="original-rule"></div><div class="original-line"><span>Factura electrónica AL-042</span><span>15/10/2026</span></div><div class="original-line"><span>Cliente: Andina Labs Inc.</span><span>Vence: 25/10/2026</span></div><div class="original-rule"></div><div class="original-line"><span>Hosting administrado, octubre 2026</span><strong>USD 850,00</strong></div><div class="original-total"><span>Total a pagar</span><span>USD 850,00</span></div><div class="original-line"><span>Datos de pago: Bancolombia, cuenta de ahorros ···· 4412</span></div><p class="original-warning">IMPORTANTE: cambiamos de banco este mes. Por favor paguen hoy a la nueva cuenta para evitar la suspensión del servicio.</p></div><p class="original-caption">Representación construida con el texto disponible. No se adjuntó un PDF original.</p>`}
+  function shortRecord(inv){
+    return `<div class="record-meta"><span class="eyebrow">02 / Expediente · Resumen</span><span class="record-id">${safe(inv.id)}</span></div><div class="record-lede"><div><h2 id="recordTitle" class="record-vendor">${safe(inv.vendor)}</h2><p class="record-reason">${safe(inv.reason)}</p></div>${statusChip(inv.state,true)}</div>
+    <section class="record-section" aria-labelledby="shortHeading"><div class="section-heading"><h3 id="shortHeading">Datos de la factura</h3><span class="section-note">${safe(inv.id)}</span></div><div class="short-details">
+    <div class="short-row"><span>Beneficiario</span><strong>${safe(inv.vendor)}</strong></div><div class="short-row"><span>Concepto</span><strong>${safe(inv.concept)}</strong></div><div class="short-row"><span>Monto original</span><strong>${safe(inv.amount)}</strong></div><div class="short-row"><span>Equivalente</span><strong>US$${safe(inv.usd)}</strong></div><div class="short-row"><span>Vence</span><strong>${safe(inv.due)}</strong></div><div class="short-row"><span>Estado</span><span>${statusChip(inv.state)}</span></div></div>
+    <p class="short-note">Los datos de demostración incluyen el expediente completo de AL-042. Para esta factura solo se muestra el resumen disponible; no se inventan verificaciones ni documentos.</p></section>`;
+  }
+  function renderRecord(){const inv=invoices.find(x=>x.id===selected);record.innerHTML=inv.id==='AL-042'?fullRecord():shortRecord(inv);}
+  function selectInvoice(id){selected=id;documentView='text';for(const el of list.querySelectorAll('.invoice-row')) el.setAttribute('aria-pressed',String(el.dataset.id===id));renderRecord();if(window.matchMedia('(max-width:760px)').matches)document.getElementById('expediente').scrollIntoView({behavior:'instant',block:'start'});}
+  function setCounters(fraction){for(const [key,val] of Object.entries(totals)){document.querySelector(`[data-count="${key}"]`).textContent=String(Math.min(val,Math.round(val*fraction)));}}
+  function stopTimers(){for(const t of timers){clearTimeout(t);clearInterval(t);}timers=[];}
+  function announce(message){const feedback=document.getElementById('feedback');clearTimeout(feedbackTimer);feedback.textContent=message;feedback.hidden=false;feedbackTimer=setTimeout(()=>feedback.hidden=true,3900);}
+  function processInvoices(){stopTimers();const btn=document.getElementById('processButton');btn.disabled=true;const rows=[...list.querySelectorAll('.invoice-row')];list.classList.remove('processing');rows.forEach(r=>r.classList.remove('resolved'));rows.forEach(r=>r.querySelector('.status-chip').classList.remove('just-resolved'));
+    if(reduced.matches){setCounters(1);btn.disabled=false;announce('Procesamiento mostrado: 20 facturas clasificadas con respuestas grabadas.');return;}
+    list.classList.add('processing');setCounters(0);
+    rows.forEach((r,i)=>timers.push(setTimeout(()=>{r.classList.add('resolved');r.querySelector('.status-chip').classList.add('just-resolved');},80+i*60)));
+    const start=performance.now();const ticker=setInterval(()=>{const ratio=Math.min(1,(performance.now()-start)/800);setCounters(ratio);if(ratio===1){clearInterval(ticker);list.classList.remove('processing');btn.disabled=false;announce('20 facturas clasificadas en 0,8 s · respuestas grabadas.');}},40);timers.push(ticker);
+  }
+  list.addEventListener('click',e=>{const row=e.target.closest('.invoice-row');if(row)selectInvoice(row.dataset.id)});
+  record.addEventListener('click',e=>{const doc=e.target.closest('[data-document]');if(doc){documentView=doc.dataset.document;renderRecord();return;}if(e.target.closest('#reevaluateButton')){selectInvoice('AL-042');processInvoices();announce('Se reprodujo la evaluación de AL-042. La cuenta sigue sin coincidir: factura frenada.');}});
+  document.querySelectorAll('[data-theme]').forEach(tab=>tab.addEventListener('click',()=>{document.body.dataset.direction=tab.dataset.theme;document.querySelectorAll('[data-theme]').forEach(t=>t.setAttribute('aria-selected',String(t===tab)));document.getElementById('directionDescriptor').textContent=themes[tab.dataset.theme];}));
+  document.getElementById('processButton').addEventListener('click',processInvoices);
+  document.getElementById('resetButton').addEventListener('click',()=>{stopTimers();list.classList.remove('processing');renderList();setCounters(1);selected='AL-042';documentView='text';renderList();renderRecord();document.getElementById('processButton').disabled=false;announce('Demo reiniciada. AL-042 está seleccionada.');});
+  document.getElementById('receiveButton').addEventListener('click',()=>document.getElementById('fileInput').click());
+  document.getElementById('fileInput').addEventListener('change',e=>{if(e.target.files.length)announce('Archivo seleccionado. Esta demo usa facturas y respuestas grabadas; no se procesa ni envía tu archivo.');e.target.value='';});
+  renderList();renderRecord();
+})();
+</script>
+</body>
+</html>

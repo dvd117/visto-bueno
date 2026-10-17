@@ -1,13 +1,9 @@
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { Hono } from 'hono';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-export const app = new Hono();
-
-app.get('/health', (c) => c.json({ ok: true }));
+import { app } from './server/app';
 
 const distPath = resolve(process.cwd(), 'dist');
 if (existsSync(distPath)) {
