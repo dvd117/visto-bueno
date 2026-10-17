@@ -2,6 +2,7 @@ import { useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import type { DecisionAction, Expediente as ExpedienteData, FlagResolution } from '../../../shared/api';
 import type { CheckResult, Flag } from '../../../shared/domain/types';
+import { subtitleForDecision } from '../../../shared/engine/copy';
 import { StatusChip } from '../../app/StatusChip';
 
 interface ExpedienteProps {
@@ -256,6 +257,7 @@ export function Expediente({
   const { row, record } = expediente;
   const decision = record?.decision;
   const accountLast4 = accountConfirmation.invoiceId === row.id ? accountConfirmation.digits : '';
+  const statusSubtitle = decision && row.status === decision.status ? subtitleForDecision(decision) : undefined;
   const canApprove = row.status === 'approval_required' && decision?.canApprove === true
     && (row.sourceKind !== 'image' || /^\d{4}$/.test(accountLast4));
   const canSubmitDecision = Boolean(approver.trim() && reason.trim()) && !busy;
@@ -280,7 +282,7 @@ export function Expediente({
             <h2 id="record-title" className="record-vendor">{row.payee}</h2>
             <p className="record-reason">{decision?.headline ?? row.reason}</p>
           </div>
-          <StatusChip status={row.status} large />
+          <StatusChip status={row.status} subtitle={statusSubtitle} large />
         </div>
 
         {row.status === 'stopped' && (

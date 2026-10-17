@@ -56,20 +56,25 @@ describe('T11 app integration', () => {
   it('mounts the merged help and receiving panels and connects data and log views', async () => {
     render(<App />);
     await screen.findByRole('heading', { name: 'Andina Labs Inc.' });
+    expect(screen.getByText('Modo demostración · No se realizan pagos reales')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cómo decide' }));
     expect(await screen.findByRole('dialog', { name: 'Cómo decide el agente' })).toBeTruthy();
+    expect(screen.getByText('Modo demostración · No se realizan pagos reales')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar panel' }));
 
     fireEvent.click(screen.getAllByRole('button', { name: '+ Recibir factura' })[0]!);
     expect(await screen.findByRole('dialog', { name: 'Recibir facturas' })).toBeTruthy();
+    expect(screen.getByText('Modo demostración · No se realizan pagos reales')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar panel' }));
 
     fireEvent.click(screen.getByRole('link', { name: 'Preparar datos' }));
     expect(await screen.findByRole('heading', { name: 'Preparar datos' })).toBeTruthy();
+    expect(screen.getByText('Modo demostración · No se realizan pagos reales')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('link', { name: 'Bitácora' }));
     expect(await screen.findByRole('heading', { name: 'Bitácora' })).toBeTruthy();
+    expect(screen.getByText('Modo demostración · No se realizan pagos reales')).toBeTruthy();
   });
 
   it('mounts the Reglas section using its rules adapter', async () => {

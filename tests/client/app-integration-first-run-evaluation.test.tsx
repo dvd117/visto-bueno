@@ -77,6 +77,7 @@ describe('App first-run and evaluation integration', () => {
     expect(screen.getByText('Aún no hay evidencia de regresión para mostrar.')).toBeTruthy();
     expect(screen.getByText('Aún no hay resultados del conjunto etiquetado para mostrar.')).toBeTruthy();
     expect(screen.getByText('Sin muestra en vivo')).toBeTruthy();
+    expect(screen.getByText('Modo demostración · No se realizan pagos reales')).toBeTruthy();
     const page = screen.getByRole('main');
     expect(within(page).queryByRole('table')).toBeNull();
     expect(within(page).queryByText(/\b\d+\b|US\$|\bms\b/)).toBeNull();

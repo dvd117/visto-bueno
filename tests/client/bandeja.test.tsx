@@ -144,14 +144,46 @@ afterEach(() => {
 });
 
 describe('Bandeja and Expediente', () => {
+  it('shows the decision subtitle in both the row and expediente status', async () => {
+    const row = { ...makeRow('review_required'), subtitle: 'Duda en los datos' };
+    const expediente = makeExpediente(row);
+    if (!expediente.record) throw new Error('Expected a decision record.');
+    expediente.record.decision = {
+      ...expediente.record.decision,
+      status: 'review_required',
+      checks: [{
+        id: 'missing_amount',
+        kind: 'verify',
+        label: 'Monto presente',
+        passed: false,
+        effect: 'review',
+        reason: 'La factura no contiene un monto verificable.',
+      }],
+      flags: [{ id: 'missing_amount', checkId: 'missing_amount', reason: 'La factura no contiene un monto verificable.' }],
+    };
+    installApi([row], expediente);
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText('Duda en los datos')).toHaveLength(2));
+    const statuses = screen.getAllByRole('status', { name: 'Requiere revisión' });
+    expect(statuses).toHaveLength(2);
+    for (const status of statuses) {
+      const descriptionId = status.getAttribute('aria-describedby');
+      expect(descriptionId).toBeTruthy();
+      expect(document.getElementById(descriptionId!)?.textContent).toBe('Duda en los datos');
+    }
+  });
+
   it('does not show an approve control for a stopped invoice', async () => {
     installApi([makeRow('stopped')]);
 
     render(<App />);
 
-    expect(await screen.findByText('Frenada')).not.toBeNull();
-    expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
-    expect(await screen.findByText('Qué hacer')).not.toBeNull();
+    const expediente = await screen.findByRole('region', { name: 'Nube Andina S.A.S.' });
+    await within(expediente).findByRole('complementary', { name: 'Qué hacer' });
+    expect(await within(expediente).findByRole('status', { name: 'Frenada' })).not.toBeNull();
+    expect(within(expediente).queryByRole('button', { name: 'Aprobar' })).toBeNull();
   });
 
   it('keeps approval disabled until identity and reason exist', async () => {
@@ -210,7 +242,8 @@ describe('Bandeja and Expediente', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Procesar/i }));
 
-    expect(await screen.findByText('Lista para pagar')).not.toBeNull();
+    const invoiceRow = await screen.findByRole('button', { name: /AL-042/ });
+    expect(await within(invoiceRow).findByRole('status', { name: 'Lista para pagar' })).not.toBeNull();
     await waitFor(() => {
       const readyMetric = screen.getByText('Listas para pagar').parentElement?.parentElement;
       expect(readyMetric && within(readyMetric).getByText('1')).not.toBeNull();

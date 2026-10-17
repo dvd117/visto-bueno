@@ -455,13 +455,46 @@ textarea {
 
 .status-chip {
   display: inline-flex;
+  width: fit-content;
   max-width: 100%;
-  align-items: center;
-  gap: 5px;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
   color: var(--tone);
   font-size: 10px;
   font-weight: 720;
   line-height: 1.25;
+}
+
+.status-label {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.status-label > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-subtitle {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 9px;
+  font-weight: 550;
+  letter-spacing: normal;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .status-glyph {
@@ -566,6 +599,9 @@ textarea {
   border-bottom: 1px solid currentColor;
   padding: 8px 1px;
   font-size: 10px;
+}
+
+.status-large .status-label {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -1080,6 +1116,8 @@ textarea {
   .workspace { gap: 16px; }
   .invoice-row { grid-template-columns: 22px minmax(0, 1fr) minmax(78px, 100px); }
   .invoice-state { grid-column: 2 / -1; flex-direction: row; align-items: center; justify-content: space-between; padding-top: 0; }
+  .invoice-state .status-chip { flex: 1 1 auto; width: auto; align-items: flex-start; }
+  .invoice-state .status-subtitle { text-align: left; }
 }
 
 @media (max-width: 760px) {

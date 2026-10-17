@@ -1,6 +1,7 @@
 import type { Comparison, Counters, Expediente, InvoiceRow } from '../shared/api';
 import type { Contract, Money } from '../shared/domain/types';
 import { normalize } from '../shared/engine/normalize';
+import { subtitleForDecision } from '../shared/engine/copy';
 import { formatMoney, parseAmount } from '../shared/domain/money';
 import { getDecisionHistory, getWorkspaceData, listInvoices, type Db, type StoredInvoice } from './db/db';
 import { ledgerView } from './db/ledger';
@@ -19,6 +20,7 @@ function amountText(invoice: StoredInvoice): string {
 export function toInvoiceRow(invoice: StoredInvoice): InvoiceRow {
   const extraction = invoice.extraction?.ok ? invoice.extraction : null;
   const decision = invoice.latestRecord?.decision;
+  const subtitle = decision && invoice.status === decision.status ? subtitleForDecision(decision) : undefined;
   const concept = extraction?.claims.description?.trim() || invoice.sourceText?.trim();
   return {
     id: invoice.id,
@@ -29,6 +31,7 @@ export function toInvoiceRow(invoice: StoredInvoice): InvoiceRow {
     due: invoice.dueDate,
     status: invoice.status,
     reason: decision?.headline ?? (invoice.status === 'queued' ? 'Pendiente de evaluación' : 'Revisa el expediente'),
+    ...(subtitle ? { subtitle } : {}),
     sourceKind: invoice.sourceKind,
   };
 }
