@@ -73,6 +73,7 @@ describe('Preparar datos', () => {
 
     const currency = await screen.findByLabelText('Moneda de pago — Nube Andina S.A.S.') as HTMLSelectElement;
     expect(Array.from(currency.options, (option) => option.value)).toEqual(['USD', 'COP', 'MXN', 'CLP', 'PEN', 'ARS', 'VES']);
+    expect(screen.getByText(/CLP usa pesos enteros/)).not.toBeNull();
     const country = screen.getByLabelText('País — Nube Andina S.A.S.') as HTMLSelectElement;
     expect(Array.from(country.options, (option) => option.value)).toContain('PE');
     expect(Array.from(country.options, (option) => option.value)).toContain('AR');

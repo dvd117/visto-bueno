@@ -377,7 +377,7 @@ export default function Datos({ api }: { api: DatosApi }) {
       <header className="mb-8 border-b border-line pb-5">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-soft">03 / CONFIGURACIÓN DE DATOS</p>
         <h1 className="text-3xl font-extrabold tracking-tight">Preparar datos</h1>
-        <p className="mt-2 max-w-2xl text-sm text-soft">Edita los registros que usa la evaluación. Los importes se guardan en centavos.</p>
+        <p className="mt-2 max-w-2xl text-sm text-soft">Edita los registros que usa la evaluación. Los importes respetan los decimales propios de cada moneda; CLP usa pesos enteros.</p>
       </header>
 
       {loadError ? <p role="alert" className="border-l-4 border-stopped py-2 pl-3 text-stopped">{loadError}</p>
