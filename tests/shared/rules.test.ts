@@ -115,6 +115,13 @@ describe('evaluateRules', () => {
     expect(getCheck(result, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· 8890' });
   });
 
+  it.each([
+    'Banco Andino XX 11112228890',
+    'Banco Andino XXXX 11112228890',
+  ])('R2 fails closed for an X mask before five or more visible digits: %s', (payoutAccount) => {
+    expectFail(evaluate({ claims: claims({ payoutAccount }) }), 'R2', 'stop');
+  });
+
   it('R3 stops when there is no active contract or multiple overlapping contracts', () => {
     expectPass(evaluate(), 'R3');
     const none = evaluate({ contracts: [] });

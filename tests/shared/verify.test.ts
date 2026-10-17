@@ -72,6 +72,8 @@ describe('verifyClaims', () => {
     ['Bancolombia 123456 8890', 'Bancolombia ···· 8890'],
     ['Bancolombia 123456-8890', 'Bancolombia ···· 8890'],
     ['Bancolombia xxxxxx 8890', 'Bancolombia ···· 8890'],
+    ['Banco Andino XXXX 8890', 'Banco Andino ···· 8890'],
+    ['Banco Andino xx8890', 'Banco Andino ···· 8890'],
     ['Bancolombia •••• 8890', 'Bancolombia ···· 8890'],
     ['Bancolombia **** 8890', 'Bancolombia ···· 8890'],
   ])('ignores account labels but retains bank and suffix: %s', (source, registered) => {
@@ -275,6 +277,27 @@ describe('verifyClaims', () => {
       claims: claims({ payoutAccount: accountA, accountsFound: [accountA, accountB] }),
       sourceKind: 'image',
     }), [vendor]);
+    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
+  });
+
+  it.each([
+    'Cuenta de ahorros Banco Andino XX 11112228890',
+    'Cuenta de ahorros Banco Andino XXXX 11112228890',
+  ])('treats a multi-X mask before five or more digits as ambiguous: %s', (account) => {
+    expect(normalizeAccount(account)).toBe('');
+    expect(unmaskedAccountDigits(account)).toBe('11112228890');
+  });
+
+  it('stops when two multi-X masks precede distinct visible account numbers', () => {
+    const accountA = 'Cuenta de ahorros Banco Andino XX 11112228890';
+    const accountB = 'Cuenta corriente Banco Andino XX 99990008890';
+    const result = verifyClaims(extraction({
+      claims: claims({ payoutAccount: accountA, accountsFound: [accountA, accountB] }),
+      sourceKind: 'image',
+    }), [vendor]);
+
+    expect(unmaskedAccountDigits(accountA)).toBe('11112228890');
+    expect(unmaskedAccountDigits(accountB)).toBe('99990008890');
     expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
   });
 

@@ -43,8 +43,7 @@ function parseAccount(value: string): AccountParts | null {
   } else {
     const xMask = /(?:^|[\s·•*])(x+)([\s·•*]*)$/iu.exec(bankName);
     if (xMask) {
-      const [run, trailingGap] = [xMask[1], xMask[2]];
-      if (run.length === 1 && trailingGap.length > 0) {
+      if (digits.length >= 5) {
         return { key: '', digits, masked: false };
       }
       bankName = bankName.slice(0, xMask.index);
