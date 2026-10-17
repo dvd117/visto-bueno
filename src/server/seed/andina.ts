@@ -36,6 +36,7 @@ export function seed(): {
       { id: 'nube-hosting-monthly', vendorId: 'nube-andina', scope: 'Hosting administrado y respaldo de infraestructura', type: 'fixed', currency: 'USD', amountMinor: 85_000, billingFrequency: 'monthly', costCenter: 'operaciones', start: '2026-01-01', end: '2026-12-31', version: 1 },
       { id: 'valentina-diseno-monthly', vendorId: 'valentina-ruiz', scope: 'Diseño UX y sistema visual', type: 'fixed', currency: 'COP', amountMinor: 480_000_000, billingFrequency: 'monthly', costCenter: 'diseno', start: '2026-01-01', end: '2026-10-20', version: 1 },
       { id: 'valentina-ajustes-once', vendorId: 'valentina-ruiz', scope: 'Ajustes de diseño para entregables de octubre', type: 'fixed', currency: 'COP', amountMinor: 475_000_000, billingFrequency: 'one_time', costCenter: 'diseno', start: '2026-10-21', end: '2026-10-31', version: 1 },
+      { id: 'valentina-diseno-november-monthly', vendorId: 'valentina-ruiz', scope: 'Diseño UX y sistema visual', type: 'fixed', currency: 'COP', amountMinor: 480_000_000, billingFrequency: 'monthly', costCenter: 'diseno', start: '2026-11-01', end: '2026-11-30', version: 1 },
       { id: 'carlos-backend-variable', vendorId: 'carlos-mendez', scope: 'Desarrollo backend por horas', type: 'variable', currency: 'MXN', rateMinor: 100_000, unit: 'hora', maxUnitsPerPeriod: 70, billingFrequency: 'monthly', costCenter: 'ingenieria', start: '2026-01-01', end: '2026-12-31', version: 1 },
       { id: 'imprenta-materiales-once', vendorId: 'imprenta-caribe', scope: 'Impresión de materiales para el equipo', type: 'fixed', currency: 'USD', amountMinor: 31_000, billingFrequency: 'one_time', costCenter: 'operaciones', start: '2026-10-01', end: '2026-10-15', version: 1 },
       { id: 'imprenta-reimpresion-once', vendorId: 'imprenta-caribe', scope: 'Reimpresión puntual de afiches', type: 'fixed', currency: 'USD', amountMinor: 50_000, billingFrequency: 'one_time', costCenter: 'operaciones', start: '2026-10-16', end: '2026-10-31', version: 1 },
@@ -54,6 +55,7 @@ export function seed(): {
     budgets: [
       { costCenter: 'ingenieria', month: '2026-10', approvedUsdMinor: 2_000_000 },
       { costCenter: 'diseno', month: '2026-10', approvedUsdMinor: 600_000 },
+      { costCenter: 'diseno', month: '2026-11', approvedUsdMinor: 600_000 },
       { costCenter: 'operaciones', month: '2026-10', approvedUsdMinor: 600_000 },
       { costCenter: 'legal', month: '2026-10', approvedUsdMinor: 500_000 },
     ],
