@@ -51,7 +51,8 @@ export function FirstRunHint({
         <p className="first-run-eyebrow">Primeros pasos</p>
         <h2 id={titleId}>Orientación de inicio</h2>
         <p id={descriptionId} className="first-run-description">
-          Andina Labs paga a 10 proveedores en 5 países. Tú revisas las excepciones antes de decidir; Visto Bueno no hace pagos.
+          <span>Andina Labs paga a 10 proveedores en 5 países. Tú revisas las excepciones antes de decidir; Visto Bueno no hace pagos.</span>{' '}
+          <span>Solo deja una factura lista para pagar si cumple tus reglas; si no, te pregunta.</span>
         </p>
         <ol className="first-run-steps">
           {steps.map(({ label, onActivate }) => (

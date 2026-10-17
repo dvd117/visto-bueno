@@ -46,6 +46,13 @@
   gap: 25px;
 }
 
+.reglas-control-column {
+  display: grid;
+  align-content: start;
+  gap: 25px;
+  min-width: 0;
+}
+
 .reglas-panel {
   min-width: 0;
   border-top: 3px solid var(--line-bold);
@@ -267,6 +274,115 @@
   padding-top: 10px;
 }
 
+.reglas-beneficiaries {
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.reglas-vendor-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reglas-vendor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px 10px;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.reglas-vendor-copy {
+  min-width: 0;
+}
+
+.reglas-vendor-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.reglas-vendor-heading h4 {
+  min-width: 0;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.reglas-vendor-status {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 680;
+  white-space: nowrap;
+}
+
+.reglas-vendor-status-mark {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border: 1px solid var(--line-bold);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.reglas-vendor-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 8px;
+  min-width: 0;
+  margin: 8px 0 0;
+}
+
+.reglas-vendor-facts dt {
+  color: var(--soft);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.reglas-vendor-facts dd {
+  margin: 2px 0 0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.reglas-vendor-toggle {
+  align-self: start;
+  min-width: 82px;
+  min-height: 44px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 8px 10px;
+  background: var(--page);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 680;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reglas-vendor-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.reglas-vendor-error {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
 .reglas-fixed-panel h3 {
   font-size: 16px;
 }
@@ -451,6 +567,11 @@
 
   .reglas-fixed-list li {
     grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .reglas-vendor-heading {
+    flex-direction: column;
     gap: 5px;
   }
 

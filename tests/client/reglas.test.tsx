@@ -1,7 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SimulationResult } from '../../src/shared/api';
-import type { Rules } from '../../src/shared/domain/types';
+import type { Rules, Vendor } from '../../src/shared/domain/types';
 import { Reglas, type ReglasApi } from '../../src/client/features/reglas/Reglas';
 
 const initialRules: Rules = {
@@ -19,11 +21,38 @@ const safeSimulation: SimulationResult = {
   unsafeApprovals: 0,
 };
 
+const initialVendors: Vendor[] = [
+  {
+    id: 'nube-andina',
+    name: 'Nube Andina Tecnología S. de R.L.',
+    taxId: 'NAT010101AB6',
+    country: 'MX',
+    payoutCurrency: 'USD',
+    payoutAccount: 'Banco Ventaluz ···· 1234 5678 8890',
+    status: 'allowed',
+    version: 7,
+  },
+  {
+    id: 'pixel-patio',
+    name: 'Pixel Patio S.A.S.',
+    taxId: '900.000.101-3',
+    country: 'CO',
+    payoutCurrency: 'COP',
+    payoutAccount: 'Banco Altocauce ···· 1184',
+    status: 'blocked',
+    version: 3,
+  },
+];
+
+const reglasCss = readFileSync(resolve(process.cwd(), 'src/client/features/reglas/reglas.css'), 'utf8');
+
 function createApi(overrides: Partial<ReglasApi> = {}): ReglasApi {
   return {
     getRules: vi.fn(async () => initialRules),
     saveRules: vi.fn(async (rules: Rules) => ({ ...rules, version: 2 })),
     simulate: vi.fn(async (_rules: Rules) => safeSimulation),
+    getVendors: vi.fn(async () => initialVendors),
+    saveVendor: vi.fn(async (vendor: Vendor) => vendor),
     ...overrides,
   };
 }
@@ -52,6 +81,57 @@ afterEach(() => {
 });
 
 describe('Reglas', () => {
+  it('renders every vendor with masked payout accounts and text status', async () => {
+    renderReglas();
+
+    expect(await screen.findByRole('heading', { name: 'Beneficiarios permitidos' })).toBeTruthy();
+    expect(screen.getByText('Nube Andina Tecnología S. de R.L.')).toBeTruthy();
+    expect(screen.getByText('Pixel Patio S.A.S.')).toBeTruthy();
+    expect(screen.getByText('México')).toBeTruthy();
+    expect(screen.getByText('NAT010101AB6')).toBeTruthy();
+    expect(screen.getByText('USD')).toBeTruthy();
+    expect(screen.getByText('•••• 8890')).toBeTruthy();
+    expect(screen.getByText('•••• 1184')).toBeTruthy();
+    expect(screen.queryByText('Banco Ventaluz ···· 1234 5678 8890')).toBeNull();
+    expect(screen.getByText('Permitido', { exact: true })).toBeTruthy();
+    expect(screen.getByText('Bloqueado', { exact: true })).toBeTruthy();
+    expect(screen.getByText('✓')).toBeTruthy();
+    expect(screen.getByText('×')).toBeTruthy();
+  });
+
+  it('saves the full vendor row with its current version and adopts the response', async () => {
+    const savedVendor = { ...initialVendors[0], status: 'blocked' as const, version: 8 };
+    const api = renderReglas(createApi({ saveVendor: vi.fn(async () => savedVendor) }));
+
+    fireEvent.click(await screen.findByRole('button', { name: `Bloquear a ${initialVendors[0].name}` }));
+
+    await waitFor(() => expect(api.saveVendor).toHaveBeenCalledWith({
+      ...initialVendors[0],
+      status: 'blocked',
+    }));
+    const vendorRow = screen.getByText(initialVendors[0].name).closest('li');
+    expect(vendorRow).toBeTruthy();
+    expect(within(vendorRow as HTMLElement).getByText('Bloqueado', { exact: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `Permitir a ${initialVendors[0].name}` })).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByRole('status').map((item) => item.textContent).join(' '))
+      .toContain('Este cambio desactualiza'));
+  });
+
+  it('disables the vendor control while saving and keeps the old state on failure', async () => {
+    const save = deferred<Vendor>();
+    const api = renderReglas(createApi({ saveVendor: vi.fn(() => save.promise) }));
+    const toggle = await screen.findByRole('button', { name: `Bloquear a ${initialVendors[0].name}` });
+
+    fireEvent.click(toggle);
+
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => save.reject(new Error('No pude completar la solicitud.')));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('El estado anterior se conserva.');
+    expect(screen.getByText('Permitido', { exact: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `Bloquear a ${initialVendors[0].name}` })).toBeTruthy();
+  });
+
   it('loads editable rules, presets, help, and locked safety checks without toggles', async () => {
     renderReglas();
     await waitForLoadedControls();
@@ -64,16 +144,24 @@ describe('Reglas', () => {
     expect(screen.getByRole('radio', { name: /Permisivo/ })).toBeTruthy();
     expect(screen.getByText('Ver criterios avanzados')).toBeTruthy();
 
-    expect(screen.getAllByText('Fijo por seguridad')).toHaveLength(4);
-    expect(screen.getByText('Lista de proveedores permitidos')).toBeTruthy();
+    expect(screen.getAllByText('Fijo por seguridad')).toHaveLength(3);
+    expect(screen.queryByText('Lista de proveedores permitidos')).toBeNull();
+    expect(screen.getByText('R1 no se puede desactivar: solo se evalúan facturas de proveedores que tú marques como Permitido.')).toBeTruthy();
     expect(screen.getByText('La cuenta bancaria de la factura debe coincidir')).toBeTruthy();
     expect(screen.getByText('Integridad del documento de origen')).toBeTruthy();
     expect(screen.getByText('Contrato vigente')).toBeTruthy();
-    expect(screen.getByText(/Solo los proveedores registrados pueden recibir pagos/)).toBeTruthy();
     expect(screen.getAllByText(/¿Qué es esto\?/).length).toBeGreaterThanOrEqual(7);
     expect(screen.queryByRole('switch')).toBeNull();
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect((screen.getByRole('button', { name: 'Guardar cambios' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('keeps vendor status and field labels at the design metadata scale', () => {
+    const statusRule = reglasCss.match(/\.reglas-vendor-status\s*\{([^}]+)\}/u)?.[1] ?? '';
+    const fieldLabelRule = reglasCss.match(/\.reglas-vendor-facts dt\s*\{([^}]+)\}/u)?.[1] ?? '';
+
+    expect(statusRule).toMatch(/font-size:\s*10px/u);
+    expect(fieldLabelRule).toMatch(/font-size:\s*10px/u);
   });
 
   it('blocks saving when the approval threshold is equal to the payment limit', async () => {

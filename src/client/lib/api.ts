@@ -526,6 +526,8 @@ export const reglasApi: ReglasApi = {
   getRules: () => requestJson('/api/rules', rulesSchema),
   saveRules: (rules) => requestJson('/api/rules', rulesSchema, jsonInit('PUT', rules)),
   simulate: (rules) => requestJson('/api/rules/simulate', simulationResultSchema, jsonInit('POST', { rules })),
+  getVendors: () => getTable('vendors'),
+  saveVendor: (vendor) => putRow('vendors', vendor),
 };
 export const bitacoraApi: BitacoraApi = { getLog, exportPaymentsCsv, exportLogCsv, exportReportMd };
 

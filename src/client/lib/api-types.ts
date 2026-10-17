@@ -40,4 +40,6 @@ export interface ReglasApi {
   getRules(): Promise<Rules>;
   saveRules(rules: Rules): Promise<Rules>;
   simulate(rules: Rules): Promise<SimulationResult>;
+  getVendors(): Promise<Vendor[]>;
+  saveVendor(vendor: Vendor): Promise<Vendor>;
 }

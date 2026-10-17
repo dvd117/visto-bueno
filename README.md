@@ -2,6 +2,8 @@
 
 Una factura llega por correo, PDF o chat; un cambio de cuenta puede desviar un pago. Visto Bueno contrasta cada factura con su fuente, los registros y las reglas de la empresa antes de preparar una decisión. El modelo aporta señales; **el código conserva la autoridad final**.
 
+Visto Bueno deja una factura lista para pagar solo si cumple las reglas de tu empresa y te pregunta cuando algo queda fuera de ellas. No es un detector de fraude: contrasta la cuenta y los posibles duplicados con los registros de tu empresa, y trata las instrucciones de la factura como contenido no confiable.
+
 ## Demo
 
 [visto-bueno.aragort.com](https://visto-bueno.aragort.com) — demo de **Andina Labs Inc.**, con datos ficticios. No se ejecutan pagos reales.
@@ -42,6 +44,14 @@ Una alerta de integridad no se corrige con una explicación: si un dato crítico
 Al aprobar, el servidor vuelve a comprobar los controles contra los datos y compromisos actuales dentro de una transacción. Guarda juntos la decisión, el compromiso y el evento de auditoría; si un control ya no pasa, rechaza la aprobación. Cada espacio de trabajo mantiene sus propios datos de demo. **Reiniciar demo** restablece ese espacio a los datos ficticios sembrados.
 
 Cambiar reglas o datos de proveedor o contrato puede dejar una decisión pendiente **Desactualizada**. No se puede aprobar hasta ejecutar una nueva evaluación; el registro anterior se conserva y la nueva decisión queda enlazada.
+
+## En qué se diferencia
+
+- La evaluación separa sus evidencias: 0 aprobaciones indebidas en 30 pruebas adversariales; 20/20 estados correctos, 0 falsos escalamientos y 75 % de autonomía en respuestas grabadas; y «Sin muestra en vivo».
+- En PDF y texto, el monto, la cuenta, el ID fiscal y el ID de factura seleccionados deben aparecer literalmente en la fuente; el expediente los compara con los registros de tu empresa.
+- Cada decisión conserva la versión de las reglas, las versiones del proveedor y el contrato, la fecha del tipo de cambio y las respuestas JEV, junto con un sello; la bitácora exporta el estado y el sello para conciliación.
+- Las reglas deterministas calculan el estado; JEV aporta señales para escalar. Ninguna salida del modelo puede convertir un control fallido en «Lista para pagar».
+- Puedes pegar texto o soltar un PDF o una imagen para evaluar la factura por el mismo flujo de comprobaciones. La extracción costó en promedio USD 0,00075 por factura (medición del 17-10-2026); el costo de JEV no está medido ni se incluye en esa cifra.
 
 ## Ejecución local
 

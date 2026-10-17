@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { SimulationResult } from '../../../shared/api';
-import type { Preset, Rules } from '../../../shared/domain/types';
+import type { Preset, Rules, Vendor, VendorCountry } from '../../../shared/domain/types';
 import type { ReglasApi } from '../../lib/api-types';
 import './reglas.css';
 export type { ReglasApi } from '../../lib/api-types';
@@ -37,6 +37,21 @@ const presetCriteria: Array<{ preset: Preset; stop: string; review: string }> = 
   { preset: 'equilibrado', stop: '0,70', review: '0,35' },
   { preset: 'permisivo', stop: '0,85', review: '0,50' },
 ];
+
+const vendorCountryLabels: Record<VendorCountry, string> = {
+  CO: 'Colombia',
+  MX: 'México',
+  VE: 'Venezuela',
+  CL: 'Chile',
+  US: 'Estados Unidos',
+};
+
+const vendorStaleNotice = 'Este cambio desactualiza las facturas listas, pendientes de aprobación o en revisión de este proveedor y libera sus reservas. Reevalúalas para que el cambio se aplique.';
+
+function maskPayoutAccount(account: string): string {
+  const digits = account.replace(/\D/g, '');
+  return digits.length > 0 ? `•••• ${digits.slice(-4)}` : '••••';
+}
 
 const statusRows: Array<{
   key: keyof SimulationResult['counts'];
@@ -183,6 +198,11 @@ export function Reglas({ api }: ReglasProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [vendors, setVendors] = useState<Vendor[] | null>(null);
+  const [vendorLoadError, setVendorLoadError] = useState<string | null>(null);
+  const [vendorErrors, setVendorErrors] = useState<Record<string, string>>({});
+  const [savingVendors, setSavingVendors] = useState<Record<string, boolean>>({});
+  const [vendorSaveMessage, setVendorSaveMessage] = useState<string | null>(null);
   const [simulation, setSimulation] = useState<SimulationView | null>(null);
   const [simulationState, setSimulationState] = useState<RuleState>('loading');
   const simulationRequest = useRef(0);
@@ -200,6 +220,16 @@ export function Reglas({ api }: ReglasProps) {
         if (!active) return;
         setLoadError('No pude cargar las reglas. Intenta de nuevo.');
         setSimulationState('error');
+      });
+
+    api.getVendors()
+      .then((loadedVendors) => {
+        if (!active) return;
+        setVendors(loadedVendors);
+      })
+      .catch(() => {
+        if (!active) return;
+        setVendorLoadError('No pude cargar la lista de beneficiarios. Recarga la página para intentarlo de nuevo.');
       });
 
     return () => {
@@ -265,6 +295,32 @@ export function Reglas({ api }: ReglasProps) {
       setSaveError('No pude guardar los cambios. Tus reglas siguen sin actualizarse.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function toggleVendor(vendor: Vendor) {
+    if (savingVendors[vendor.id]) return;
+
+    const nextVendor: Vendor = {
+      ...vendor,
+      status: vendor.status === 'allowed' ? 'blocked' : 'allowed',
+    };
+    setSavingVendors((current) => ({ ...current, [vendor.id]: true }));
+    setVendorErrors((current) => ({ ...current, [vendor.id]: '' }));
+    setVendorSaveMessage(null);
+
+    try {
+      const savedVendor = await api.saveVendor(nextVendor);
+      setVendors((current) => current?.map((row) => row.id === savedVendor.id ? savedVendor : row) ?? current);
+      setVendorSaveMessage(`Estado de ${savedVendor.name} actualizado. ${vendorStaleNotice}`);
+    } catch (error) {
+      const detail = error instanceof Error && error.message ? error.message : 'Intenta de nuevo.';
+      setVendorErrors((current) => ({
+        ...current,
+        [vendor.id]: `No pude actualizar el estado de ${vendor.name}. ${detail} El estado anterior se conserva.`,
+      }));
+    } finally {
+      setSavingVendors((current) => ({ ...current, [vendor.id]: false }));
     }
   }
 
@@ -425,28 +481,76 @@ export function Reglas({ api }: ReglasProps) {
               </section>
             </div>
 
-            <aside aria-labelledby="reglas-fixed-title" className="reglas-panel reglas-fixed-panel">
-              <h3 id="reglas-fixed-title">Controles que no puedes cambiar</h3>
-              <p className="reglas-fixed-intro">Estos límites están siempre activos y no tienen interruptores.</p>
-              <ul className="reglas-fixed-list">
-                <li>
-                  <div><strong>Lista de proveedores permitidos</strong><span>Solo los proveedores registrados pueden recibir pagos.</span></div>
-                  <small>Fijo por seguridad</small>
-                </li>
-                <li>
-                  <div><strong>La cuenta bancaria de la factura debe coincidir</strong><span>Un cambio de cuenta requiere corregir los datos y volver a evaluar.</span></div>
-                  <small>Fijo por seguridad</small>
-                </li>
-                <li>
-                  <div><strong>Integridad del documento de origen</strong><span>Los datos críticos deben estar presentes en la factura.</span></div>
-                  <small>Fijo por seguridad</small>
-                </li>
-                <li>
-                  <div><strong>Contrato vigente</strong><span>Cada pago necesita un contrato aplicable.</span></div>
-                  <small>Fijo por seguridad</small>
-                </li>
-              </ul>
-            </aside>
+            <div className="reglas-control-column">
+              <section aria-busy={!vendors && !vendorLoadError} aria-labelledby="reglas-beneficiaries-title" className="reglas-panel reglas-beneficiaries">
+                <div className="reglas-section-heading">
+                  <h3 id="reglas-beneficiaries-title">Beneficiarios permitidos</h3>
+                </div>
+                {vendorLoadError && <p className="reglas-error" role="alert">{vendorLoadError}</p>}
+                {!vendors && !vendorLoadError && <p className="reglas-status" role="status">Cargando beneficiarios…</p>}
+                {vendors && (
+                  <ul className="reglas-vendor-list">
+                    {vendors.map((vendor) => {
+                      const allowed = vendor.status === 'allowed';
+                      const vendorSaving = Boolean(savingVendors[vendor.id]);
+                      return (
+                        <li className="reglas-vendor-row" key={vendor.id}>
+                          <div className="reglas-vendor-copy">
+                            <div className="reglas-vendor-heading">
+                              <h4>{vendor.name}</h4>
+                              <span className="reglas-vendor-status">
+                                <span aria-hidden="true" className="reglas-vendor-status-mark">{allowed ? '✓' : '×'}</span>
+                                {allowed ? 'Permitido' : 'Bloqueado'}
+                              </span>
+                            </div>
+                            <dl className="reglas-vendor-facts">
+                              <div><dt>País</dt><dd>{vendorCountryLabels[vendor.country]}</dd></div>
+                              <div><dt>Identificación fiscal</dt><dd>{vendor.taxId}</dd></div>
+                              <div><dt>Moneda de pago</dt><dd>{vendor.payoutCurrency}</dd></div>
+                              <div><dt>Cuenta de pago</dt><dd>{maskPayoutAccount(vendor.payoutAccount)}</dd></div>
+                            </dl>
+                          </div>
+                          <button
+                            aria-label={`${allowed ? 'Bloquear' : 'Permitir'} a ${vendor.name}`}
+                            className="reglas-vendor-toggle"
+                            disabled={vendorSaving}
+                            onClick={() => void toggleVendor(vendor)}
+                            type="button"
+                          >
+                            {vendorSaving ? 'Guardando…' : allowed ? 'Bloquear' : 'Permitir'}
+                          </button>
+                          {vendorErrors[vendor.id] && <p className="reglas-error reglas-vendor-error" role="alert">{vendorErrors[vendor.id]}</p>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <p className="reglas-help">Para editar la cuenta o los datos fiscales, usa Datos.</p>
+                {vendorSaveMessage && <p className="reglas-status" role="status">{vendorSaveMessage}</p>}
+              </section>
+
+              <aside aria-labelledby="reglas-fixed-title" className="reglas-panel reglas-fixed-panel">
+                <h3 id="reglas-fixed-title">Controles que no puedes cambiar</h3>
+                <p className="reglas-fixed-intro">Estos límites están siempre activos y no tienen interruptores.</p>
+                <ul className="reglas-fixed-list">
+                  <li>
+                    <div><span>R1 no se puede desactivar: solo se evalúan facturas de proveedores que tú marques como Permitido.</span></div>
+                  </li>
+                  <li>
+                    <div><strong>La cuenta bancaria de la factura debe coincidir</strong><span>Un cambio de cuenta requiere corregir los datos y volver a evaluar.</span></div>
+                    <small>Fijo por seguridad</small>
+                  </li>
+                  <li>
+                    <div><strong>Integridad del documento de origen</strong><span>Los datos críticos deben estar presentes en la factura.</span></div>
+                    <small>Fijo por seguridad</small>
+                  </li>
+                  <li>
+                    <div><strong>Contrato vigente</strong><span>Cada pago necesita un contrato aplicable.</span></div>
+                    <small>Fijo por seguridad</small>
+                  </li>
+                </ul>
+              </aside>
+            </div>
 
             <section aria-labelledby="reglas-impact-title" className="reglas-impact">
               <div className="reglas-impact-heading">
