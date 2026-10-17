@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
 import type { LogEntry } from '../../shared/api';
+import { CURRENCY_DEFINITIONS } from '../../shared/domain/currencies';
 import type { DecisionRecord, InvoiceStatus, Money, Vendor } from '../../shared/domain/types';
 
 export interface PaymentExportItem {
@@ -11,7 +12,7 @@ export interface PaymentExportItem {
   authorizedBy: string | null;
 }
 
-const PAYMENT_HEADER = 'vendor_tax_id,payout_account,payout_currency,amount_original,amount_usd,decision_id,authorized_by,seal';
+const PAYMENT_HEADER = 'vendor_tax_id,payout_account,payout_currency,amount_original,amount_usd,fx_date,decision_id,authorized_by,seal';
 const LOG_HEADER = 'at,invoice_id,status,headline,by,seal';
 
 function csvCell(value: string): string {
@@ -23,7 +24,8 @@ function csvRow(values: string[]): string {
 }
 
 function amountText(amount: Money): string {
-  return new Decimal(amount.minor).dividedBy(100).toFixed(2);
+  const exponent = CURRENCY_DEFINITIONS[amount.currency].exponent;
+  return new Decimal(amount.minor).dividedBy(new Decimal(10).pow(exponent)).toFixed(exponent);
 }
 
 function chronological<T extends { at: string }>(records: T[]): T[] {
@@ -47,6 +49,7 @@ export function paymentsCsv(items: PaymentExportItem[]): string {
       vendor.payoutCurrency,
       amountText(amountOriginal),
       amountText(amountUsd),
+      amountOriginal.currency === 'USD' ? '' : record.dataVersions.fxDate,
       record.id,
       authorizedBy ?? '',
       record.seal,

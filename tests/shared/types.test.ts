@@ -4,7 +4,7 @@ import type { Decision, ExtractionResult, InvoiceStatus, JevAnswers, Money } fro
 
 describe('domain contract', () => {
   it('money is integer minor units plus currency', () => {
-    expectTypeOf<Money>().toEqualTypeOf<{ currency: 'USD' | 'COP' | 'MXN'; minor: number }>();
+    expectTypeOf<Money>().toEqualTypeOf<{ currency: 'USD' | 'COP' | 'MXN' | 'CLP' | 'PEN' | 'ARS' | 'VES'; minor: number }>();
   });
 
   it('extraction result and jev answers are discriminated on ok', () => {

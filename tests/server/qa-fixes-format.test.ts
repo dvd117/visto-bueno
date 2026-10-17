@@ -101,6 +101,49 @@ describe('integrated QA formatter fixes', () => {
     expect(approved.subtitle).toBeUndefined();
   });
 
+  it('shows a foreign amount, USD comparison, and the rate date used for its decision', () => {
+    const base = makeInvoice();
+    if (!base.extraction?.ok) throw new Error('Expected an extracted invoice.');
+    const record: DecisionRecord = {
+      id: 'record-clp', invoiceId: base.id,
+      decision: {
+        status: 'ready', checks: [], flags: [], canApprove: false, headline: 'Lista para pagar', nextStep: null,
+        amountUsdMinor: 100, contractId: null, costCenter: null,
+      },
+      rulesSnapshot: {
+        version: 1, perPaymentLimitUsdMinor: 1_000_000, monthlyLimitUsdMinor: 5_000_000,
+        approvalThresholdUsdMinor: 300_000, fuzzyDuplicateWindowDays: 60, preset: 'equilibrado',
+      },
+      dataVersions: { fxDate: '2026-10-15' },
+      jev: { ok: false, error: 'missing_recording' }, seal: '8f3a1c', createdAt: '2026-10-16T00:00:00.000Z',
+    };
+    const invoice = makeInvoice({
+      status: 'ready', amountUsdMinor: 100, latestRecord: record,
+      extraction: {
+        ...base.extraction,
+        claims: { ...base.extraction.claims, amountsFound: ['CLP 950'], currenciesFound: ['CLP'], currency: 'CLP', amountRaw: 'CLP 950' },
+      },
+    });
+    const db = openDb(':memory:');
+    databases.push(db);
+    ensureWorkspace(db, 'qa-clp-fx-date');
+
+    const expediente = toExpediente(db, 'qa-clp-fx-date', invoice);
+
+    expect(expediente.row).toMatchObject({ amount: 'CLP 950', amountUsd: 'USD 1,00', fxDate: '2026-10-15' });
+    expect(expediente.comparison.find((row) => row.field === 'Monto facturado / monto contractual')?.invoice)
+      .toContain('CLP 950 · USD 1,00 · Tasa ilustrativa · 2026-10-15');
+
+    const unavailable = toExpediente(db, 'qa-clp-fx-date', {
+      ...invoice,
+      amountUsdMinor: null,
+      latestRecord: { ...record, dataVersions: { fxDate: 'unknown' } },
+    });
+    expect(unavailable.row).toMatchObject({ amount: 'CLP 950', amountUsd: null, fxDate: null });
+    expect(unavailable.comparison.find((row) => row.field === 'Monto facturado / monto contractual')?.invoice)
+      .toBe('CLP 950');
+  });
+
   it('truncates a long queued snippet at a word boundary and marks the truncation', () => {
     const sourceText = 'Factura para Andina Labs, servicios de infraestructura y soporte técnico durante octubre de 2026. '.repeat(3);
     const row = toInvoiceRow(makeInvoice({ status: 'queued', extraction: null, sourceText }));

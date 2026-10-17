@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { Currency, FxRate } from '../../src/shared/domain/types';
+import { CURRENCIES, CURRENCY_DEFINITIONS, isCurrency } from '../../src/shared/domain/currencies';
 import { formatMoney, parseAmount, toUsdMinor } from '../../src/shared/domain/money';
+
+describe('currency definitions', () => {
+  it('has one supported code set, including zero-decimal CLP and no BRL', () => {
+    expect(CURRENCIES).toEqual(['USD', 'COP', 'MXN', 'CLP', 'PEN', 'ARS', 'VES']);
+    expect(CURRENCY_DEFINITIONS.CLP).toEqual({ exponent: 0, locale: 'es-CL' });
+    expect(CURRENCY_DEFINITIONS.PEN.locale).toBe('es-PE');
+    expect(CURRENCY_DEFINITIONS.ARS.locale).toBe('es-AR');
+    expect(isCurrency('BRL')).toBe(false);
+  });
+});
 
 describe('parseAmount', () => {
   it('parses Colombian pesos with es-419 punctuation', () => {
@@ -25,10 +36,16 @@ describe('parseAmount', () => {
     });
   });
 
-  it('rejects a lone separator with three trailing digits as ambiguous without a locale hint', () => {
-    expect(parseAmount('USD 2.500', { currency: 'USD' })).toEqual({ ok: false, reason: 'ambiguous' });
-    expect(parseAmount('USD 2,500', { currency: 'USD' })).toEqual({ ok: false, reason: 'ambiguous' });
-    expect(parseAmount('USD 850,004', { currency: 'USD' })).toEqual({ ok: false, reason: 'ambiguous' });
+  it('uses the currency locale to disambiguate three-digit grouping from invalid precision', () => {
+    expect(parseAmount('USD 2.500', { currency: 'USD' })).toEqual({ ok: false, reason: 'unparseable' });
+    expect(parseAmount('USD 2,500', { currency: 'USD' })).toEqual({
+      ok: true,
+      money: { currency: 'USD', minor: 250000 },
+    });
+    expect(parseAmount('USD 850,004', { currency: 'USD' })).toEqual({
+      ok: true,
+      money: { currency: 'USD', minor: 85000400 },
+    });
   });
 
   it('uses the locale hint to resolve a lone separator as a thousands mark', () => {
@@ -111,6 +128,40 @@ describe('parseAmount', () => {
   it('returns unparseable for text without an amount', () => {
     expect(parseAmount('abc', { currency: 'USD' })).toEqual({ ok: false, reason: 'unparseable' });
   });
+
+  it('parses CLP as whole pesos and rejects fractional pesos', () => {
+    expect(parseAmount('CLP 1.234', { currency: 'CLP' })).toEqual({
+      ok: true,
+      money: { currency: 'CLP', minor: 1234 },
+    });
+    expect(parseAmount('CLP 1.234,00', { currency: 'CLP' })).toEqual({
+      ok: false,
+      reason: 'unparseable',
+    });
+  });
+
+  it('parses PEN and ARS using their currency locales and two-decimal exponents', () => {
+    expect(parseAmount('PEN 3.75', { currency: 'PEN' })).toEqual({
+      ok: true,
+      money: { currency: 'PEN', minor: 375 },
+    });
+    expect(parseAmount('ARS 1.250,00', { currency: 'ARS' })).toEqual({
+      ok: true,
+      money: { currency: 'ARS', minor: 125000 },
+    });
+    expect(parseAmount('PEN 1,234', { currency: 'PEN' })).toEqual({
+      ok: true,
+      money: { currency: 'PEN', minor: 123400 },
+    });
+    expect(parseAmount('ARS 1.234', { currency: 'ARS' })).toEqual({
+      ok: true,
+      money: { currency: 'ARS', minor: 123400 },
+    });
+    expect(parseAmount('VES 36,50', { currency: 'VES' })).toEqual({
+      ok: true,
+      money: { currency: 'VES', minor: 3650 },
+    });
+  });
 });
 
 describe('toUsdMinor', () => {
@@ -133,11 +184,33 @@ describe('toUsdMinor', () => {
     expect(toUsdMinor({ currency: 'COP', minor: 1 }, constructedFx)).toEqual({ ok: true, usdMinor: 0 });
     expect(toUsdMinor({ currency: 'COP', minor: 3 }, constructedFx)).toEqual({ ok: true, usdMinor: 2 });
   });
+
+  it('converts zero-decimal CLP pesos to USD cents using the currency exponent', () => {
+    expect(toUsdMinor(
+      { currency: 'CLP', minor: 950 },
+      [{ currency: 'CLP', perUsd: '950', date: '2026-10-15' }],
+    )).toEqual({ ok: true, usdMinor: 100 });
+  });
+
+  it.each([
+    ['PEN', 375], ['ARS', 125_000], ['VES', 3_650],
+  ] as const)('converts %s using its two-decimal exponent', (currency, minor) => {
+    const rates: FxRate[] = [
+      { currency: 'PEN', perUsd: '3.75', date: '2026-10-15' },
+      { currency: 'ARS', perUsd: '1250', date: '2026-10-15' },
+      { currency: 'VES', perUsd: '36.50', date: '2026-10-15' },
+    ];
+    expect(toUsdMinor({ currency, minor }, rates)).toEqual({ ok: true, usdMinor: 100 });
+  });
 });
 
 describe('formatMoney', () => {
   it('formats money with es-419 grouping and decimal marks', () => {
     expect(formatMoney({ currency: 'COP', minor: 480000000 })).toBe('COP 4.800.000,00');
     expect(formatMoney({ currency: 'USD', minor: 85000 })).toBe('USD 850,00');
+  });
+
+  it('formats zero-decimal CLP without cents', () => {
+    expect(formatMoney({ currency: 'CLP', minor: 1234 })).toBe('CLP 1.234');
   });
 });
