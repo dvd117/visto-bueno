@@ -1,5 +1,5 @@
 import { parseAmount } from '../domain/money';
-import type { CheckResult, Currency, ExtractionClaims, ExtractionResult, Money, Vendor } from '../domain/types';
+import type { CheckOutcome, CheckResult, Currency, ExtractionClaims, ExtractionResult, Money, Vendor } from '../domain/types';
 import { analyzeAccount, normalize, normalizeAccount } from './normalize';
 
 const CURRENCIES: readonly Currency[] = ['USD', 'COP', 'MXN'];
@@ -24,8 +24,9 @@ function check(
   passed: boolean,
   effect: CheckResult['effect'],
   reason: string,
+  outcome: CheckOutcome = passed ? 'passed' : 'failed',
 ): CheckResult {
-  return { id, kind: 'verify', label, passed, effect, reason };
+  return { id, kind: 'verify', label, passed, outcome, effect, reason };
 }
 
 function isCurrency(value: string | null | undefined): value is Currency {
@@ -36,7 +37,7 @@ function uniqueNormalized(values: Array<string | null | undefined>): Set<string>
   return new Set(values.filter((value): value is string => Boolean(value?.trim())).map(normalize));
 }
 
-function hasSingleUnambiguousAccount(values: Array<string | null | undefined>): boolean {
+export function hasSingleUnambiguousAccount(values: Array<string | null | undefined>): boolean {
   const candidates = values.filter((value): value is string => Boolean(value?.trim())).map((value) => {
     const account = analyzeAccount(value);
     return { value, account };
@@ -107,7 +108,7 @@ export function verifyClaims(
 ): { checks: CheckResult[]; vendor: Vendor | null; money: Money | null } {
   if (!extraction.ok) {
     return {
-      checks: [check('extraction_failed', 'No se pudo leer la factura', false, 'review', EXTRACTION_FAILURE_REASONS[extraction.error])],
+      checks: [check('extraction_failed', 'No se pudo leer la factura', false, 'review', EXTRACTION_FAILURE_REASONS[extraction.error], 'pending')],
       vendor: null,
       money: null,
     };
@@ -121,7 +122,7 @@ export function verifyClaims(
 
   for (const [field, label] of SOURCE_FIELDS) {
     if (sourceKind === 'image') {
-      checks.push(check(`source_${field}`, label, false, 'approval', 'No verificable en imagen.'));
+      checks.push(check(`source_${field}`, label, false, 'approval', 'No verificable en imagen.', 'pending'));
       continue;
     }
     const value = claims[field];
@@ -169,6 +170,7 @@ export function verifyClaims(
   checks.push(check(
     'sum_mismatch', 'Suma de subtotal e impuestos', !sumMismatch, sumMismatch ? 'review' : 'none',
     sumMismatch ? 'El subtotal y los impuestos no coinciden con el total.' : 'La suma del subtotal y los impuestos coincide con el total o no aplica.',
+    sumMatches === null ? 'not_applicable' : sumMismatch ? 'failed' : 'passed',
   ));
 
   const hasAmount = Boolean(claims.amountRaw?.trim());
@@ -189,12 +191,15 @@ export function verifyClaims(
     'ambiguous_amount', 'Monto interpretable', amountIsUnambiguous,
     amountIsUnambiguous ? 'none' : 'review',
     amountIsUnambiguous ? 'El monto se puede interpretar sin adivinar.' : 'No pude interpretar el monto sin adivinar.',
+    amountIsUnambiguous ? 'passed' : 'pending',
   ));
 
+  const imageSource = sourceKind === 'image';
   checks.push(check(
     'image_confirmation', 'Confirmación visual de la imagen', true,
-    sourceKind === 'image' ? 'approval' : 'none',
-    sourceKind === 'image' ? 'Confirma los datos contra la imagen antes de aprobar.' : 'No requiere confirmación visual.',
+    imageSource ? 'approval' : 'none',
+    imageSource ? 'Confirma los datos contra la imagen antes de aprobar.' : 'No requiere confirmación visual.',
+    imageSource ? 'pending' : 'not_applicable',
   ));
 
   return { checks, vendor, money };

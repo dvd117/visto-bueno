@@ -108,11 +108,15 @@ const checkSchema = z.object({
   kind: z.enum(['verify', 'rule', 'judgment']),
   label: z.string(),
   passed: z.boolean(),
+  outcome: z.enum(['passed', 'failed', 'pending', 'not_applicable']).optional(),
   effect: z.enum(['none', 'stop', 'approval', 'review']),
   reason: z.string(),
   probability: z.number().optional(),
   evidence: z.object({ invoice: z.string().optional(), record: z.string().optional() }).optional(),
-});
+}).transform((check) => ({
+  ...check,
+  outcome: check.outcome ?? (check.passed ? 'passed' as const : 'failed' as const),
+}));
 const flagSchema = z.object({
   id: z.string(),
   checkId: z.string(),

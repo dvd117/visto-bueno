@@ -61,6 +61,50 @@ function makeBitacoraApi(entries: LogEntry[]): BitacoraApi {
 }
 
 describe('QA: Expediente document tabs', () => {
+  it('renders pending and not-applicable trail outcomes with distinct glyphs and labels', () => {
+    const expediente = makeExpediente();
+    expediente.row.status = 'review_required';
+    expediente.record = {
+      id: 'record-trail',
+      invoiceId: expediente.row.id,
+      decision: {
+        status: 'review_required',
+        checks: [
+          {
+            id: 'R2', kind: 'rule', label: 'Cuenta bancaria registrada', passed: true,
+            outcome: 'pending', effect: 'none', reason: 'La cuenta de la factura coincide con la cuenta registrada.',
+          },
+          {
+            id: 'image_confirmation', kind: 'verify', label: 'Confirmación visual', passed: false,
+            outcome: 'pending', effect: 'approval', reason: 'Confirma los datos contra la imagen.',
+          },
+          {
+            id: 'scope_match', kind: 'judgment', label: 'Coincidencia con el alcance', passed: true,
+            outcome: 'not_applicable', effect: 'none', reason: 'No hay un acuerdo único vigente.',
+          },
+        ],
+        flags: [], canApprove: false, headline: 'Requiere tu aprobación.', nextStep: null,
+        amountUsdMinor: null, contractId: null, costCenter: null,
+      },
+      rulesSnapshot: {
+        version: 1, perPaymentLimitUsdMinor: 1_000_000, monthlyLimitUsdMinor: 5_000_000,
+        approvalThresholdUsdMinor: 300_000, fuzzyDuplicateWindowDays: 60, preset: 'equilibrado',
+      },
+      dataVersions: { fxDate: '2026-10-16' }, jev: { ok: false, error: 'timeout' },
+      seal: '8f3a1c', createdAt: '2026-10-16T21:14:00.000Z',
+    };
+
+    renderExpediente(expediente);
+
+    expect(screen.getByText('Cuenta bancaria registrada · Pendiente')).toBeTruthy();
+    expect(screen.getByText('No se pudo verificar una sola cuenta bancaria contra un registro.')).toBeTruthy();
+    expect(screen.queryByText('La cuenta de la factura coincide con la cuenta registrada.')).toBeNull();
+    expect(screen.getByText('Confirmación visual · Pendiente')).toBeTruthy();
+    expect(screen.getByText('Coincidencia con el alcance · No aplica')).toBeTruthy();
+    expect(screen.getAllByText('?', { selector: '.trail-glyph' })).toHaveLength(2);
+    expect(screen.getByText('—', { selector: '.trail-glyph' })).toBeTruthy();
+  });
+
   it('associates both tabs with their panels and preserves the original and marked text views', () => {
     renderExpediente(makeExpediente());
 

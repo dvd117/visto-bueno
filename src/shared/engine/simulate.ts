@@ -231,7 +231,10 @@ function simulateUnderRules(input: SimulationInput, rules: Rules, today: string)
     const recent = verified.vendor
       ? ledger.recentByVendor(verified.vendor.id, rules.fuzzyDuplicateWindowDays)
       : [];
-    const jevChecks = mapJev(normalizeJev(invoice.jev), rules.preset, { fuzzy: recent.length > 0 });
+    const jevChecks = mapJev(normalizeJev(invoice.jev), rules.preset, {
+      fuzzy: recent.length > 0,
+      scope: Boolean(evaluation?.contract),
+    });
     const decision = combine({
       verify: verified.checks,
       rules: evaluation?.checks ?? [],

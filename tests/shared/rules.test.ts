@@ -14,10 +14,13 @@ const contract: Contract = {
 };
 
 function claims(overrides: Partial<ExtractionClaims> = {}): ExtractionClaims {
+  const payoutAccount = Object.hasOwn(overrides, 'payoutAccount')
+    ? overrides.payoutAccount ?? null
+    : 'Banco Altocauce ···· 8890';
   return {
-    amountsFound: ['USD 100.00'], accountsFound: ['Banco Altocauce ···· 8890'], taxIdsFound: ['901.234.567-8'],
+    amountsFound: ['USD 100.00'], accountsFound: payoutAccount ? [payoutAccount] : [], taxIdsFound: ['901.234.567-8'],
     invoiceIdsFound: ['INV-001'], currenciesFound: ['USD'], payeeName: 'Nube Andina S.A.S.',
-    payeeTaxId: '901.234.567-8', payoutAccount: 'Banco Altocauce ···· 8890', invoiceId: 'INV-001',
+    payeeTaxId: '901.234.567-8', payoutAccount, invoiceId: 'INV-001',
     invoiceDate: '2026-10-16', dueDate: '2026-10-20', currency: 'USD', amountRaw: 'USD 100.00',
     subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null, description: 'Hosting',
     documentTypeHint: 'factura', hasMultipleCurrenciesShown: false, evidenceQuotes: {}, suspiciousPassages: [],
@@ -138,6 +141,27 @@ describe('evaluateRules', () => {
     expectFail(ambiguous, 'R2', 'stop');
     expect(getCheck(ambiguous, 'R2').evidence).toEqual({ invoice: '···· —', record: '···· 8890' });
     expectFail(evaluate({ claims: claims({ payoutAccount: null }) }), 'R2', 'stop');
+  });
+
+  it('does not call an account match verified without a vendor record or a single invoice account', () => {
+    const missingVendor = getCheck(evaluate({ vendor: null }), 'R2');
+    expect(missingVendor).toMatchObject({ outcome: 'pending', passed: true, effect: 'none' });
+
+    const missingRegisteredAccount = getCheck(evaluate({ vendor: { ...vendor, payoutAccount: '' } }), 'R2');
+    expect(missingRegisteredAccount).toMatchObject({ outcome: 'pending' });
+    expect(missingRegisteredAccount.reason).not.toContain('coincide');
+
+    const multipleInvoiceAccounts = getCheck(evaluate({
+      claims: claims({ accountsFound: ['Banco Altocauce ···· 8890', 'Banco Ventaluz ···· 9204'] }),
+    }), 'R2');
+    expect(multipleInvoiceAccounts).toMatchObject({ outcome: 'pending', passed: true, effect: 'none' });
+  });
+
+  it('marks amount-dependent rules pending when the money parser cannot produce a value', () => {
+    const result = evaluate({ money: null, claims: claims({ amountRaw: 'USD 2.500' }) });
+    for (const id of ['R5', 'R11', 'R12', 'R13', 'R14', 'R15', 'R16']) {
+      expect(getCheck(result, id), id).toMatchObject({ outcome: 'pending' });
+    }
   });
 
   it('marks image account and amount agreement as unverifiable and approval-gated', () => {

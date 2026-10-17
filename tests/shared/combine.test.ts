@@ -5,7 +5,9 @@ import { mapJev } from '../../src/shared/engine/jev-map';
 
 function check(id: string, effect: CheckResult['effect'], overrides: Partial<CheckResult> = {}): CheckResult {
   return {
-    id, kind: 'rule', label: 'Check', passed: effect === 'none', effect, reason: 'Texto de prueba.', ...overrides,
+    id, kind: 'rule', label: 'Check', passed: effect === 'none',
+    outcome: effect === 'none' ? 'passed' : effect === 'stop' ? 'failed' : 'pending',
+    effect, reason: 'Texto de prueba.', ...overrides,
   };
 }
 
@@ -105,6 +107,16 @@ describe('combine', () => {
     expect(decision.status).toBe('stopped');
     expect(decision.canApprove).toBe(false);
     expect(decision.checks).toContainEqual(expect.objectContaining({ id: failed.id, effect: 'stop', passed: false }));
+  });
+
+  it('preserves pending and not-applicable outcomes without creating a new stop', () => {
+    const decision = decide([
+      check('pending_check', 'none', { kind: 'verify', passed: true, outcome: 'pending' }),
+      check('unused_check', 'none', { kind: 'rule', passed: true, outcome: 'not_applicable' }),
+    ], [], requiredJevChecks());
+
+    expect(decision.checks.find(({ id }) => id === 'pending_check')).toMatchObject({ effect: 'none', outcome: 'pending' });
+    expect(decision.checks.find(({ id }) => id === 'unused_check')).toMatchObject({ effect: 'none', outcome: 'not_applicable' });
   });
 
   it('treats a failed judgment check with effect none as review', () => {

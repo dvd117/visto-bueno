@@ -69,7 +69,7 @@ describe('integrated QA formatter fixes', () => {
       decision: {
         status: 'approval_required',
         checks: [{
-          id: 'R15', kind: 'rule', label: 'Umbral de aprobación humana', passed: true, effect: 'approval',
+          id: 'R15', kind: 'rule', label: 'Umbral de aprobación humana', passed: true, outcome: 'passed', effect: 'approval',
           reason: 'El monto supera el umbral y requiere aprobación humana.',
         } satisfies CheckResult],
         flags: [],

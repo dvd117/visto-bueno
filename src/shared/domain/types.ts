@@ -54,8 +54,10 @@ export type ExtractionResult =
 
 export type CheckKind = 'verify' | 'rule' | 'judgment';
 export type CheckEffect = 'none' | 'stop' | 'approval' | 'review';
+export type CheckOutcome = 'passed' | 'failed' | 'pending' | 'not_applicable';
 export interface CheckResult {
-  id: string; kind: CheckKind; label: string; passed: boolean;
+  /** Policy-flow flag; use outcome for the truthful audit-trail state. */
+  id: string; kind: CheckKind; label: string; passed: boolean; outcome: CheckOutcome;
   effect: CheckEffect; reason: string; probability?: number;
   evidence?: { invoice?: string; record?: string };
 }

@@ -126,7 +126,7 @@ function evaluate(db: Db, workspaceId: string, invoice: StoredInvoice, inputs: D
   const combined = combine({
     verify: verified.checks,
     rules: rules?.checks ?? [],
-    jev: mapJev(inputs.jev, data.rules.preset),
+    jev: mapJev(inputs.jev, data.rules.preset, { scope: Boolean(rules?.contract) }),
     resolvedFlagIds,
   });
   const contract = rules?.contract ?? null;
@@ -296,10 +296,10 @@ function stopForApproval(
     canApprove: false,
     checks: baseDecision.checks.some((check) => check.id === checkId)
       ? baseDecision.checks.map((check) => check.id === checkId
-        ? { ...check, passed: false, effect: 'stop', reason }
+        ? { ...check, passed: false, outcome: 'failed', effect: 'stop', reason }
         : check)
       : [...baseDecision.checks, {
-          id: checkId, kind: 'rule', label: 'Aprobación segura', passed: false, effect: 'stop', reason,
+          id: checkId, kind: 'rule', label: 'Aprobación segura', passed: false, outcome: 'failed', effect: 'stop', reason,
         }],
     headline: 'No se puede aprobar esta factura',
     nextStep: 'Corrige la causa y vuelve a evaluar la factura.',

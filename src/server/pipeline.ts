@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import Decimal from 'decimal.js';
 import type { ProcessEvent, ProcessRequest, RunStats } from '../shared/api';
-import type { ExtractionResult, JevAnswers, SourceKind } from '../shared/domain/types';
+import type { CheckResult, ExtractionResult, JevAnswers, SourceKind } from '../shared/domain/types';
 import { buildJevQuestions } from '../shared/engine/jev-questions';
 import { evaluateRules } from '../shared/engine/rules';
 import { verifyClaims } from '../shared/engine/verify';
@@ -21,6 +21,12 @@ export type ProviderMode = 'replay' | 'record' | 'live';
 type ExtractProvider = typeof extract;
 type JevProvider = typeof askJev;
 type Emit = (event: ProcessEvent) => void | Promise<void>;
+
+function checkWithoutOutcome(check: CheckResult): Omit<CheckResult, 'outcome'> {
+  const projected = { ...check };
+  Reflect.deleteProperty(projected, 'outcome');
+  return projected;
+}
 
 async function emitSafely(emit: Emit, event: ProcessEvent): Promise<void> {
   try {
@@ -273,7 +279,7 @@ async function evaluateJev(
         start: ruleResult.contract.start,
         end: ruleResult.contract.end,
       } : null,
-      deterministicChecks: [...verified.checks, ...ruleResult.checks],
+      deterministicChecks: [...verified.checks, ...ruleResult.checks].map(checkWithoutOutcome),
       recentSameVendorInvoices: item.candidates,
     };
 
