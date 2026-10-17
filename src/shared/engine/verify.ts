@@ -191,7 +191,7 @@ export function verifyClaims(
     'ambiguous_amount', 'Monto interpretable', amountIsUnambiguous,
     amountIsUnambiguous ? 'none' : 'review',
     amountIsUnambiguous ? 'El monto se puede interpretar sin adivinar.' : 'No pude interpretar el monto sin adivinar.',
-    amountIsUnambiguous ? 'passed' : 'pending',
+    amountIsUnambiguous ? 'passed' : 'failed',
   ));
 
   const imageSource = sourceKind === 'image';

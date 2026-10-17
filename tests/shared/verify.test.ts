@@ -442,7 +442,7 @@ describe('verifyClaims', () => {
       claims: claims({ amountRaw: 'USD 2.500', amountsFound: ['USD 2.500'] }),
       sourceText: 'NIT 901.234.567-8 Cuenta Banco Ventaluz ···· 8890 Factura INV-001 Total USD 2.500',
     }), [vendor]);
-    expect(getCheck(result, 'ambiguous_amount')).toMatchObject({ passed: false, effect: 'review' });
+    expect(getCheck(result, 'ambiguous_amount')).toMatchObject({ passed: false, outcome: 'failed', effect: 'review' });
     expect(result.money).toBeNull();
   });
 
@@ -456,7 +456,7 @@ describe('verifyClaims', () => {
     const unknown = verifyClaims(extraction({
       claims: claims({ payeeTaxId: 'unknown', payoutAccount: 'Unknown Bank ···· 0000', currency: null }),
     }), [vendor]);
-    expect(getCheck(unknown, 'ambiguous_amount')).toMatchObject({ passed: false, effect: 'review' });
+    expect(getCheck(unknown, 'ambiguous_amount')).toMatchObject({ passed: false, outcome: 'failed', effect: 'review' });
     expect(unknown.money).toBeNull();
   });
 

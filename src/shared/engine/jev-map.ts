@@ -55,7 +55,7 @@ function result(
   effect: CheckResult['effect'],
   reason: string,
   probability?: number,
-  outcome: CheckOutcome = effect === 'none' ? 'passed' : effect === 'stop' ? 'failed' : 'pending',
+  outcome: CheckOutcome = effect === 'none' ? 'passed' : effect === 'approval' ? 'pending' : 'failed',
 ): CheckResult {
   return {
     id,
