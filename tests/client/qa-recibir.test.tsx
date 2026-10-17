@@ -56,6 +56,6 @@ describe('RecibirPanel file picker QA', () => {
     expect(picker.getAttribute('aria-describedby')).toBe('recibir-file-status');
 
     await waitFor(() => expect(api.createInvoiceFile).toHaveBeenCalledWith(file));
-    expect(api.process).toHaveBeenCalledWith(['invoice-qa'], 'live');
+    expect(api.process).toHaveBeenCalledWith({ ids: ['invoice-qa'], mode: 'live' });
   });
 });
