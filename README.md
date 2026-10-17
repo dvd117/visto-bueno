@@ -6,7 +6,7 @@ Una factura llega por correo, PDF o chat; un cambio de cuenta puede desviar un p
 
 [visto-bueno.aragort.com](https://visto-bueno.aragort.com) — demo de **Andina Labs Inc.**, con datos ficticios. No se ejecutan pagos reales.
 
-> **Estado de implementación (checkout local):** el flujo de facturas, sus controles, reglas, datos, bitácora y evaluación están integrados. `GET /api/eval` sirve el artefacto validado `src/server/eval/report.json` (20/20 estados correctos, 0 aprobaciones indebidas en 30 pruebas adversariales). `EXTRACT_MODE=replay` y `JEV_MODE=replay` permiten probar sin llamadas externas. La disponibilidad de la URL desplegada debe verificarse por separado.
+> **Estado de implementación:** la demo desplegada integra este flujo y sirve el informe de evaluación en `GET /api/eval`. `EXTRACT_MODE=replay` y `JEV_MODE=replay` permiten probar sin llamadas externas.
 
 ## Cómo decide
 
@@ -79,7 +79,7 @@ El informe de evaluación lo genera una ejecución local de pruebas de confianza
 - **Seguridad de regresión:** 0 aprobaciones indebidas en 30 pruebas adversariales.
 - **Conjunto etiquetado:** 20/20 estados correctos, 0 falsos escalamientos y 75 % de autonomía, en respuestas grabadas.
 - **Muestra en vivo:** Sin muestra en vivo; requiere facturas no vistas y latencia, costo y fallos medidos.
-- **Costo por 1.000 facturas:** Pendiente de medición. Para calcularlo hacen falta los modelos y llamadas por factura, tokens de entrada y salida de extracción y JEV, y las tarifas aplicables en la fecha de medición.
+- **Costo por 1.000 facturas:** Extracción (solo Gemini): ≈ USD 0,75, calculado a partir del promedio medido de USD 0,00075 por factura el 17-10-2026. El costo de JEV no se ha medido ni está incluido.
 
 ### Costo por factura
 
