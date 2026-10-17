@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SimulationResult } from '../../src/shared/api';
@@ -41,6 +43,8 @@ const initialVendors: Vendor[] = [
     version: 3,
   },
 ];
+
+const reglasCss = readFileSync(resolve(process.cwd(), 'src/client/features/reglas/reglas.css'), 'utf8');
 
 function createApi(overrides: Partial<ReglasApi> = {}): ReglasApi {
   return {
@@ -140,16 +144,24 @@ describe('Reglas', () => {
     expect(screen.getByRole('radio', { name: /Permisivo/ })).toBeTruthy();
     expect(screen.getByText('Ver criterios avanzados')).toBeTruthy();
 
-    expect(screen.getAllByText('Fijo por seguridad')).toHaveLength(4);
-    expect(screen.getByText('Lista de proveedores permitidos')).toBeTruthy();
+    expect(screen.getAllByText('Fijo por seguridad')).toHaveLength(3);
+    expect(screen.queryByText('Lista de proveedores permitidos')).toBeNull();
+    expect(screen.getByText('R1 no se puede desactivar: solo se evalúan facturas de proveedores que tú marques como Permitido.')).toBeTruthy();
     expect(screen.getByText('La cuenta bancaria de la factura debe coincidir')).toBeTruthy();
     expect(screen.getByText('Integridad del documento de origen')).toBeTruthy();
     expect(screen.getByText('Contrato vigente')).toBeTruthy();
-    expect(screen.getByText(/Solo los proveedores registrados pueden recibir pagos/)).toBeTruthy();
     expect(screen.getAllByText(/¿Qué es esto\?/).length).toBeGreaterThanOrEqual(7);
     expect(screen.queryByRole('switch')).toBeNull();
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect((screen.getByRole('button', { name: 'Guardar cambios' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('keeps vendor status and field labels at the design metadata scale', () => {
+    const statusRule = reglasCss.match(/\.reglas-vendor-status\s*\{([^}]+)\}/u)?.[1] ?? '';
+    const fieldLabelRule = reglasCss.match(/\.reglas-vendor-facts dt\s*\{([^}]+)\}/u)?.[1] ?? '';
+
+    expect(statusRule).toMatch(/font-size:\s*10px/u);
+    expect(fieldLabelRule).toMatch(/font-size:\s*10px/u);
   });
 
   it('blocks saving when the approval threshold is equal to the payment limit', async () => {

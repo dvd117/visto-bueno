@@ -534,8 +534,7 @@ export function Reglas({ api }: ReglasProps) {
                 <p className="reglas-fixed-intro">Estos límites están siempre activos y no tienen interruptores.</p>
                 <ul className="reglas-fixed-list">
                   <li>
-                    <div><strong>Lista de proveedores permitidos</strong><span>Solo los proveedores registrados pueden recibir pagos.</span></div>
-                    <small>Fijo por seguridad</small>
+                    <div><span>R1 no se puede desactivar: solo se evalúan facturas de proveedores que tú marques como Permitido.</span></div>
                   </li>
                   <li>
                     <div><strong>La cuenta bancaria de la factura debe coincidir</strong><span>Un cambio de cuenta requiere corregir los datos y volver a evaluar.</span></div>

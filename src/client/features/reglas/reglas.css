@@ -320,7 +320,7 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 680;
   white-space: nowrap;
 }
@@ -345,7 +345,7 @@
 
 .reglas-vendor-facts dt {
   color: var(--soft);
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.25;
 }
 
