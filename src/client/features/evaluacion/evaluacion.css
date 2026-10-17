@@ -34,32 +34,18 @@
   color: var(--soft, #555555);
 }
 
-.eval-unavailable,
 .eval-panel {
   border-top: 3px solid var(--line-bold, #1a1a1a);
   border-bottom: 1px solid var(--line, #d9d9d9);
   padding: 14px 0 18px;
 }
 
-.eval-unavailable h2,
-.eval-panel h2,
-.eval-alert h2 {
+.eval-panel h2 {
   margin: 0 0 12px;
   font-size: 21px;
   font-weight: 750;
   letter-spacing: -0.04em;
   line-height: 1.2;
-}
-
-.eval-unavailable ul,
-.eval-alert ul {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.eval-unavailable li + li,
-.eval-alert li + li {
-  margin-top: 5px;
 }
 
 .eval-message {
@@ -81,11 +67,6 @@
   padding: 13px 16px 15px;
   background: var(--suspect-bg, #f8e5e3);
   color: var(--suspect-text, #ad2c25);
-}
-
-.eval-alert h2 {
-  margin-bottom: 8px;
-  color: inherit;
 }
 
 .eval-claims {
@@ -154,6 +135,13 @@
 .eval-safety-pass {
   margin: 12px 0 0;
   color: var(--ready, #18734f);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.eval-safety-fail {
+  margin: 12px 0 0;
+  color: var(--stopped, #b12621);
   font-size: 12px;
   font-weight: 700;
 }

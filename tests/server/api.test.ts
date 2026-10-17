@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { evaluationResultSchema } from '../../src/shared/api';
 import { getInvoice, openDb } from '../../src/server/db/db';
 import { createServerApp, serverRuntime } from '../../src/server/app';
 import { readExampleFixtures } from '../../src/server/fixtures';
@@ -23,6 +24,7 @@ function makeRuntime(options: Partial<Parameters<typeof createServerApp>[0]> = {
 afterEach(() => {
   for (const runtime of runtimes.splice(0)) runtime.dispose();
   rmSync(resolve('.w', 'api-image-approval'), { recursive: true, force: true });
+  rmSync(resolve('.w', 'api-eval'), { recursive: true, force: true });
   vi.unstubAllEnvs();
 });
 
@@ -327,9 +329,29 @@ describe('T11 API', () => {
     }
   });
 
-  it('returns explicit unavailable until T17 evidence integration is ready', async () => {
+  it('serves the committed evaluation artifact after schema validation', async () => {
     const { app } = makeRuntime();
+    const response = await app.request('/api/eval');
 
-    expect((await app.request('/api/eval')).status).toBe(503);
+    expect(response.status).toBe(200);
+    const result: unknown = await response.json();
+    expect(evaluationResultSchema.safeParse(result).success).toBe(true);
+    expect(result).toMatchObject({
+      status: 'available',
+      regression: { status: 'available', unsafeApprovals: 0 },
+      labeled: { status: 'available', total: 20, correct: 20, unsafeApprovals: 0 },
+      live: { status: 'unavailable', reason: 'sample_not_supplied' },
+    });
+  });
+
+  it('keeps GET /api/eval unavailable when the artifact is missing or invalid', async () => {
+    const missing = makeRuntime({ evaluationReportPath: resolve('.w', 'api-eval', 'missing.json') });
+    expect((await missing.app.request('/api/eval')).status).toBe(503);
+
+    const reportPath = resolve('.w', 'api-eval', 'invalid.json');
+    mkdirSync(resolve('.w', 'api-eval'), { recursive: true });
+    writeFileSync(reportPath, JSON.stringify({ status: 'available' }));
+    const invalid = makeRuntime({ evaluationReportPath: reportPath });
+    expect((await invalid.app.request('/api/eval')).status).toBe(503);
   });
 });

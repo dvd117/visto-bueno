@@ -1,4 +1,4 @@
-import type { EvaluationResult } from '../../../server/eval/run';
+import type { EvaluationResult } from '../../lib/api-types';
 import './evaluacion.css';
 
 interface EvaluacionProps {
@@ -31,13 +31,6 @@ const LABELED_REASONS: Record<UnavailableLabeled['reason'], string> = {
   not_replay: 'La evaluación etiquetada no se ejecutó con respuestas grabadas.',
   invalid_decision: 'Una respuesta no produjo un estado de decisión válido.',
 };
-
-function blockingReasons(result: BlockedResult): string[] {
-  const reasons: string[] = [];
-  if (result.regression.status === 'unavailable') reasons.push(REGRESSION_REASONS[result.regression.reason]);
-  if (result.labeled.status === 'unavailable') reasons.push(LABELED_REASONS[result.labeled.reason]);
-  return reasons;
-}
 
 function MetricTable({ caption, rows }: { caption: string; rows: readonly MetricRow[] }) {
   return (
@@ -78,23 +71,6 @@ function PageHeader() {
   );
 }
 
-function UnavailableState({ result }: { result: BlockedResult | null }) {
-  const reasons = result ? blockingReasons(result) : [];
-
-  return (
-    <section className="eval-unavailable" aria-labelledby="eval-unavailable-title">
-      <h2 id="eval-unavailable-title">Evaluación no disponible</h2>
-      {reasons.length > 0 ? (
-        <ul>
-          {reasons.map((reason) => <li key={reason}>{reason}</li>)}
-        </ul>
-      ) : (
-        <p>Aún no hay un resultado de evaluación para mostrar.</p>
-      )}
-    </section>
-  );
-}
-
 export function Evaluacion({ result, loading = false, error }: EvaluacionProps) {
   if (loading) {
     return (
@@ -116,75 +92,84 @@ export function Evaluacion({ result, loading = false, error }: EvaluacionProps) 
     );
   }
 
-  if (!result || result.status === 'blocked') {
-    return (
-      <main className="eval-page">
-        <PageHeader />
-        <UnavailableState result={result?.status === 'blocked' ? result : null} />
-      </main>
-    );
-  }
-
-  const unsafeRegression = result.regression.unsafeApprovals > 0;
-  const unsafeLabeled = result.labeled.unsafeApprovals > 0;
-  const hasUnsafeApprovals = unsafeRegression || unsafeLabeled;
-  const unsafeMessages = [
-    unsafeRegression && `${result.regression.unsafeApprovals} ${result.regression.unsafeApprovals === 1 ? 'aprobación indebida' : 'aprobaciones indebidas'} en las pruebas de seguridad.`,
-    unsafeLabeled && `${result.labeled.unsafeApprovals} ${result.labeled.unsafeApprovals === 1 ? 'aprobación indebida' : 'aprobaciones indebidas'} en el conjunto etiquetado.`,
-  ].filter((message): message is string => Boolean(message));
-  const regressionRows = [
-    { label: 'Pruebas de regresión', value: String(result.regression.tests) },
-    { label: 'Aprobaciones indebidas', value: String(result.regression.unsafeApprovals) },
-  ];
-  const labeledRows = [
-    { label: 'Coincidencias exactas', value: `${result.labeled.correct} / ${result.labeled.total}` },
-    { label: 'Aprobaciones indebidas', value: String(result.labeled.unsafeApprovals) },
-    { label: 'Escalamientos falsos', value: String(result.labeled.falseEscalations) },
-    { label: 'Autonomía', value: formatPercent(result.labeled.autonomyPct) },
-  ];
+  const regression = result?.regression.status === 'available' ? result.regression : null;
+  const labeled = result?.labeled.status === 'available' ? result.labeled : null;
+  const live = result?.live.status === 'available' ? result.live : null;
+  const regressionMessage = result?.regression.status === 'unavailable'
+    ? REGRESSION_REASONS[result.regression.reason]
+    : 'Aún no hay evidencia de regresión para mostrar.';
+  const labeledMessage = result?.labeled.status === 'unavailable'
+    ? LABELED_REASONS[result.labeled.reason]
+    : 'Aún no hay resultados del conjunto etiquetado para mostrar.';
+  const regressionState = regression ? (regression.unsafeApprovals > 0 ? 'error' : 'clear') : 'unavailable';
+  const labeledState = labeled ? (labeled.unsafeApprovals > 0 ? 'error' : 'clear') : 'unavailable';
 
   return (
-    <main className="eval-page" data-overall-safety={hasUnsafeApprovals ? 'failed' : 'passed'}>
+    <main className="eval-page">
       <PageHeader />
 
-      {hasUnsafeApprovals && (
-        <div className="eval-alert" role="alert" data-state="error">
-          <h2>Hay aprobaciones indebidas</h2>
-          <ul>{unsafeMessages.map((message) => <li key={message}>{message}</li>)}</ul>
-        </div>
-      )}
-
       <div className="eval-claims">
-        <section className="eval-panel" aria-labelledby="eval-regression-title" data-state={unsafeRegression ? 'error' : 'clear'}>
+        <section className="eval-panel" aria-labelledby="eval-regression-title" data-state={regressionState}>
           <h2 id="eval-regression-title">Seguridad de regresión</h2>
-          <MetricTable caption="Evidencia de regresión" rows={regressionRows} />
-          <p className="eval-source">Fuente: {result.regression.source}</p>
-          {!hasUnsafeApprovals && (
-            <p className="eval-safety-pass" data-overall-safety="passed">
-              0 aprobaciones indebidas en {result.regression.tests} pruebas.
-            </p>
-          )}
+          {regression ? (
+            <>
+              <MetricTable
+                caption="Evidencia de regresión"
+                rows={[
+                  { label: 'Pruebas de regresión', value: String(regression.tests) },
+                  { label: 'Aprobaciones indebidas', value: String(regression.unsafeApprovals) },
+                ]}
+              />
+              <p className="eval-source">Fuente: {regression.source}</p>
+              <p className={regression.unsafeApprovals === 0 ? 'eval-safety-pass' : 'eval-safety-fail'}>
+                {regression.unsafeApprovals} {regression.unsafeApprovals === 1 ? 'aprobación indebida' : 'aprobaciones indebidas'} en {regression.tests} pruebas.
+              </p>
+              {regression.unsafeApprovals > 0 && (
+                <div className="eval-alert" role="alert" data-state="error">
+                  Seguridad de regresión: se detectaron aprobaciones indebidas.
+                </div>
+              )}
+            </>
+          ) : <p className="eval-live-unavailable">{regressionMessage}</p>}
         </section>
 
-        <section className="eval-panel" aria-labelledby="eval-labeled-title" data-state={unsafeLabeled ? 'error' : 'clear'}>
+        <section className="eval-panel" aria-labelledby="eval-labeled-title" data-state={labeledState}>
           <h2 id="eval-labeled-title">Conjunto etiquetado</h2>
-          <p className="eval-mode">Modo demostración · respuestas grabadas</p>
-          <MetricTable caption="Resultados del conjunto etiquetado" rows={labeledRows} />
+          {labeled ? (
+            <>
+              <p className="eval-mode">Modo demostración · respuestas grabadas</p>
+              <MetricTable
+                caption="Resultados del conjunto etiquetado"
+                rows={[
+                  { label: 'Coincidencias exactas', value: `${labeled.correct} / ${labeled.total}` },
+                  { label: 'Aprobaciones indebidas', value: String(labeled.unsafeApprovals) },
+                  { label: 'Escalamientos falsos', value: String(labeled.falseEscalations) },
+                  { label: 'Autonomía', value: formatPercent(labeled.autonomyPct) },
+                ]}
+              />
+              {labeled.unsafeApprovals > 0 && (
+                <div className="eval-alert" role="alert" data-state="error">
+                  Conjunto etiquetado: se detectaron {labeled.unsafeApprovals} aprobaciones indebidas.
+                </div>
+              )}
+            </>
+          ) : <p className="eval-live-unavailable">{labeledMessage}</p>}
         </section>
 
         <section className="eval-panel eval-live" aria-labelledby="eval-live-title">
           <h2 id="eval-live-title">Muestra en vivo</h2>
-          {result.live.status === 'available' ? (
+          {live ? (
             <MetricTable
               caption="Mediciones en vivo"
               rows={[
-                { label: 'Latencia p50', value: `${new Intl.NumberFormat('es-VE', { maximumFractionDigits: 2 }).format(result.live.p50Ms)} ms` },
-                { label: 'Costo medido (USD)', value: `US$${result.live.costUsd}` },
-                { label: 'Fallos', value: String(result.live.failures) },
+                { label: 'Facturas medidas', value: String(live.sample) },
+                { label: 'Latencia p50', value: `${new Intl.NumberFormat('es-VE', { maximumFractionDigits: 2 }).format(live.p50Ms)} ms` },
+                { label: 'Costo medido (USD)', value: `US$${live.costUsd}` },
+                { label: 'Fallos', value: String(live.failures) },
               ]}
             />
           ) : (
-            <p className="eval-live-unavailable">Sin medición en vivo</p>
+            <p className="eval-live-unavailable">Sin muestra en vivo</p>
           )}
         </section>
       </div>

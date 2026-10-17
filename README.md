@@ -6,7 +6,7 @@ Una factura llega por correo, PDF o chat; un cambio de cuenta puede desviar un p
 
 [visto-bueno.aragort.com](https://visto-bueno.aragort.com) — demo de **Andina Labs Inc.**, con datos ficticios. No se ejecutan pagos reales.
 
-> **Estado de implementación (checkout local):** el flujo de facturas, sus controles, reglas, datos y bitácora están integrados. `EXTRACT_MODE=replay` y `JEV_MODE=replay` permiten probar sin llamadas externas. El panel Evaluación aún no presenta métricas (`GET /api/eval` responde 503). La disponibilidad de la URL desplegada debe verificarse por separado.
+> **Estado de implementación (checkout local):** el flujo de facturas, sus controles, reglas, datos, bitácora y evaluación están integrados. `GET /api/eval` sirve el artefacto validado `src/server/eval/report.json` (20/20 estados correctos, 0 aprobaciones indebidas en 30 pruebas adversariales). `EXTRACT_MODE=replay` y `JEV_MODE=replay` permiten probar sin llamadas externas. La disponibilidad de la URL desplegada debe verificarse por separado.
 
 ## Cómo decide
 
@@ -74,11 +74,11 @@ TRUST_PROXY=1
 
 ## Evaluación y costo
 
-No se publican cifras sin un artefacto medido. Estado de este borrador:
+El informe de evaluación lo genera una ejecución local de pruebas de confianza; su estructura, por sí sola, no demuestra su procedencia.
 
-- **Seguridad de regresión:** Pendiente de medición; no se publica un conteo de aprobaciones indebidas.
-- **Conjunto etiquetado:** Pendiente de medición; tener facturas etiquetadas no demuestra exactitud ni autonomía.
-- **Muestra en vivo:** Pendiente de medición; requiere facturas no vistas y latencia, fallos y uso observados.
+- **Seguridad de regresión:** 0 aprobaciones indebidas en 30 pruebas adversariales.
+- **Conjunto etiquetado:** 20/20 estados correctos, 0 falsos escalamientos y 75 % de autonomía, en respuestas grabadas.
+- **Muestra en vivo:** Sin muestra en vivo; requiere facturas no vistas y latencia, costo y fallos medidos.
 - **Costo por 1.000 facturas:** Pendiente de medición. Para calcularlo hacen falta los modelos y llamadas por factura, tokens de entrada y salida de extracción y JEV, y las tarifas aplicables en la fecha de medición.
 
 ### Costo por factura

@@ -17,6 +17,7 @@ import type {
   SimulationResult,
   WorkspaceSummary,
 } from '../../shared/api';
+import { evaluationResultSchema } from '../../shared/api';
 import type { Budget, Contract, DecisionRecord, FxRate, Rules, Treasury, Vendor } from '../../shared/domain/types';
 import type {
   BitacoraApi, CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi, EvaluationResult, ReglasApi,
@@ -243,89 +244,6 @@ const logEntrySchema: z.ZodType<LogEntry> = z.object({
   at: z.string(), invoiceId: z.string(), status: invoiceStatusSchema,
   headline: z.string(), seal: z.string(), by: z.string().nullable(),
 }).strict();
-
-const evaluationRegressionAvailableSchema = z.object({
-  status: z.literal('available'),
-  tests: z.number().int().nonnegative(),
-  unsafeApprovals: z.number().int().nonnegative(),
-  source: z.string(),
-  safetyGate: z.enum(['passed', 'failed']),
-});
-const evaluationLabeledAvailableSchema = z.object({
-  status: z.literal('available'),
-  mode: z.literal('replay'),
-  total: z.number().int().nonnegative(),
-  correct: z.number().int().nonnegative(),
-  falseEscalations: z.number().int().nonnegative(),
-  autonomyPct: z.number().finite(),
-  unsafeApprovals: z.number().int().nonnegative(),
-  unsafeInvoiceIds: z.array(z.string()),
-  safetyGate: z.enum(['passed', 'failed']),
-});
-const evaluationRegressionSchema = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('unavailable'),
-    reason: z.enum(['evidence_not_supplied', 'invalid_evidence']),
-  }),
-  evaluationRegressionAvailableSchema,
-]);
-const evaluationLabeledSchema = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('unavailable'),
-    reason: z.enum([
-      'empty_labeled_set', 'invalid_labeled_set', 'runner_unavailable', 'missing_recording',
-      'incomplete_set', 'runner_failed', 'not_replay', 'invalid_decision',
-    ]),
-    invoiceId: z.string().optional(),
-  }),
-  evaluationLabeledAvailableSchema,
-]);
-const evaluationLiveSchema = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('unavailable'),
-    reason: z.enum(['sample_not_supplied', 'empty_sample', 'invalid_sample']),
-  }),
-  z.object({
-    status: z.literal('available'),
-    mode: z.literal('live'),
-    sample: z.number().int().nonnegative(),
-    p50Ms: z.number().nonnegative(),
-    costUsd: z.string().regex(/^\d+(?:\.\d+)?$/),
-    failures: z.number().int().nonnegative(),
-  }),
-]);
-const evalReportSchema = z.object({
-  regression: z.object({ tests: z.number().int().nonnegative(), unsafeApprovals: z.number().int().nonnegative() }),
-  labeled: z.object({
-    total: z.number().int().nonnegative(),
-    correct: z.number().int().nonnegative(),
-    autonomyPct: z.number().finite(),
-    falseEscalations: z.number().int().nonnegative(),
-    mode: z.enum(['replay', 'live']),
-  }),
-  live: z.object({
-    sample: z.number().int().nonnegative(),
-    p50Ms: z.number().nonnegative(),
-    costUsd: z.string().regex(/^\d+(?:\.\d+)?$/),
-    failures: z.number().int().nonnegative(),
-  }).optional(),
-});
-const evaluationResultSchema: z.ZodType<EvaluationResult> = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('blocked'),
-    regression: evaluationRegressionSchema,
-    labeled: evaluationLabeledSchema,
-    live: evaluationLiveSchema,
-  }),
-  z.object({
-    status: z.literal('available'),
-    report: evalReportSchema,
-    regression: evaluationRegressionAvailableSchema,
-    labeled: evaluationLabeledAvailableSchema,
-    live: evaluationLiveSchema,
-    safetyGate: z.enum(['passed', 'failed']),
-  }),
-]);
 
 export class ApiRequestError extends Error {
   readonly status: number;

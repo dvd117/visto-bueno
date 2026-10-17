@@ -64,15 +64,19 @@ afterEach(() => {
 });
 
 describe('App first-run and evaluation integration', () => {
-  it('shows the unavailable evaluation for a 503 without inventing metrics', async () => {
+  it('shows three separate unavailable claims for a 503 without inventing metrics', async () => {
     const fetchMock = installApi(503);
     render(<App />);
     await screen.findByRole('heading', { name: 'Andina Labs Inc.' });
 
     fireEvent.click(screen.getByRole('link', { name: 'Evaluación' }));
 
-    expect(await screen.findByRole('heading', { name: 'Evaluación no disponible' })).toBeTruthy();
-    expect(screen.getByText('Aún no hay un resultado de evaluación para mostrar.')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Seguridad de regresión' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Conjunto etiquetado' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Muestra en vivo' })).toBeTruthy();
+    expect(screen.getByText('Aún no hay evidencia de regresión para mostrar.')).toBeTruthy();
+    expect(screen.getByText('Aún no hay resultados del conjunto etiquetado para mostrar.')).toBeTruthy();
+    expect(screen.getByText('Sin muestra en vivo')).toBeTruthy();
     const page = screen.getByRole('main');
     expect(within(page).queryByRole('table')).toBeNull();
     expect(within(page).queryByText(/\b\d+\b|US\$|\bms\b/)).toBeNull();

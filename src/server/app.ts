@@ -14,6 +14,7 @@ export interface CreateServerAppOptions extends Partial<Omit<PipelineOptions, 'd
   db?: Db;
   dbPath?: string;
   uploadDirectory?: string;
+  evaluationReportPath?: string;
   autoCleanup?: boolean;
   closeDbOnDispose?: boolean;
 }
@@ -45,6 +46,7 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
   app.route('/api', createApiRoutes({
     db,
     uploadDirectory,
+    ...(options.evaluationReportPath ? { evaluationReportPath: options.evaluationReportPath } : {}),
     lastRuns,
     limiter,
     ...(options.extractProvider ? { extractProvider: options.extractProvider } : {}),
