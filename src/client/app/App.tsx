@@ -78,6 +78,8 @@ export default function App() {
   const [rowRevisions, setRowRevisions] = useState<Record<string, number>>({});
   const [toast, setToast] = useState('');
   const toastTimer = useRef<number | undefined>(undefined);
+  const resetInProgress = useRef(false);
+  const resetGeneration = useRef(0);
   const selectedStatus = rows.find((row) => row.id === selectedId)?.status;
   const detailKey = JSON.stringify([selectedId, selectedStatus]);
   const detailError = detailFailure?.key === detailKey ? detailFailure.message : null;
@@ -192,7 +194,11 @@ export default function App() {
 
   const receivingApi = useMemo<RecibirApi>(() => ({
     async createInvoiceText(text) {
+      const generation = resetGeneration.current;
       const row = await createInvoice({ text });
+      if (resetInProgress.current || generation !== resetGeneration.current) {
+        throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
+      }
       setRows((current) => replaceRow(current, row));
       setSelectedId(row.id);
       setExpediente(null);
@@ -200,7 +206,11 @@ export default function App() {
       return row;
     },
     async createInvoiceFile(file) {
+      const generation = resetGeneration.current;
       const row = await createInvoice(file);
+      if (resetInProgress.current || generation !== resetGeneration.current) {
+        throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
+      }
       setRows((current) => replaceRow(current, row));
       setSelectedId(row.id);
       setExpediente(null);
@@ -208,27 +218,33 @@ export default function App() {
       return row;
     },
     async *process(request: ProcessRequest) {
-      if (processing) throw new ApiRequestError('Ya hay una evaluación en curso. Inténtalo al terminar.', 409);
+      if (processing || resetInProgress.current) throw new ApiRequestError('Ya hay una evaluación o reinicio en curso. Inténtalo al terminar.', 409);
+      const generation = resetGeneration.current;
       setProcessing(true);
       try {
-        yield* processInvoiceEvents(request, handleProcessEvent);
+        yield* processInvoiceEvents(request, (event) => {
+          if (generation === resetGeneration.current) handleProcessEvent(event);
+        });
       } finally {
         setProcessing(false);
-        await loadWorkspace(false);
+        if (generation === resetGeneration.current) await loadWorkspace(false);
       }
     },
   }), [handleProcessEvent, loadWorkspace, processing]);
 
   const handleDropFiles = useCallback(async (files: File[]) => {
     if (files.length === 0 || actionBusy) return;
+    const generation = resetGeneration.current;
     setActionBusy(true);
     try {
       let firstId: string | null = null;
       for (const file of files) {
         const row = await createInvoice(file);
+        if (resetInProgress.current || generation !== resetGeneration.current) return;
         firstId ??= row.id;
         setRows((current) => replaceRow(current, row));
       }
+      if (resetInProgress.current || generation !== resetGeneration.current) return;
       if (firstId) setSelectedId(firstId);
       await loadWorkspace(false);
       showToast('Factura recibida. Pulsa Procesar para iniciar su revisión.');
@@ -240,10 +256,14 @@ export default function App() {
   }, [actionBusy, loadWorkspace, showToast]);
 
   const handleReset = useCallback(async () => {
-    if (actionBusy || processing) return;
+    if (actionBusy || processing || resetInProgress.current) return;
+    resetInProgress.current = true;
+    // Invalidate requests already in flight, then catch any started during reset on success.
+    resetGeneration.current += 1;
     setActionBusy(true);
     try {
       await resetWorkspace();
+      resetGeneration.current += 1;
       setActiveSection('inbox');
       setSelectedId(null);
       setExpediente(null);
@@ -254,6 +274,7 @@ export default function App() {
     } catch (error) {
       showToast(errorMessage(error));
     } finally {
+      resetInProgress.current = false;
       setActionBusy(false);
     }
   }, [actionBusy, loadWorkspace, processing, showToast]);

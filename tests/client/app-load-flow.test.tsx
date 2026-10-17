@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Counters, Expediente, InvoiceRow } from '../../src/shared/api';
 import App from '../../src/client/app/App';
 
@@ -95,6 +95,72 @@ describe('App load flow', () => {
     expect(screen.getByRole('button', { name: /AL-001/ }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByText('No encontré esta factura.')).toBeNull();
     expect(staleReads).toBe(0);
+  });
+
+  it('discards a Recibir upload response that arrives after reset', async () => {
+    const uploadedRow: InvoiceRow = { ...queuedRow, id: 'CUSTOM-UPLOADED-002', payee: 'Factura tardía' };
+    const seededRow: InvoiceRow = { ...readyRow, id: 'AL-001', payee: 'Proveedor semilla' };
+    const seededExpediente: Expediente = { ...refreshedExpediente, row: seededRow };
+    let resolveUpload!: (response: Response) => void;
+    const uploadResponse = new Promise<Response>((resolve) => { resolveUpload = resolve; });
+    let resolveProcess!: (response: Response) => void;
+    const processResponse = new Promise<Response>((resolve) => { resolveProcess = resolve; });
+    let uploadStarted = false;
+    let processRequests = 0;
+    let staleDetailReads = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), window.location.href).pathname;
+      if (path === '/api/workspace') return json({
+        company: { name: 'Andina Labs Inc.', fictional: true }, rules, counters, lastRun: null,
+      });
+      if (path === '/api/invoices' && init?.method === 'POST') {
+        uploadStarted = true;
+        return uploadResponse;
+      }
+      if (path === '/api/invoices') return json([seededRow]);
+      if (path === '/api/workspace/reset' && init?.method === 'POST') return json({ ok: true });
+      if (path === `/api/invoices/${seededRow.id}`) return json(seededExpediente);
+      if (path === `/api/invoices/${uploadedRow.id}`) {
+        staleDetailReads += 1;
+        return json({ error: 'not_found', message: 'No encontré esta factura.' }, 404);
+      }
+      if (path === '/api/process') {
+        processRequests += 1;
+        return processResponse;
+      }
+      throw new Error(`Unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Proveedor semilla' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '+ Recibir factura' }));
+    expect(await screen.findByRole('dialog', { name: 'Recibir facturas' })).toBeTruthy();
+    const file = new File(['fake pdf'], 'late-invoice.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByLabelText('Seleccionar PDF o imagen'), { target: { files: [file] } });
+    await waitFor(() => expect(uploadStarted).toBe(true));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar panel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reiniciar demo' }));
+    expect(await screen.findByText('Demo reiniciada.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /AL-001/ }).getAttribute('aria-pressed')).toBe('true');
+
+    try {
+      await act(async () => {
+        resolveUpload(json(uploadedRow));
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      });
+
+      expect(screen.queryByRole('button', { name: /CUSTOM-UPLOADED-002/ })).toBeNull();
+      expect(screen.getByRole('button', { name: /AL-001/ }).getAttribute('aria-pressed')).toBe('true');
+      expect(screen.queryByText('No encontré esta factura.')).toBeNull();
+      expect(staleDetailReads).toBe(0);
+      expect(processRequests).toBe(0);
+    } finally {
+      resolveProcess(new Response('data: {"type":"done","stats":{"invoices":1,"ms":1,"costUsd":"0.00","mode":"replay"}}\n\n', {
+        headers: { 'content-type': 'text/event-stream' },
+      }));
+    }
   });
 
   it('keeps the last expediente visible while a streamed result is being refetched', async () => {
