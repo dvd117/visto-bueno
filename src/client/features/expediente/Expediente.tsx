@@ -232,8 +232,8 @@ export function Expediente({
     (next === 'original' ? originalTabRef : textTabRef).current?.focus();
   }
 
-  if (loading) return <section className="panel expediente"><p className="record-loading">Abriendo expediente…</p></section>;
-  if (error) return <section className="panel expediente"><p className="record-error">{error}</p></section>;
+  if (!expediente && loading) return <section className="panel expediente"><p className="record-loading">Abriendo expediente…</p></section>;
+  if (!expediente && error) return <section className="panel expediente"><p className="record-error">{error}</p></section>;
   if (!expediente) {
     return (
       <section id="expediente" className="panel expediente" aria-labelledby="record-empty-title">
@@ -272,6 +272,7 @@ export function Expediente({
 
   return (
     <section id="expediente" className="panel expediente" aria-labelledby="record-title">
+      {error && <p className="record-error" role="alert">{error}</p>}
       <article className="record">
         <div className="record-meta">
           <span className="eyebrow">02 / Expediente · Decisión trazable</span>
