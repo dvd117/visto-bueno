@@ -43,7 +43,8 @@ textarea {
 }
 
 .masthead {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
   min-height: 58px;
   align-items: center;
   justify-content: space-between;
@@ -87,15 +88,16 @@ textarea {
 }
 
 .company-line h1 {
+  flex: 0 1 auto;
   margin: 0;
-  overflow: hidden;
+  overflow: visible;
   color: var(--ink);
   font-size: 28px;
   font-weight: 770;
   letter-spacing: -0.055em;
   line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .fictional-tag {
@@ -107,8 +109,11 @@ textarea {
 }
 
 .navigation {
-  flex: 0 0 auto;
-  gap: 16px;
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 16px;
 }
 
 .navigation a {
@@ -131,7 +136,9 @@ textarea {
 }
 
 .header-actions {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 7px;
 }
 
@@ -486,9 +493,9 @@ textarea {
 
 .status-label > span:last-child {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .status-subtitle {
@@ -496,15 +503,15 @@ textarea {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   color: var(--faint);
   font-size: 9px;
   font-weight: 550;
   letter-spacing: normal;
   line-height: 1.25;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   text-transform: none;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .status-glyph {
@@ -603,7 +610,7 @@ textarea {
 }
 
 .status-large {
-  max-width: 158px;
+  max-width: 100%;
   align-items: flex-start;
   border-top: 4px solid currentColor;
   border-bottom: 1px solid currentColor;
@@ -1119,8 +1126,9 @@ textarea {
 @media (max-width: 1130px) {
   .frame { padding-inline: 18px; }
   .demo-banner { margin-inline: -18px; padding-inline: 18px; }
-  .masthead { flex-wrap: wrap; }
+  .masthead { display: flex; flex-wrap: wrap; }
   .brandline { flex: 1 1 100%; }
+  .navigation { flex: 1 1 auto; justify-content: flex-start; }
   .overview { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .metric-run { grid-column: 1 / -1; flex-direction: row; align-items: center; border-top: 1px solid var(--line); border-right: 0; }
   .workspace { gap: 16px; }
@@ -1155,7 +1163,7 @@ textarea {
   .frame { padding: 14px 12px 34px; }
   .demo-banner { margin: -14px -12px 10px; padding-inline: 12px; }
   .masthead { gap: 10px; }
-  .brandline { gap: 9px; }
+  .brandline { flex-wrap: wrap; gap: 9px; }
   .wordmark { font-size: 19px; }
   .masthead-divider { height: 23px; }
   .company-line { flex-wrap: wrap; gap: 5px; }
@@ -1209,6 +1217,54 @@ textarea {
   .flag-action button { grid-column: auto; }
   .action-buttons .button { flex: 1 1 auto; }
   .record-history li { flex-direction: column; gap: 2px; }
+}
+
+@media (min-width: 1131px) {
+  .frame:has(.workspace) {
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .frame:has(.workspace) > .masthead {
+    flex: none;
+  }
+
+  .frame:has(.workspace) > main {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .frame:has(.workspace) .overview {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    flex: 0 0 auto;
+  }
+
+  .frame:has(.workspace) .workspace {
+    min-height: 0;
+    flex: 1 1 auto;
+    align-items: stretch;
+  }
+
+  .frame:has(.workspace) .panel-inbox,
+  .frame:has(.workspace) .expediente {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .frame:has(.workspace) .section-heading {
+    position: sticky;
+    z-index: 1;
+    top: 0;
+    background: var(--page);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
