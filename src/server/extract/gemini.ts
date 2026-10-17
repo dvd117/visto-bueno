@@ -48,17 +48,26 @@ export async function extractClaims(input: GeminiInput): Promise<ExtractionClaim
           httpOptions: { timeout: REQUEST_TIMEOUT_MS },
         },
       });
-      if (!response.text) return null;
+      if (!response.text) {
+        reportDiagnostic('Gemini extraction response was empty.');
+        return null;
+      }
 
       let output: unknown;
       try {
         output = JSON.parse(response.text);
       } catch {
+        reportDiagnostic('Gemini extraction response was invalid JSON.');
         return null;
       }
 
       const parsed = extractionClaimsSchema.safeParse(output);
-      return parsed.success ? parsed.data : null;
+      if (!parsed.success) {
+        const fields = [...new Set(parsed.error.issues.map(({ path }) => path.map(String).join('.') || '<root>'))];
+        reportDiagnostic(`Gemini response schema rejected fields: ${fields.join(', ')}`);
+        return null;
+      }
+      return parsed.data;
     } catch (error) {
       if (getStatus(error) === 429 && attempt < MAX_RETRIES) {
         await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** attempt));
@@ -69,6 +78,10 @@ export async function extractClaims(input: GeminiInput): Promise<ExtractionClaim
   }
 
   return null;
+}
+
+function reportDiagnostic(message: string): void {
+  if (process.env.EXTRACT_DIAGNOSTICS === '1') console.warn(message);
 }
 
 export function isRateLimited(error: unknown): boolean {

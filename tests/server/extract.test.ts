@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { GenerateContentParameters } from '@google/genai';
@@ -23,6 +23,7 @@ vi.mock('@google/genai', async (importOriginal) => {
 vi.mock('unpdf', () => ({ extractText: mocks.extractText }));
 
 import { extract } from '../../src/server/extract/index';
+import { readPdf } from '../../src/server/extract/pdf';
 
 const claims = {
   amountsFound: ['USD 100.00'],
@@ -79,6 +80,7 @@ describe('invoice extraction', () => {
 
   afterEach(async () => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
   });
@@ -90,6 +92,19 @@ describe('invoice extraction', () => {
 
     expect(result).toEqual({ ok: false, error: 'too_large', sourceKind: 'pdf' });
     expect(mocks.generateContent).not.toHaveBeenCalled();
+  });
+
+  it('reads the real AL-032 PDF from a Node Buffer', async () => {
+    const actual = await vi.importActual<typeof import('unpdf')>('unpdf');
+    mocks.extractText.mockImplementation((data, options) =>
+      actual.extractText(data as Uint8Array, options as { mergePages: true }),
+    );
+    const bytes = await readFile('fixtures/invoices/AL-032.pdf');
+
+    const pdf = await readPdf(bytes);
+
+    expect(pdf.pageCount).toBe(1);
+    expect(pdf.text).toContain('AL-032');
   });
 
   it('rejects files larger than 2 MB before parsing or calling Gemini', async () => {
@@ -133,6 +148,17 @@ describe('invoice extraction', () => {
     expect(JSON.stringify(requestArgs().contents)).toContain(pngBytes.toString('base64'));
   });
 
+  it('accepts the real AL-036 PNG through image detection and claims validation', async () => {
+    const bytes = await readFile('fixtures/invoices/AL-036.png');
+    mockClaimsResponse();
+
+    const result = await extract({ kind: 'image', bytes });
+
+    expect(result).toEqual({ ok: true, claims, sourceText: '', sourceKind: 'image' });
+    expect(JSON.stringify(requestArgs().contents)).toContain('image/png');
+    expect(JSON.stringify(requestArgs().contents)).toContain(bytes.toString('base64'));
+  });
+
   it('uses the smoke-tested Flash-Lite default when GEMINI_MODEL is unset', async () => {
     vi.stubEnv('GEMINI_MODEL', '');
     mockClaimsResponse();
@@ -160,6 +186,19 @@ describe('invoice extraction', () => {
     const result = await extract({ kind: 'text', text: sourceText });
 
     expect(result).toEqual({ ok: false, error: 'unreadable', sourceKind: 'text' });
+  });
+
+  it('reports only invalid schema field names when extraction diagnostics are enabled', async () => {
+    vi.stubEnv('EXTRACT_DIAGNOSTICS', '1');
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mocks.generateContent.mockResolvedValue({ text: '{"amountsFound":[]}' });
+
+    const result = await extract({ kind: 'text', text: sourceText });
+
+    expect(result).toEqual({ ok: false, error: 'unreadable', sourceKind: 'text' });
+    expect(warning).toHaveBeenCalledWith(expect.stringMatching(/schema rejected fields:.*accountsFound/));
+    expect(warning.mock.calls.flat().join(' ')).not.toContain(sourceText);
+    expect(warning.mock.calls.flat().join(' ')).not.toContain('test-key');
   });
 
   it('records a valid extraction and replays the same claims without calling Gemini', async () => {
