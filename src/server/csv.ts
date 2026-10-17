@@ -43,12 +43,12 @@ function enumValue<const T extends readonly [string, ...string[]]>(values: T, la
 }
 
 function toMinorUnits(value: string) {
-  return new Decimal(value).mul(100).toDecimalPlaces(0, Decimal.ROUND_HALF_EVEN).toNumber();
+  return new Decimal(value).mul(100).toNumber();
 }
 
 const money = z.string()
   .trim()
-  .regex(decimalPattern, 'Usa un monto decimal, por ejemplo 850.00.')
+  .regex(/^\d+(?:\.\d{1,2})?$/, 'Usa un monto con hasta dos decimales, por ejemplo 850.00.')
   .transform(toMinorUnits)
   .refine(Number.isSafeInteger, 'El monto excede el rango permitido.');
 
