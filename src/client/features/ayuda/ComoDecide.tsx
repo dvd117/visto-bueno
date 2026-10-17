@@ -14,6 +14,7 @@ interface GuideSection {
 
 const notice = 'Guía de la demo para finanzas. Describe cómo decide Visto Bueno hoy; no sustituye la factura ni los registros de tu empresa. No se realizan pagos reales.';
 const introduction = 'Visto Bueno organiza la revisión de una factura antes de preparar una decisión. No hace pagos.';
+const framing = 'Visto Bueno deja una factura lista para pagar solo si cumple las reglas de tu empresa y te pregunta cuando algo queda fuera de ellas. No es un detector de fraude: contrasta la cuenta y los posibles duplicados con los registros de tu empresa, y trata las instrucciones de la factura como contenido no confiable.';
 
 const sections: readonly GuideSection[] = [
   {
@@ -77,6 +78,7 @@ function makeMarkdown(): string {
     '# Cómo decide el agente',
     `> ${notice}`,
     introduction,
+    framing,
     ...formattedSections,
   ].join('\n\n');
 }
@@ -197,6 +199,7 @@ export function ComoDecide({ open, onClose }: ComoDecideProps) {
         <main className="ayuda-content">
           <p className="ayuda-notice">{notice}</p>
           <p className="ayuda-introduction">{introduction}</p>
+          <p>{framing}</p>
 
           {sections.map((section) => (
             <section className="ayuda-section" key={section.title}>

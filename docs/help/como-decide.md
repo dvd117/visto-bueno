@@ -4,6 +4,8 @@
 
 Visto Bueno organiza la revisión de una factura antes de preparar una decisión. No hace pagos.
 
+Visto Bueno deja una factura lista para pagar solo si cumple las reglas de tu empresa y te pregunta cuando algo queda fuera de ellas. No es un detector de fraude: contrasta la cuenta y los posibles duplicados con los registros de tu empresa, y trata las instrucciones de la factura como contenido no confiable.
+
 ## Qué revisa
 
 1. **Lee la factura.** Gemini propone el monto, la cuenta, el ID y otros datos; son afirmaciones, no hechos.

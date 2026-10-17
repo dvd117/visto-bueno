@@ -24,6 +24,7 @@ describe('ComoDecide', () => {
     render(<ComoDecide open onClose={onClose} />);
 
     expect(screen.getByRole('dialog', { name: 'Cómo decide el agente' })).toBeTruthy();
+    expect(screen.getByText('Visto Bueno deja una factura lista para pagar solo si cumple las reglas de tu empresa y te pregunta cuando algo queda fuera de ellas. No es un detector de fraude: contrasta la cuenta y los posibles duplicados con los registros de tu empresa, y trata las instrucciones de la factura como contenido no confiable.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar panel' }));
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -100,10 +101,10 @@ describe('ComoDecide', () => {
 });
 
 describe('FirstRunHint', () => {
-  it('explains Andina Labs’ regional payer footprint in the first screen copy', () => {
+  it('explains Andina Labs’ regional payer footprint and rule-bound payments', () => {
     render(<FirstRunHint open onDismiss={vi.fn()} />);
 
-    expect(screen.getByText('Andina Labs paga a 10 proveedores en 5 países. Tú revisas las excepciones antes de decidir; Visto Bueno no hace pagos.'))
+    expect(screen.getByText('Andina Labs paga a 10 proveedores en 5 países. Tú revisas las excepciones antes de decidir; Visto Bueno no hace pagos. Visto Bueno solo deja una factura lista para pagar si cumple tus reglas; si no, te pregunta.'))
       .toBeTruthy();
   });
 });
