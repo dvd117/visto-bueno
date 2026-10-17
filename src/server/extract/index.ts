@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import type { ExtractionClaims, ExtractionResult, SourceKind } from '../../shared/domain/types';
 import { ProviderCallLimitError, type ProviderAttemptHook } from '../model-attempt';
-import { extractClaims, isRateLimited, isTimeout } from './gemini';
+import { extractClaims, isRateLimited, isTimeout, resolveGeminiModel } from './gemini';
 import { readPdf } from './pdf';
-import { extractionClaimsSchema } from './schema';
+import { EXTRACTION_CONTRACT_VERSION, extractionClaimsSchema } from './schema';
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MODEL_TEXT_LIMIT = 8000;
@@ -51,7 +51,13 @@ export async function extract(input: {
 
   const mode = getMode(input.mode);
   if (!mode) return failure(kind, 'unreadable');
-  const hash = createHash('sha256').update(kind).update('\0').update(content).digest('hex');
+  const hash = createHash('sha256')
+    .update('visto-bueno-extraction\0')
+    .update(EXTRACTION_CONTRACT_VERSION).update('\0')
+    .update(resolveGeminiModel()).update('\0')
+    .update(kind).update('\0')
+    .update(content)
+    .digest('hex');
   const result = { sourceText, sourceKind: kind } as const;
 
   if (mode === 'replay') {

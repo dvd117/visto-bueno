@@ -137,6 +137,13 @@ describe('invoice extraction', () => {
     expect(systemInstruction).toMatch(/exact substrings/i);
     expect(systemInstruction).toMatch(/ISO/i);
     expect(systemInstruction).toMatch(/do not normalize amounts/i);
+    expect(systemInstruction).toMatch(/full.*bank|bank.*name/i);
+    expect(systemInstruction).toMatch(/never infer|do not infer/i);
+    expect(systemInstruction).toMatch(/amountsFound.*total|total.*amountsFound/i);
+    expect(systemInstruction).toMatch(/rateRaw/i);
+    const schema = JSON.stringify(request.config?.responseJsonSchema);
+    expect(schema).toMatch(/full.*bank|bank.*name/i);
+    expect(schema).toMatch(/total.*candidate|candidate.*total/i);
     expect(request.config?.responseMimeType).toBe('application/json');
     expect(request.config?.responseJsonSchema).toBeDefined();
   });
@@ -184,6 +191,25 @@ describe('invoice extraction', () => {
     await extract({ kind: 'text', text: sourceText });
 
     expect(requestArgs().model).toBe('gemini-3.1-flash-lite');
+  });
+
+  it('does not replay an extraction recorded under a different Gemini model', async () => {
+    await useTemporaryRecordingsDirectory();
+    vi.stubEnv('EXTRACT_MODE', 'record');
+    vi.stubEnv('GEMINI_MODEL', 'test-model-v1');
+    mockClaimsResponse();
+
+    const recorded = await extract({ kind: 'text', text: sourceText });
+
+    expect(recorded).toMatchObject({ ok: true, sourceKind: 'text' });
+    expect(mocks.generateContent).toHaveBeenCalledOnce();
+
+    vi.stubEnv('EXTRACT_MODE', 'replay');
+    vi.stubEnv('GEMINI_MODEL', 'test-model-v2');
+    const drifted = await extract({ kind: 'text', text: sourceText });
+
+    expect(drifted).toEqual({ ok: false, error: 'unreadable', sourceKind: 'text' });
+    expect(mocks.generateContent).toHaveBeenCalledOnce();
   });
 
   it('retries a 429 twice, then returns rate_limited', async () => {

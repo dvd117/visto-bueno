@@ -89,6 +89,8 @@ describe('evaluateRules', () => {
   it('R2 passes a matching bank account and stops with masked mismatch evidence', () => {
     expectPass(evaluate(), 'R2');
     expectPass(evaluate({ claims: claims({ payoutAccount: 'Banco Andino 1234568890' }) }), 'R2');
+    expectFail(evaluate({ claims: claims({ payoutAccount: '8890' }) }), 'R2', 'stop');
+    expectFail(evaluate({ claims: claims({ payoutAccount: 'Bancolombia ···· 8890' }) }), 'R2', 'stop');
     const result = evaluate({ claims: claims({ payoutAccount: 'Bancolombia ···· 4412' }) });
     expectFail(result, 'R2', 'stop');
     expect(getCheck(result, 'R2')).toMatchObject({
