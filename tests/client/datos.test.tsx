@@ -2,6 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Datos, { type DatosApi, type DataRowMap, type DataTable, type DataTableValues } from '../../src/client/features/datos/Datos';
 
+// JSDOM rendering can exceed Vitest's 5s default when the full suite is parallel.
+const parallelTimeoutMs = 15_000;
+
 const data: DataTableValues = {
   vendors: [{
     id: 'nube-andina', name: 'Nube Andina S.A.S.', taxId: '901.234.567-8', country: 'CO',
@@ -40,7 +43,7 @@ describe('Preparar datos', () => {
     await waitFor(() => expect(api.putRow).toHaveBeenCalledWith('vendors', expect.objectContaining({
       id: 'nube-andina', payoutAccount: 'Bancolombia ···· 4412', version: 1,
     })));
-  });
+  }, parallelTimeoutMs);
 
   it('rejects inline amounts with more than two decimal places instead of rounding', async () => {
     const api = makeApi();
@@ -52,7 +55,7 @@ describe('Preparar datos', () => {
 
     expect(await screen.findByRole('alert')).toBeDefined();
     expect(api.putRow).not.toHaveBeenCalled();
-  });
+  }, parallelTimeoutMs);
 
   it('converts exact inline decimal amounts to safe integer minor units', async () => {
     const api = makeApi();
@@ -65,7 +68,7 @@ describe('Preparar datos', () => {
     await waitFor(() => expect(api.putRow).toHaveBeenCalledWith('budgets', expect.objectContaining({
       costCenter: 'ingenieria', month: '2026-10', approvedUsdMinor: 85_050,
     })));
-  });
+  }, parallelTimeoutMs);
 
   it('shows the single error summary returned after a CSV upload', async () => {
     const uploadCsv = vi.fn(async () => ({
@@ -80,5 +83,5 @@ describe('Preparar datos', () => {
 
     await waitFor(() => expect(uploadCsv).toHaveBeenCalledWith('vendors', file));
     expect((await screen.findByRole('alert')).textContent).toContain('El CSV tiene errores en las filas 2 y 4.');
-  });
+  }, parallelTimeoutMs);
 });

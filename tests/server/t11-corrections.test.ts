@@ -5,6 +5,9 @@ import { createInvoice, getDecisionHistory, getInvoice, openDb } from '../../src
 import { createServerApp, serverRuntime } from '../../src/server/app';
 import type { Rules } from '../../src/shared/domain/types';
 
+// SQLite setup and route work can exceed Vitest's 5s default when the full suite is parallel.
+const parallelTimeoutMs = 15_000;
+
 const runtimes: Array<ReturnType<typeof createServerApp>> = [];
 
 function makeRuntime() {
@@ -35,7 +38,7 @@ describe('T11 correction regressions', () => {
     const invalid = await app.request('/api/invoices', { method: 'POST', body: fake });
     expect(invalid.status).toBe(400);
     expect(await invalid.text()).toContain('El archivo debe ser un PDF o una imagen válida.');
-  });
+  }, parallelTimeoutMs);
 
   it('parses all four real data-table PUT responses and applies version/stale effects', async () => {
     const { app, db } = makeRuntime();
@@ -74,7 +77,7 @@ describe('T11 correction regressions', () => {
 
     expect(db.prepare('SELECT status FROM invoices WHERE workspace_id = ? AND id = ?')
       .get(workspaceId, 'PENDING-VENDOR-EDIT')).toEqual({ status: 'stale' });
-  });
+  }, parallelTimeoutMs);
 
   it('processes queued received invoices by default without enabling live mode', async () => {
     const limiter = { reserveCall: vi.fn(() => ({ ok: true as const, reservation: { start: () => true, cancel: () => undefined } })) };
@@ -96,7 +99,7 @@ describe('T11 correction regressions', () => {
     expect(stream).toContain(id);
     expect(stream).toContain('"type":"done"');
     expect(limiter.reserveCall).not.toHaveBeenCalled();
-  });
+  }, parallelTimeoutMs);
 
   it('keeps replay subsets isolated and gives the examples control a seed-only requeue', async () => {
     const { app, db } = makeRuntime();
@@ -131,7 +134,7 @@ describe('T11 correction regressions', () => {
     expect(getInvoice(db, workspaceId, 'AL-031')?.status).toBe('rejected');
     expect(getInvoice(db, workspaceId, userInvoiceId)?.status).toBe('queued');
     expect(getDecisionHistory(db, workspaceId, 'AL-032')).toHaveLength(historyBefore + 1);
-  });
+  }, parallelTimeoutMs);
 
   it('mounts rules routes under the real bounded server app and enforces validation/version/staleness', async () => {
     const { app, db } = makeRuntime();
@@ -171,5 +174,5 @@ describe('T11 correction regressions', () => {
     expect(oversized.status).toBe(413);
     const afterOversize = await (await app.request('/api/rules', { headers })).json() as Rules;
     expect(afterOversize.version).toBe(current.version + 1);
-  });
+  }, parallelTimeoutMs);
 });
