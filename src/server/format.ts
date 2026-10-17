@@ -204,11 +204,29 @@ function marks(invoice: StoredInvoice): Expediente['marks'] {
   return [...values, ...suspicious];
 }
 
+function withR15CurrencyEvidence(record: Expediente['record'], row: InvoiceRow): Expediente['record'] {
+  if (!record || row.currency === null || row.currency === 'USD' || !row.amountUsd || !row.fxDate) return record;
+  const evidence = `Importe original: ${row.amount} · Equivalente USD: ${row.amountUsd} · `
+    + `Tasa ilustrativa aplicada (tabla interna): ${row.fxDate}`;
+  if (!record.decision.checks.some((check) => check.id === 'R15')) return record;
+
+  return {
+    ...record,
+    decision: {
+      ...record.decision,
+      checks: record.decision.checks.map((check) => check.id === 'R15'
+        ? { ...check, reason: `${check.reason} ${evidence}.` }
+        : check),
+    },
+  };
+}
+
 export function toExpediente(db: Db, workspaceId: string, invoice: StoredInvoice): Expediente {
   const record = invoice.latestRecord;
+  const row = toInvoiceRow(invoice, getWorkspaceData(db, workspaceId).vendors);
   return {
-    row: toInvoiceRow(invoice, getWorkspaceData(db, workspaceId).vendors),
-    record,
+    row,
+    record: withR15CurrencyEvidence(record, row),
     comparison: comparisons(db, workspaceId, invoice),
     sourceText: invoice.sourceText?.slice(0, 8000) ?? null,
     marks: marks(invoice),

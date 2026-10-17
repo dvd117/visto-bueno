@@ -107,8 +107,11 @@ describe('integrated QA formatter fixes', () => {
     const record: DecisionRecord = {
       id: 'record-clp', invoiceId: base.id,
       decision: {
-        status: 'ready', checks: [], flags: [], canApprove: false, headline: 'Lista para pagar', nextStep: null,
-        amountUsdMinor: 100, contractId: null, costCenter: null,
+        status: 'approval_required', checks: [{
+          id: 'R15', kind: 'rule', label: 'Umbral de aprobación humana', passed: true, outcome: 'passed', effect: 'approval',
+          reason: 'El monto supera el umbral y requiere aprobación humana.',
+        }], flags: [], canApprove: true, headline: 'Requiere tu aprobación', nextStep: null,
+        amountUsdMinor: 400_000, contractId: null, costCenter: null,
       },
       rulesSnapshot: {
         version: 1, perPaymentLimitUsdMinor: 1_000_000, monthlyLimitUsdMinor: 5_000_000,
@@ -118,10 +121,13 @@ describe('integrated QA formatter fixes', () => {
       jev: { ok: false, error: 'missing_recording' }, seal: '8f3a1c', createdAt: '2026-10-16T00:00:00.000Z',
     };
     const invoice = makeInvoice({
-      status: 'ready', amountUsdMinor: 100, latestRecord: record,
+      status: 'approval_required', amountUsdMinor: 400_000, latestRecord: record,
       extraction: {
         ...base.extraction,
-        claims: { ...base.extraction.claims, amountsFound: ['CLP 950'], currenciesFound: ['CLP'], currency: 'CLP', amountRaw: 'CLP 950' },
+        claims: {
+          ...base.extraction.claims,
+          amountsFound: ['CLP 3.800.000'], currenciesFound: ['CLP'], currency: 'CLP', amountRaw: 'CLP 3.800.000',
+        },
       },
     });
     const db = openDb(':memory:');
@@ -130,18 +136,23 @@ describe('integrated QA formatter fixes', () => {
 
     const expediente = toExpediente(db, 'qa-clp-fx-date', invoice);
 
-    expect(expediente.row).toMatchObject({ amount: 'CLP 950', amountUsd: 'USD 1,00', fxDate: '2026-10-15' });
+    expect(expediente.row).toMatchObject({ amount: 'CLP 3.800.000', amountUsd: 'USD 4.000,00', fxDate: '2026-10-15' });
     expect(expediente.comparison.find((row) => row.field === 'Monto facturado / monto contractual')?.invoice)
-      .toContain('CLP 950 · USD 1,00 · Tasa ilustrativa · 2026-10-15');
+      .toContain('CLP 3.800.000 · USD 4.000,00 · Tasa ilustrativa · 2026-10-15');
+    expect(expediente.record?.decision.checks.find((check) => check.id === 'R15')?.reason)
+      .toContain('Importe original: CLP 3.800.000 · Equivalente USD: USD 4.000,00 · Tasa ilustrativa aplicada (tabla interna): 2026-10-15');
+    expect(record.decision.checks[0].reason).toBe('El monto supera el umbral y requiere aprobación humana.');
 
     const unavailable = toExpediente(db, 'qa-clp-fx-date', {
       ...invoice,
       amountUsdMinor: null,
       latestRecord: { ...record, dataVersions: { fxDate: 'unknown' } },
     });
-    expect(unavailable.row).toMatchObject({ amount: 'CLP 950', amountUsd: null, fxDate: null });
+    expect(unavailable.row).toMatchObject({ amount: 'CLP 3.800.000', amountUsd: null, fxDate: null });
     expect(unavailable.comparison.find((row) => row.field === 'Monto facturado / monto contractual')?.invoice)
-      .toBe('CLP 950');
+      .toBe('CLP 3.800.000');
+    expect(unavailable.record?.decision.checks[0].reason)
+      .toBe('El monto supera el umbral y requiere aprobación humana.');
   });
 
   it('truncates a long queued snippet at a word boundary and marks the truncation', () => {
