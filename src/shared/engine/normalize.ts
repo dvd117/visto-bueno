@@ -12,6 +12,65 @@ const ACCOUNT_LABEL_BEFORE_ACCOUNT = new RegExp(
   String.raw`(?<![\p{L}\p{N}])${ACCOUNT_LABEL}(?![\p{L}\p{N}])(?=[^\p{L}]*$)`,
   'iu',
 );
+const DECIMAL_DIGIT = /^\p{Nd}$/u;
+const NON_DECIMAL_NUMBER = /\p{N}/u;
+const CONFUSABLE_MASK_LETTERS = new Set(['х', 'Х', 'χ', 'Χ', 'ｘ', 'Ｘ', '×']);
+const CONFUSABLE_MASK_LETTER_PATTERN = /[хХχΧ×]/gu;
+const CONFUSABLE_MASK_MARKS = new Set(['∗', '⁎', '＊', '●', '∙', '・', '*']);
+const CONFUSABLE_MASK_MARK_PATTERN = /[∗⁎＊●∙・*]/gu;
+
+function decimalDigitToAscii(value: string): string {
+  const codePoint = value.codePointAt(0);
+  if (codePoint === undefined) return value;
+
+  let zero = codePoint;
+  while (zero > 0 && DECIMAL_DIGIT.test(String.fromCodePoint(zero - 1))) zero -= 1;
+  return String((codePoint - zero) % 10);
+}
+
+function scriptOfLetter(value: string): string {
+  if (value === 'ｘ' || value === 'Ｘ') return 'fullwidth';
+  if (/^\p{Script=Latin}$/u.test(value)) return 'latin';
+  if (/^\p{Script=Cyrillic}$/u.test(value)) return 'cyrillic';
+  if (/^\p{Script=Greek}$/u.test(value)) return 'greek';
+  if (value === '×') return 'symbol';
+  return 'other';
+}
+
+function hasMixedScriptConfusableToken(value: string): boolean {
+  const tokens = value.match(/[\p{L}\p{M}×]+/gu) ?? [];
+  return tokens.some((token) => {
+    const letters = Array.from(token).filter((character) => /\p{L}/u.test(character) || character === '×');
+    if (!letters.some((character) => CONFUSABLE_MASK_LETTERS.has(character))) return false;
+    return new Set(letters.map(scriptOfLetter)).size > 1;
+  });
+}
+
+function hasEmbeddedMaskLookalike(value: string): boolean {
+  const characters = Array.from(value);
+  return characters.some((character, index) => (
+    CONFUSABLE_MASK_MARKS.has(character)
+    && index > 0
+    && index < characters.length - 1
+    && /\p{L}/u.test(characters[index - 1])
+    && /\p{L}/u.test(characters[index + 1])
+  ));
+}
+
+function prepareAccountCandidate(value: string): { value: string; ambiguous: boolean } {
+  const normalized = value.normalize('NFKC');
+  const hasNonDecimalNumber = NON_DECIMAL_NUMBER.test(value.replace(/\p{Nd}/gu, ''))
+    || NON_DECIMAL_NUMBER.test(normalized.replace(/\p{Nd}/gu, ''));
+  const ambiguous = hasNonDecimalNumber || hasMixedScriptConfusableToken(value) || hasEmbeddedMaskLookalike(value);
+
+  return {
+    value: normalized
+      .replace(/\p{Nd}/gu, decimalDigitToAscii)
+      .replace(CONFUSABLE_MASK_LETTER_PATTERN, 'x')
+      .replace(CONFUSABLE_MASK_MARK_PATTERN, '·'),
+    ambiguous,
+  };
+}
 
 interface AccountParts {
   key: string;
@@ -69,13 +128,14 @@ export interface AccountAnalysis {
 
 /** Resolve one account candidate, or mark it ambiguous when its account identity is unsafe. */
 export function analyzeAccount(value: string): AccountAnalysis {
-  const digitRuns = value.normalize('NFKC').match(/[0-9]+/gu) ?? [];
+  const candidate = prepareAccountCandidate(value);
+  const digitRuns = candidate.value.match(/[0-9]+/gu) ?? [];
   const fullDigitRuns = digitRuns.filter((digits) => digits.length >= 5);
-  if (fullDigitRuns.length >= 2) {
+  if (candidate.ambiguous || fullDigitRuns.length >= 2) {
     return { key: '', ambiguous: true, visibleDigits: fullDigitRuns };
   }
 
-  const account = parseAccount(value);
+  const account = parseAccount(candidate.value);
   if (!account) {
     return { key: '', ambiguous: digitRuns.length > 0, visibleDigits: fullDigitRuns };
   }

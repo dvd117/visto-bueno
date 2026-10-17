@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExtractionClaims, ExtractionResult, Vendor } from '../../src/shared/domain/types';
-import { normalize, normalizeAccount, unmaskedAccountDigits } from '../../src/shared/engine/normalize';
+import { analyzeAccount, normalize, normalizeAccount, unmaskedAccountDigits } from '../../src/shared/engine/normalize';
 import { evaluateRules } from '../../src/shared/engine/rules';
 import { verifyClaims } from '../../src/shared/engine/verify';
 
@@ -278,6 +278,26 @@ describe('verifyClaims', () => {
       sourceKind: 'image',
     }), [vendor]);
     expect(getCheck(sameSuffixDifferentFullAccounts, 'two_accounts')).toMatchObject({ passed: false, effect: 'stop' });
+  });
+
+  it('normalizes Unicode decimal digits before checking account uniqueness', () => {
+    const candidate = 'Banco Andino ١٢٣٤٥';
+    expect(analyzeAccount(candidate)).toEqual({ key: 'bancoandino:2345', ambiguous: false, visibleDigits: ['12345'] });
+
+    const result = verifyClaims(extraction({
+      claims: claims({ payoutAccount: candidate, accountsFound: ['Banco Andino 12345'] }),
+      sourceKind: 'image',
+    }), [vendor]);
+
+    expect(getCheck(result, 'two_accounts')).toMatchObject({ passed: true, effect: 'none' });
+  });
+
+  it('treats non-decimal Unicode numbers that survive NFKC as ambiguous', () => {
+    expect(analyzeAccount('Banco Andino ፲')).toMatchObject({ key: '', ambiguous: true });
+  });
+
+  it('rejects a mixed-script bank token containing a confusable mask letter', () => {
+    expect(analyzeAccount('Banхo Andino ···· 8890')).toMatchObject({ key: '', ambiguous: true });
   });
 
   it('treats a standalone X before a full account as ambiguous and preserves its digits for conflict checks', () => {
