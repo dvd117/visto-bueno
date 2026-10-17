@@ -1,0 +1,106 @@
+name: Dependabot auto-merge
+
+# Merges dependabot's patch and minor bumps once CI has actually passed, so the
+# only PRs left for a person are the majors — which is the set that needs
+# judgement. On 2026-09-20 a green major moved two live sites onto a Node line
+# that had been EOL since June; a green check cannot see a support window.
+#
+# Two design notes, both load-bearing:
+#
+# 1. It triggers on CI finishing, not on the PR opening. Without a
+#    required-status-check rule on the branch, `gh pr merge --auto` has nothing
+#    to wait for and merges on the spot. Adding such a rule would also block
+#    direct pushes to main, which is not wanted here. Waiting for the CI run is
+#    the gate.
+# 2. workflow_run runs this file as it exists on the default branch, with write
+#    access the PR's own head cannot reach. A PR therefore cannot edit this
+#    workflow in order to merge itself.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write  # gh workflow run, see the end of the merge step
+
+jobs:
+  merge:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge it if the bump is patch or minor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+
+          pr=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.pull_requests[0].number // empty')
+          if [ -z "$pr" ]; then
+            echo "No PR attached to this run; nothing to do."
+            exit 0
+          fi
+
+          author=$(gh pr view "$pr" --repo "$REPO" --json author --jq '.author.login')
+          title=$(gh pr view "$pr" --repo "$REPO" --json title --jq '.title')
+
+          # The trigger already filtered on the actor; the merge should not rely
+          # on that alone.
+          if [ "$author" != "dependabot[bot]" ]; then
+            echo "PR #$pr is by $author, not dependabot. Leaving it."
+            exit 0
+          fi
+
+          # Anything this cannot read confidently is a hold. A wrong "auto" is an
+          # unreviewed production change; a wrong "hold" is one extra PR to look
+          # at. The asymmetry decides every ambiguous case.
+          verdict=$(python3 - "$title" <<'PY'
+          import re, sys
+          title = sys.argv[1]
+
+          # Grouped PRs carry no version pair, but dependabot.yml configures every
+          # group with update-types [minor, patch], so a major cannot be inside.
+          if re.search(r"\bbump the \S+ group with \b", title):
+              print("auto"); raise SystemExit
+
+          m = re.search(r"\bfrom (\S+) to (\S+)", title)
+          if not m:
+              print("hold: no version pair in the title"); raise SystemExit
+
+          def major(v):
+              # "7.0.2" -> 7, "22-alpine" -> 22, "v3" -> 3
+              mm = re.match(r"v?(\d+)", v)
+              return int(mm.group(1)) if mm else None
+
+          old, new = major(m.group(1)), major(m.group(2))
+          if old is None or new is None:
+              print(f"hold: cannot read a major out of {m.group(1)} -> {m.group(2)}")
+          elif old != new:
+              print(f"hold: major bump {old} -> {new}")
+          else:
+              print("auto")
+          PY
+          )
+
+          echo "#$pr — $title"
+          echo "verdict: $verdict"
+
+          if [ "$verdict" != "auto" ]; then
+            gh pr comment "$pr" --repo "$REPO" --body \
+              "Not auto-merged (${verdict#hold: }). Majors and anything ambiguous are reviewed by hand: green checks tell you the tests passed, not that the version is still supported."
+            exit 0
+          fi
+
+          gh pr merge "$pr" --repo "$REPO" --squash --delete-branch
+
+          # A push made with GITHUB_TOKEN starts no workflow, so CI and its ship
+          # job would never see this merge and production would fall behind
+          # main. workflow_dispatch is the one event GITHUB_TOKEN may trigger.
+          gh workflow run ci.yml --repo "$REPO" --ref main

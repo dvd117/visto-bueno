@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    # ROUTER_ID and PUBLIC_HOST name this deploy's Traefik router, service and
+    # host; production's values are in .env.example. They have no defaults on
+    # purpose: a preview environment (`/dokploy --preview`, dev branch) runs
+    # this same file, and a missing value must fail the deploy rather than fall
+    # back to production's names, which Traefik would then share between both
+    # containers. ROBOTS_TAG is empty in production (Traefik sends no header)
+    # and "noindex, nofollow" on a preview.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${ROUTER_ID:?required}.rule=Host(`${PUBLIC_HOST:?required}`)"
+      - "traefik.http.routers.${ROUTER_ID:?required}.entrypoints=websecure"
+      - "traefik.http.routers.${ROUTER_ID:?required}.tls=true"
+      - "traefik.http.routers.${ROUTER_ID:?required}.middlewares=${ROUTER_ID:?required}-robots"
+      - "traefik.http.routers.${ROUTER_ID:?required}.service=${ROUTER_ID:?required}"
+      - "traefik.http.middlewares.${ROUTER_ID:?required}-robots.headers.customresponseheaders.X-Robots-Tag=${ROBOTS_TAG:-}"
+      - "traefik.http.services.${ROUTER_ID:?required}.loadbalancer.server.port=3000"
+      - "traefik.docker.network=dokploy-network"
+    networks:
+      - dokploy-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+networks:
+  dokploy-network:
+    external: true

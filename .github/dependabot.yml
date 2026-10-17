@@ -1,0 +1,37 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      dev-toolchain:
+        dependency-type: development
+        update-types: [minor, patch]
+      runtime:
+        dependency-type: production
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+    # @types/node tracks the runtime, not npm's latest. CI and the Dockerfile
+    # both run Node 22, so newer types can describe APIs that are not present
+    # at runtime. Raise this pin with the runtime, never before it.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+    # Majors here are the runtime. Patch and minor bumps still flow; the major
+    # is a deliberate decision made against the Node release schedule.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]

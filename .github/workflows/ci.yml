@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    # dev is the preview branch (`/dokploy --preview`); ship stays main-only.
+    branches: [main, dev]
+  pull_request:
+  # Sent by dependabot-auto-merge.yml after it merges; see the note there.
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: dvd117/ci/.github/workflows/node-verify.yml@v1
+    with:
+      node-version: "22"
+
+  image:
+    needs: verify
+    uses: dvd117/ci/.github/workflows/image-smoke.yml@v1
+    with:
+      port: "3000"
+
+  ship:
+    needs: [verify, image]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: write
+    uses: dvd117/ci/.github/workflows/ship.yml@v1
+    with:
+      branch: production

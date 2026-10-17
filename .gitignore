@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+*/.DS_Store
+
+# Code, tests, and secrets
+node_modules/
+.env*
+!.env.example
+dist/
+build/
+.next/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Local browser/automation artifacts
+.playwright-mcp/
+
+# Specs and planning artifacts (agent material; real project docs in docs/ are tracked)
+agent_docs
+agent_docs/
+.superpowers/
+docs/superpowers/
+
+# Agent/context files
+.mcp.json
+mcp.json
+AGENTS.md
+AGENTS.local.md
+BRIEF.md
+CLAUDE.md
+.agents/
+.codex/
+.claude/
+.gemini/
+.opencode/
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Gentle-AI
+.atl/

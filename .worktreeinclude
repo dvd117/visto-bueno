@@ -1,0 +1,6 @@
+# Gitignored agent context that Orca copies into every new worktree.
+AGENTS.md
+CLAUDE.md
+BRIEF.md
+agent_docs
+.mcp.json
