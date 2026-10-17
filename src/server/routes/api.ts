@@ -44,7 +44,7 @@ const textInvoiceSchema = z.object({ text: z.string().trim().min(1).max(2 * 1024
 const safeInteger = z.number().int().refine(Number.isSafeInteger, 'Debe ser un entero seguro.');
 const positiveInt = safeInteger.min(1);
 const nonNegativeInt = safeInteger.min(0);
-const countrySchema = z.enum(['CO', 'MX', 'VE', 'US']);
+const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'US']);
 const currencySchema = z.enum(['USD', 'COP', 'MXN']);
 const costCenterSchema = z.enum(['ingenieria', 'diseno', 'operaciones', 'legal']);
 function validIsoDate(value: string): boolean {

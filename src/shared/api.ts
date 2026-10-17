@@ -1,10 +1,11 @@
 // API request/response types (plan Task 11). Routes live under /api, scoped to the workspace cookie.
 import { z } from 'zod';
-import type { DecisionRecord, InvoiceStatus, Rules, SourceKind } from './domain/types';
+import type { Currency, DecisionRecord, InvoiceStatus, Rules, SourceKind, VendorCountry } from './domain/types';
 
 export interface InvoiceRow {
   id: string; payee: string; concept: string; /** formatted */ amount: string;
   amountUsd: string | null; due: string | null; status: InvoiceStatus; reason: string; subtitle?: string; sourceKind: SourceKind;
+  country: VendorCountry | null; currency: Currency | null;
   reevaluatedFrom?: InvoiceStatus;
 }
 

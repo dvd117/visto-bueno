@@ -46,6 +46,23 @@ describe('T11 API', () => {
     expect(invoices.every((invoice) => invoice.status === 'queued')).toBe(true);
   });
 
+  it('accepts Chile as a vendor country through the data API', async () => {
+    const { app } = makeRuntime();
+    const vendor = {
+      id: 'ladera-austral', name: 'Ladera Austral SpA', taxId: '99.876.543-9', country: 'CL',
+      payoutCurrency: 'USD', payoutAccount: 'Banco Niebla Azul ···· 6341', status: 'allowed', version: 1,
+    };
+
+    const response = await app.request('/api/data/vendors', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(vendor),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ country: 'CL', payoutCurrency: 'USD' });
+  });
+
   it('serves the real committed invoice file from the workspace-scoped files route', async () => {
     const { app } = makeRuntime();
     const response = await app.request('/api/files/AL-032');
@@ -138,9 +155,9 @@ describe('T11 API', () => {
 
   it('requires the registered account suffix for image approval over HTTP', async () => {
     const claims: ExtractionClaims = {
-      amountsFound: ['USD 850.00'], accountsFound: ['Bancolombia ···· 8890'], taxIdsFound: ['901.234.567-8'],
-      invoiceIdsFound: ['IMG-API-001'], currenciesFound: ['USD'], payeeName: 'Nube Andina S.A.S.',
-      payeeTaxId: '901.234.567-8', payoutAccount: 'Bancolombia ···· 8890', invoiceId: 'IMG-API-001',
+      amountsFound: ['USD 850.00'], accountsFound: ['Banco Ventaluz ···· 8890'], taxIdsFound: ['NAT010101AB6'],
+      invoiceIdsFound: ['IMG-API-001'], currenciesFound: ['USD'], payeeName: 'Nube Andina Tecnología S. de R.L.',
+      payeeTaxId: 'NAT010101AB6', payoutAccount: 'Banco Ventaluz ···· 8890', invoiceId: 'IMG-API-001',
       invoiceDate: '2026-10-16', dueDate: '2026-10-20', currency: 'USD', amountRaw: 'USD 850.00',
       subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null, description: 'Hosting',
       documentTypeHint: 'factura', hasMultipleCurrenciesShown: false, evidenceQuotes: {}, suspiciousPassages: [],

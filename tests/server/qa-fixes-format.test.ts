@@ -14,12 +14,12 @@ function makeInvoice(overrides: Partial<StoredInvoice> = {}): StoredInvoice {
   const claims: ExtractionClaims = {
     amountsFound: ['USD 780.00'],
     accountsFound: ['Bancolombia ···· 4412'],
-    taxIdsFound: ['901.234.567-8'],
+    taxIdsFound: ['NAT010101AB6'],
     invoiceIdsFound: ['AL-030'],
     currenciesFound: ['USD'],
-    payeeName: 'NUBE ANDINA S.A.S.',
-    payeeTaxId: '901.234.567-8',
-    payoutAccount: 'Bancolombia ···· 4412',
+    payeeName: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.',
+    payeeTaxId: 'NAT010101AB6',
+    payoutAccount: 'Banco Ventaluz ···· 4412',
     invoiceId: 'AL-030',
     invoiceDate: '2026-10-16',
     dueDate: '2026-10-25',
@@ -116,6 +116,16 @@ describe('integrated QA formatter fixes', () => {
     expect(row.concept).toBe('Factura para Andina Labs.');
   });
 
+  it('adds the matched vendor country and invoice currency to Bandeja rows', () => {
+    const db = openDb(':memory:');
+    databases.push(db);
+    ensureWorkspace(db, 'qa-regional-row');
+
+    const row = toExpediente(db, 'qa-regional-row', makeInvoice()).row;
+
+    expect(row).toMatchObject({ country: 'MX', currency: 'USD' });
+  });
+
   it('builds the comparison from invoice, vendor, contract, and budget records', () => {
     const db = openDb(':memory:');
     databases.push(db);
@@ -133,8 +143,8 @@ describe('integrated QA formatter fixes', () => {
       'Fecha de factura vs. período del contrato',
       'Presupuesto restante',
     ]);
-    expect(rows.get('Beneficiario')).toMatchObject({ invoice: 'NUBE ANDINA S.A.S.', record: 'Nube Andina S.A.S.', differs: false });
-    expect(rows.get('Identificador fiscal')).toMatchObject({ invoice: '901.234.567-8', record: '901.234.567-8', differs: false });
+    expect(rows.get('Beneficiario')).toMatchObject({ invoice: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.', record: 'Nube Andina Tecnología S. de R.L.', differs: false });
+    expect(rows.get('Identificador fiscal')).toMatchObject({ invoice: 'NAT010101AB6', record: 'NAT010101AB6', differs: false });
     expect(rows.get('Cuenta bancaria (últimos 4)')).toMatchObject({ invoice: '···· 4412', record: '···· 8890', differs: true });
     expect(rows.get('Monto facturado / monto contractual')).toMatchObject({ invoice: 'USD 780,00', record: 'USD 850,00', differs: true });
     expect(rows.get('Fecha de factura vs. período del contrato')).toMatchObject({ invoice: '2026-10-16', record: '2026-01-01 a 2026-12-31', differs: false });
@@ -151,7 +161,7 @@ describe('integrated QA formatter fixes', () => {
     const beneficiary = expediente.comparison.find((row) => row.field === 'Beneficiario');
     const budget = expediente.comparison.find((row) => row.field === 'Presupuesto restante');
 
-    expect(beneficiary).toMatchObject({ invoice: 'NUBE ANDINA S.A.S.', record: null, differs: true });
+    expect(beneficiary).toMatchObject({ invoice: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.', record: null, differs: true });
     expect(budget).toMatchObject({ record: null, differs: true });
   });
 });

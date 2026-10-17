@@ -19,6 +19,8 @@ function makeRow(status: InvoiceRow['status'] = 'stopped', id = 'AL-042'): Invoi
   return {
     id,
     payee: 'Nube Andina S.A.S.',
+    country: 'MX',
+    currency: 'MXN',
     concept: 'Hosting octubre',
     amount: 'USD 850,00',
     amountUsd: '850,00',
@@ -228,6 +230,7 @@ describe('Bandeja and Expediente', () => {
     await within(expediente).findByRole('complementary', { name: 'Qué hacer' });
     expect(await within(expediente).findByRole('status', { name: 'Frenada' })).not.toBeNull();
     expect(within(expediente).queryByRole('button', { name: 'Aprobar' })).toBeNull();
+    expect(screen.getByText('MX · MXN')).not.toBeNull();
   });
 
   it('keeps approval disabled until identity and reason exist', async () => {

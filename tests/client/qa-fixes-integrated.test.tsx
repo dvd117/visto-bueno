@@ -15,6 +15,7 @@ const counters: Counters = {
 function makeRow(): InvoiceRow {
   return {
     id: 'AL-030', payee: 'Nube Andina S.A.S.', concept: 'Hosting octubre',
+    country: 'CO', currency: 'USD',
     amount: 'USD 780,00', amountUsd: 'USD 780,00', due: '25 oct', status: 'ready',
     reason: 'Evaluación completada.', sourceKind: 'text',
   };

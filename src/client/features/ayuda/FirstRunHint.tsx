@@ -51,8 +51,7 @@ export function FirstRunHint({
         <p className="first-run-eyebrow">Primeros pasos</p>
         <h2 id={titleId}>Orientación de inicio</h2>
         <p id={descriptionId} className="first-run-description">
-          Visto Bueno organiza la revisión de facturas antes de preparar una decisión. No hace pagos.
-          Empieza por preparar los datos, revisar las reglas y recibir una factura.
+          Andina Labs paga a 10 proveedores en 5 países. Tú revisas las excepciones antes de decidir; Visto Bueno no hace pagos.
         </p>
         <ol className="first-run-steps">
           {steps.map(({ label, onActivate }) => (

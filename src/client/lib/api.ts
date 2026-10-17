@@ -27,6 +27,8 @@ const invoiceStatusSchema = z.enum([
   'queued', 'ready', 'approval_required', 'review_required', 'stopped', 'approved', 'rejected', 'stale',
 ]);
 const sourceKindSchema = z.enum(['pdf', 'image', 'text']);
+const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'US']);
+const currencySchema = z.enum(['USD', 'COP', 'MXN']);
 const invoiceRowSchema: z.ZodType<InvoiceRow> = z.object({
   id: z.string(),
   payee: z.string(),
@@ -38,6 +40,8 @@ const invoiceRowSchema: z.ZodType<InvoiceRow> = z.object({
   reason: z.string(),
   subtitle: z.string().optional(),
   sourceKind: sourceKindSchema,
+  country: countrySchema.nullable(),
+  currency: currencySchema.nullable(),
   reevaluatedFrom: invoiceStatusSchema.optional(),
 });
 
@@ -172,7 +176,6 @@ const processEventSchema: z.ZodType<ProcessEvent> = z.discriminatedUnion('type',
 const safeInteger = z.number().int().refine(Number.isSafeInteger, 'Debe ser un entero seguro.');
 const positiveInteger = safeInteger.min(1);
 const nonNegativeInteger = safeInteger.min(0);
-const currencySchema = z.enum(['USD', 'COP', 'MXN']);
 const costCenterSchema = z.enum(['ingenieria', 'diseno', 'operaciones', 'legal']);
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -180,7 +183,7 @@ const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => 
 });
 const vendorSchema: z.ZodType<Vendor> = z.object({
   id: z.string().min(1), name: z.string().min(1), taxId: z.string().min(1),
-  country: z.enum(['CO', 'MX', 'VE', 'US']), payoutCurrency: currencySchema,
+  country: countrySchema, payoutCurrency: currencySchema,
   payoutAccount: z.string().min(1), status: z.enum(['allowed', 'blocked']), version: positiveInteger,
 }).strict();
 const contractSchema: z.ZodType<Contract> = z.object({

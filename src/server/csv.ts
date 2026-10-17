@@ -22,7 +22,7 @@ export type CsvParseResult<T> =
   | { ok: true; rows: T[] }
   | { ok: false; summary: string; errors: CsvRowError[] };
 
-const countries = ['CO', 'MX', 'VE', 'US'] as const;
+const countries = ['CO', 'MX', 'VE', 'CL', 'US'] as const;
 const currencies = ['USD', 'COP', 'MXN'] as const;
 const costCenters = ['ingenieria', 'diseno', 'operaciones', 'legal'] as const;
 const decimalPattern = /^\d+(?:\.\d+)?$/;
@@ -168,7 +168,7 @@ const config = {
   vendors: {
     headers: ['id', 'name', 'taxId', 'country', 'payoutCurrency', 'payoutAccount', 'status', 'version'],
     schema: vendorSchema,
-    example: ['nube-andina-ejemplo', 'Nube Andina, S.A.S.', 'NIT-FICTICIO-001', 'CO', 'USD', 'Banco Demo ···· 4412', 'allowed', '1'],
+    example: ['nube-andina-ejemplo', 'Nube Andina, S.A.S.', 'NIT-FICTICIO-001', 'CO', 'USD', 'Banco Niebla Azul ···· 4412', 'allowed', '1'],
   },
   contracts: {
     headers: ['id', 'vendorId', 'scope', 'type', 'currency', 'amount', 'rate', 'unit', 'maxUnitsPerPeriod', 'billingFrequency', 'costCenter', 'start', 'end', 'version'],

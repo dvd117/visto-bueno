@@ -73,7 +73,7 @@ export function Bandeja({
       ) : (
         <>
       <div className="list-guide">
-            <span>Factura / concepto</span><span>Selecciona una fila para abrir su expediente</span>
+            <span>Factura / concepto</span><span>País · moneda · selecciona una fila para abrir el expediente</span>
           </div>
           <div className="invoice-list" aria-label="Facturas">
             {rows.map((row, index) => (
@@ -90,6 +90,9 @@ export function Bandeja({
                   <span className="invoice-name">{row.payee}</span>
                   <span className="invoice-concept">{row.concept}</span>
                   <span className="invoice-reason">{row.reason}</span>
+                </span>
+                <span className="invoice-region" aria-label="País del proveedor · moneda de la factura">
+                  {row.country ?? '—'} · {row.currency ?? '—'}
                 </span>
                 <span className="invoice-value">
                   <strong>{row.amount}</strong>

@@ -1,30 +1,36 @@
 import type { Comparison, Counters, Expediente, InvoiceRow } from '../shared/api';
-import type { Contract, Money } from '../shared/domain/types';
+import type { Contract, Currency, Money, Vendor } from '../shared/domain/types';
 import { normalize } from '../shared/engine/normalize';
 import { subtitleForDecision } from '../shared/engine/copy';
 import { formatMoney, parseAmount } from '../shared/domain/money';
 import { getDecisionHistory, getWorkspaceData, listInvoices, type Db, type StoredInvoice } from './db/db';
 import { ledgerView } from './db/ledger';
 
+function invoiceCurrency(invoice: StoredInvoice): Currency | null {
+  const currency = invoice.extraction?.ok ? invoice.extraction.claims.currency : null;
+  return currency === 'USD' || currency === 'COP' || currency === 'MXN' ? currency : null;
+}
+
 function amountText(invoice: StoredInvoice): string {
   const claims = invoice.extraction?.ok ? invoice.extraction.claims : null;
   if (!claims?.amountRaw) return '—';
-  const currency = claims.currency === 'USD' || claims.currency === 'COP' || claims.currency === 'MXN'
-    ? claims.currency
-    : null;
+  const currency = invoiceCurrency(invoice);
   if (!currency) return claims.amountRaw;
   const parsed = parseAmount(claims.amountRaw, { currency });
   return parsed.ok ? formatMoney(parsed.money) : claims.amountRaw;
 }
 
-export function toInvoiceRow(invoice: StoredInvoice): InvoiceRow {
+export function toInvoiceRow(invoice: StoredInvoice, vendors: readonly Vendor[] = []): InvoiceRow {
   const extraction = invoice.extraction?.ok ? invoice.extraction : null;
   const decision = invoice.latestRecord?.decision;
   const subtitle = decision && invoice.status === decision.status ? subtitleForDecision(decision) : undefined;
+  const vendor = invoice.vendorId ? vendors.find(({ id }) => id === invoice.vendorId) : undefined;
   const concept = extraction?.claims.description?.trim() || invoice.sourceText?.trim();
   return {
     id: invoice.id,
     payee: extraction?.claims.payeeName ?? 'Proveedor por identificar',
+    country: vendor?.country ?? null,
+    currency: invoiceCurrency(invoice),
     concept: concept ? truncateSnippet(concept) : 'Factura recibida',
     amount: amountText(invoice),
     amountUsd: invoice.amountUsdMinor === null ? null : formatMoney({ currency: 'USD', minor: invoice.amountUsdMinor }),
@@ -196,7 +202,7 @@ function marks(invoice: StoredInvoice): Expediente['marks'] {
 export function toExpediente(db: Db, workspaceId: string, invoice: StoredInvoice): Expediente {
   const record = invoice.latestRecord;
   return {
-    row: toInvoiceRow(invoice),
+    row: toInvoiceRow(invoice, getWorkspaceData(db, workspaceId).vendors),
     record,
     comparison: comparisons(db, workspaceId, invoice),
     sourceText: invoice.sourceText?.slice(0, 8000) ?? null,
@@ -207,7 +213,8 @@ export function toExpediente(db: Db, workspaceId: string, invoice: StoredInvoice
 }
 
 export function invoiceRows(db: Db, workspaceId: string): InvoiceRow[] {
-  return listInvoices(db, workspaceId).map(toInvoiceRow);
+  const vendors = getWorkspaceData(db, workspaceId).vendors;
+  return listInvoices(db, workspaceId).map((invoice) => toInvoiceRow(invoice, vendors));
 }
 
 export function originalMoney(invoice: StoredInvoice, vendorCurrency?: Money['currency']): Money | null {

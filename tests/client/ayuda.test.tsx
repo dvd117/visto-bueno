@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ComoDecide } from '../../src/client/features/ayuda/ComoDecide';
+import { FirstRunHint } from '../../src/client/features/ayuda/FirstRunHint';
 
 afterEach(() => {
   cleanup();
@@ -95,5 +96,14 @@ describe('ComoDecide', () => {
     expect(text).toContain('Identidad declarada');
     expect(text).toContain('No confirma un pago ni inicia una transferencia');
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:como-decide');
+  });
+});
+
+describe('FirstRunHint', () => {
+  it('explains Andina Labs’ regional payer footprint in the first screen copy', () => {
+    render(<FirstRunHint open onDismiss={vi.fn()} />);
+
+    expect(screen.getByText('Andina Labs paga a 10 proveedores en 5 países. Tú revisas las excepciones antes de decidir; Visto Bueno no hace pagos.'))
+      .toBeTruthy();
   });
 });

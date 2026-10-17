@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readPdf } from '../../src/server/extract/pdf';
 import { seed, seededPriorPayments } from '../../src/server/seed/andina';
 import type { InvoiceStatus, SourceKind } from '../../src/shared/domain/types';
 
@@ -51,6 +52,25 @@ const invoiceContracts: Record<string, string | null> = {
 const priorPayments = seededPriorPayments as unknown as readonly PriorPayment[];
 
 describe('Andina seed', () => {
+  it('keeps known real tax IDs out of the seed and invoice fixtures', async () => {
+    const knownRealTaxIds = ['76.384.219-3', '900.123.456-7'];
+    const fixtureDirectory = resolve(process.cwd(), 'fixtures/invoices');
+    const fixtureFiles = readdirSync(fixtureDirectory);
+
+    const seedText = JSON.stringify(seed());
+    const sourceTexts = fixtureFiles.filter((name) => name.endsWith('.txt'))
+      .map((file) => readFileSync(resolve(fixtureDirectory, file), 'utf8'));
+    const pdfTexts = await Promise.all(fixtureFiles.filter((name) => name.endsWith('.pdf'))
+      .map(async (file) => (await readPdf(readFileSync(resolve(fixtureDirectory, file)))).text));
+
+    for (const realTaxId of knownRealTaxIds) {
+      expect(seedText).not.toContain(realTaxId);
+      for (const text of [...sourceTexts, ...pdfTexts]) {
+        expect(text).not.toContain(realTaxId);
+      }
+    }
+  });
+
   it('is internally consistent with the labeled invoice set', () => {
     const data = seed();
     const vendorIds = new Set(data.vendors.map((vendor) => vendor.id));
@@ -68,14 +88,14 @@ describe('Andina seed', () => {
       expect(source).toContain(label.invoiceId);
       expect(source).toMatch(/(?:USD|COP|MXN)\s+[\d.,]+/);
       expect(source).toMatch(/····\s*\d{4}/);
-      expect(source).toMatch(/(?:NIT|RIF|RFC|Tax ID|EIN)\s*[: ]/i);
+      expect(source).toMatch(/(?:NIT|RIF|RFC|RUT|Tax ID|EIN)\s*[: ]/i);
       expect(label.reasonCheck.length).toBeGreaterThan(0);
     }
     expect(readFileSync(resolve(process.cwd(), 'fixtures/invoices/AL-034.txt'), 'utf8')).toContain('COTIZACIÓN');
     expect(readFileSync(resolve(process.cwd(), 'fixtures/invoices/AL-049.txt'), 'utf8')).toContain('AL-043');
     expect(readFileSync(resolve(process.cwd(), 'fixtures/invoices/AL-044.txt'), 'utf8'))
       .toContain('Restablecimiento urgente de enlace');
-    expect(data.vendors.find((vendor) => vendor.name === 'Nube Andina S.A.S.')?.payoutAccount.endsWith('8890')).toBe(true);
+    expect(data.vendors.find((vendor) => vendor.name === 'Nube Andina Tecnología S. de R.L.')?.payoutAccount.endsWith('8890')).toBe(true);
     expect(data.budgets.filter((budget) => budget.month === '2026-10').sort((a, b) => a.costCenter.localeCompare(b.costCenter)))
       .toEqual([
         { costCenter: 'diseno', month: '2026-10', approvedUsdMinor: 600_000 },
@@ -133,12 +153,13 @@ describe('Andina seed', () => {
       vendorId: 'valentina-ruiz', billingFrequency: 'one_time', costCenter: 'diseno',
       start: '2026-10-21', end: '2026-10-31',
     });
-    expect(labels.filter((label) => label.expected === 'ready')).toHaveLength(8);
+    expect(labels.filter((label) => label.expected === 'ready')).toHaveLength(7);
     expect(labels.filter((label) => label.expected === 'approval_required')).toHaveLength(3);
-    expect(labels.filter((label) => label.expected === 'review_required')).toHaveLength(2);
+    expect(labels.filter((label) => label.expected === 'review_required')).toHaveLength(3);
     expect(labels.filter((label) => label.expected === 'stopped')).toHaveLength(7);
     const labelsById = new Map(labels.map((label) => [label.invoiceId, label]));
-    expect(labelsById.get('AL-037')).toMatchObject({ sourceKind: 'pdf', expected: 'ready', reasonCheck: 'R5' });
+    // AL-037 passes every deterministic rule; its genuine JEV scope_match answer (below the confidence floor) routes it to review.
+    expect(labelsById.get('AL-037')).toMatchObject({ sourceKind: 'pdf', expected: 'review_required', reasonCheck: 'jev:scope_match' });
     expect(labelsById.get('AL-038')).toMatchObject({ expected: 'approval_required', reasonCheck: 'R6' });
     expect(labelsById.get('AL-040')).toMatchObject({ expected: 'ready', reasonCheck: 'jev:fuzzy_duplicate' });
     expect(labelsById.get('AL-034')).toMatchObject({ sourceKind: 'pdf', expected: 'stopped', reasonCheck: 'jev:document_type' });
@@ -147,6 +168,44 @@ describe('Andina seed', () => {
     expect(labelsById.get('AL-049')).toMatchObject({ sourceKind: 'pdf', expected: 'stopped', reasonCheck: 'R8' });
     expect(labelsById.get('AL-044')).toMatchObject({ expected: 'review_required', reasonCheck: 'jev:artificial_urgency' });
     expect(labelsById.get('AL-048')).toMatchObject({ expected: 'stopped', reasonCheck: 'verify:two_accounts' });
+  });
+
+  it('distributes the 20 invoices across the approved five-country mix', () => {
+    const data = seed();
+    const contracts = new Map(data.contracts.map((contract) => [contract.id, contract]));
+    const vendors = new Map(data.vendors.map((vendor) => [vendor.id, vendor]));
+    const invoiceCountries = labels.map(({ invoiceId }) => {
+      const contractId = invoiceContracts[invoiceId];
+      if (contractId) {
+        const contract = contracts.get(contractId);
+        return contract ? vendors.get(contract.vendorId)?.country : undefined;
+      }
+      const source = readFileSync(resolve(process.cwd(), 'fixtures/invoices', `${invoiceId}.txt`), 'utf8');
+      return /^País del proveedor: (CO|MX|VE|CL|US)$/mu.exec(source)?.[1];
+    });
+    const counts = Object.fromEntries(['MX', 'CO', 'VE', 'CL', 'US'].map((country) => [
+      country, invoiceCountries.filter((invoiceCountry) => invoiceCountry === country).length,
+    ]));
+
+    expect(counts).toEqual({ MX: 6, CO: 6, VE: 3, CL: 3, US: 2 });
+    expect(invoiceCountries).toHaveLength(20);
+    expect(invoiceCountries.every(Boolean)).toBe(true);
+
+    const chileVendors = data.vendors.filter(({ country }) => country === 'CL');
+    expect(chileVendors).toHaveLength(1);
+    expect(chileVendors[0]).toMatchObject({ payoutCurrency: 'USD' });
+    const chileRut = chileVendors[0]?.taxId;
+    expect(chileRut).toMatch(/^\d{1,2}\.\d{3}\.\d{3}-[\dK]$/u);
+    const [rutBody, rutCheckDigit] = chileRut!.replaceAll('.', '').split('-');
+    let checksum = 0;
+    let multiplier = 2;
+    for (const digit of [...rutBody!].reverse()) {
+      checksum += Number(digit) * multiplier;
+      multiplier = multiplier === 7 ? 2 : multiplier + 1;
+    }
+    const remainder = 11 - (checksum % 11);
+    expect(rutCheckDigit).toBe(remainder === 11 ? '0' : remainder === 10 ? 'K' : String(remainder));
+    expect(new Set(data.contracts.map(({ currency }) => currency))).toEqual(new Set(['USD', 'COP', 'MXN']));
   });
 
   it('seeds a committed October Datos payment for the monthly support contract', () => {

@@ -32,8 +32,8 @@ describe('legitimate COP November template', () => {
     const vendor = data.vendors.find(({ id }) => id === 'valentina-ruiz') ?? null;
     const claims: ExtractionClaims = {
       amountsFound: [amountRaw ?? ''], accountsFound: ['Banco Ventaluz ···· 7712'],
-      taxIdsFound: ['900.123.456-7'], invoiceIdsFound: ['CR-VR-2026-11-01'], currenciesFound: ['COP'],
-      payeeName: 'Valentina Ruiz', payeeTaxId: '900.123.456-7', payoutAccount: 'Banco Ventaluz ···· 7712',
+      taxIdsFound: ['989.876.543-5'], invoiceIdsFound: ['CR-VR-2026-11-01'], currenciesFound: ['COP'],
+      payeeName: 'Estudio Bruma S.A.S.', payeeTaxId: '989.876.543-5', payoutAccount: 'Banco Ventaluz ···· 7712',
       invoiceId: 'CR-VR-2026-11-01', invoiceDate, dueDate: '2026-11-20', currency: 'COP',
       amountRaw, subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null,
       description: 'Diseño UX, noviembre de 2026', documentTypeHint: 'Cuenta de cobro',

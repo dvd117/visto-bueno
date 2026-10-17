@@ -6,6 +6,8 @@ import { RecibirPanel, type RecibirApi } from '../../src/client/features/recibir
 const invoice = {
   id: 'invoice-qa',
   payee: 'Andina Labs',
+  country: null,
+  currency: 'USD',
   concept: 'Prueba sintética',
   amount: 'USD 10,00',
   amountUsd: 'US$ 10,00',

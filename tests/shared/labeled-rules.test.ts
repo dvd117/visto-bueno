@@ -38,27 +38,27 @@ function claimsFromFixture(id: string, source: string): ExtractionClaims {
       description: 'auditoría de accesibilidad del prototipo',
     },
     'AL-037': {
-      payeeName: 'VALENTINA RUIZ', taxId: '900.123.456-7', account: 'Banco Ventaluz ···· 7712',
+      payeeName: 'ESTUDIO BRUMA S.A.S.', taxId: '989.876.543-5', account: 'Banco Ventaluz ···· 7712',
       invoiceId: 'AL-037', date: '15/10/2026', due: '20/10/2026', amount: 'COP 4.800.000,00', currency: 'COP',
       description: 'Diseño UX, octubre de 2026',
     },
     'AL-038': {
-      payeeName: 'CARLOS MÉNDEZ', taxId: 'MEX-920315-4K2', account: 'Banco Brumavela ···· 2038',
+      payeeName: 'CODALUZ DIGITAL S. DE R.L.', taxId: 'COD010101AA2', account: 'Banco Brumavela ···· 2038',
       invoiceId: 'AL-038', date: '14/10/2026', due: '22/10/2026', amount: 'MXN 62.000,00', currency: 'MXN',
       rate: 'MXN 1.000,00', quantity: '62', description: 'Desarrollo backend, 62 horas de trabajo',
     },
     'AL-039': {
-      payeeName: 'PROVEEDOR EXPRESS LLC', taxId: 'US-DE-999004', account: 'Banco Alborvia ···· 9940',
+      payeeName: 'BORDE SUR SERVICIOS SpA', taxId: '77.231.046-3', account: 'Banco Niebla Azul ···· 9940',
       invoiceId: 'AL-039', date: '12/10/2026', due: '18/10/2026', amount: 'USD 9.900,00', currency: 'USD',
       description: 'Servicios de consultoría de infraestructura',
     },
     'AL-042': {
-      payeeName: 'NUBE ANDINA S.A.S.', taxId: '901.234.567-8', account: 'Banco Ventaluz, cuenta de ahorros ···· 4412',
+      payeeName: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.', taxId: 'NAT010101AB6', account: 'Banco Ventaluz, cuenta de ahorros ···· 4412',
       invoiceId: 'AL-042', date: '15/10/2026', due: '25/10/2026', amount: 'USD 850,00', currency: 'USD',
       description: 'Hosting administrado, octubre de 2026',
     },
     'AL-045': {
-      payeeName: 'DATOS DEL ÁVILA C.A.', taxId: 'J-30987654-2', account: 'Banco Alborvia ···· 5206',
+      payeeName: 'LADERA AUSTRAL SpA', taxId: '99.876.543-9', account: 'Banco Alborvia ···· 5206',
       invoiceId: 'AL-045', date: '14/10/2026', due: '30/10/2026', amount: 'USD 640,00', currency: 'USD',
       description: 'Soporte de datos y conectividad, octubre de 2026',
     },
@@ -116,7 +116,8 @@ describe('labeled rules sanity', () => {
   it.each(selectedIds)('checks %s from its text fixture only', (invoiceId) => {
     const label = labels.find((item) => item.invoiceId === invoiceId)!;
     expect(label).toBeDefined();
-    expect(label.reasonCheck.startsWith('R')).toBe(true);
+    // AL-037 is decided by JEV (jev:scope_match); its deterministic rules must all pass.
+    if (invoiceId !== 'AL-037') expect(label.reasonCheck.startsWith('R')).toBe(true);
     const sourcePath = label.file.replace(/\.pdf$/, '.txt');
     const source = readFileSync(new URL(sourcePath.replace('fixtures/invoices/', ''), fixtureRoot), 'utf8');
     const extraction = {
