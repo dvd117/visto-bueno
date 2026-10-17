@@ -3,7 +3,9 @@ import { Hono } from 'hono';
 import type { Db } from './db/db';
 import { openDb } from './db/db';
 import { createLiveCallLimiter, createWorkspaceTtlCleanup, readLimitedBody } from './middleware/limits';
-import { createWorkspaceMiddleware, type ServerEnv, type WorkspaceMiddlewareOptions } from './middleware/workspace';
+import {
+  createDocumentWorkspaceCookieMiddleware, createWorkspaceMiddleware, type ServerEnv, type WorkspaceMiddlewareOptions,
+} from './middleware/workspace';
 import { validateProductionAssets } from './fixtures';
 import { createApiRoutes } from './routes/api';
 import { createRulesRoutes } from './routes/rules';
@@ -34,6 +36,7 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
   const lastRuns = new Map<string, { invoices: number; ms: number; costUsd: string; mode: 'replay' | 'live' }>();
   const app = new Hono<ServerEnv>();
 
+  app.use('*', createDocumentWorkspaceCookieMiddleware());
   app.get('/health', (c) => c.json({ ok: true }));
   app.use('/api/*', createWorkspaceMiddleware(db, options));
   app.use('/api/*', async (c, next) => {

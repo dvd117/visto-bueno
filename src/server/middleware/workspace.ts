@@ -24,6 +24,26 @@ function cookieValue(header: string | undefined): string | null {
   return /^[A-Za-z0-9_-]{1,80}$/.test(value) ? value : null;
 }
 
+function workspaceCookie(workspaceId: string): string {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `workspace_id=${workspaceId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`;
+}
+
+export function createDocumentWorkspaceCookieMiddleware(): MiddlewareHandler<ServerEnv> {
+  return async (c, next) => {
+    const path = c.req.path;
+    if (c.req.method !== 'GET' || path === '/health' || path === '/api' || path.startsWith('/api/')
+      || path === '/assets' || path.startsWith('/assets/') || /^\/favicon(?:\.[^/]*)?$/.test(path)) {
+      return next();
+    }
+
+    await next();
+    const contentType = c.res.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+    if (c.res.status !== 200 || contentType !== 'text/html' || cookieValue(c.req.header('cookie'))) return;
+    c.header('Set-Cookie', workspaceCookie(randomUUID()), { append: true });
+  };
+}
+
 export function createWorkspaceMiddleware(db: Db, options: WorkspaceMiddlewareOptions = {}): MiddlewareHandler<ServerEnv> {
   return async (c, next) => {
     const existingId = cookieValue(c.req.header('cookie'));
@@ -40,10 +60,7 @@ export function createWorkspaceMiddleware(db: Db, options: WorkspaceMiddlewareOp
       remoteAddress,
     }, { trustProxy: options.trustProxy }));
 
-    if (!existingId) {
-      const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-      c.header('Set-Cookie', `workspace_id=${workspaceId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`);
-    }
+    if (!existingId) c.header('Set-Cookie', workspaceCookie(workspaceId));
     await next();
   };
 }
