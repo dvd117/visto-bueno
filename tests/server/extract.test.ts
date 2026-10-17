@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { GenerateContentParameters } from '@google/genai';
@@ -289,6 +289,119 @@ describe('invoice extraction', () => {
 
     expect(replayed).toEqual(recorded);
     expect(mocks.generateContent).not.toHaveBeenCalled();
+  });
+
+  it('logs exact Gemini usage cost without invoice content or secrets', async () => {
+    vi.stubEnv('GEMINI_MODEL', '');
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    mocks.generateContent.mockResolvedValue({
+      text: JSON.stringify(claims),
+      modelVersion: 'gemini-3.1-flash-lite',
+      usageMetadata: {
+        promptTokenCount: 123456789,
+        candidatesTokenCount: 987654321,
+        thoughtsTokenCount: 100,
+        totalTokenCount: 1111111210,
+      },
+    });
+
+    const result = await extract({
+      kind: 'text',
+      text: `${sourceText} payout account 0123456789`,
+      invoiceId: 'invoice-internal-1',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(log).toHaveBeenCalledOnce();
+    const line = String(log.mock.calls[0]?.[0]);
+    expect(JSON.parse(line)).toEqual({
+      event: 'gemini_extraction_cost',
+      invoiceId: 'invoice-internal-1',
+      model: 'gemini-3.1-flash-lite',
+      promptTokenCount: 123456789,
+      candidatesTokenCount: 987654321,
+      thoughtsTokenCount: 100,
+      toolUsePromptTokenCount: null,
+      totalTokenCount: 1111111210,
+      costUsd: '1512.34582875',
+    });
+    expect(line).not.toContain('payout account');
+    expect(line).not.toContain('0123456789');
+    expect(line).not.toContain('test-key');
+    expect(line).not.toContain('A-101');
+  });
+
+  it('keeps cost unknown when the response model has no named pricing', async () => {
+    vi.stubEnv('GEMINI_MODEL', 'future-model');
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    mocks.generateContent.mockResolvedValue({
+      text: JSON.stringify(claims),
+      modelVersion: 'future-model',
+      usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, totalTokenCount: 150 },
+    });
+
+    await extract({ kind: 'text', text: sourceText, invoiceId: 'invoice-internal-4' });
+
+    expect(JSON.parse(String(log.mock.calls[0]?.[0])).model).toBe('future-model');
+    expect(JSON.parse(String(log.mock.calls[0]?.[0])).costUsd).toBeNull();
+  });
+
+  it('stores usage and replays the recorded model cost', async () => {
+    const directory = await useTemporaryRecordingsDirectory();
+    vi.stubEnv('GEMINI_MODEL', '');
+    vi.stubEnv('EXTRACT_MODE', 'record');
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    mocks.generateContent.mockResolvedValue({
+      text: JSON.stringify(claims),
+      modelVersion: 'gemini-3.1-flash-lite',
+      usageMetadata: {
+        promptTokenCount: 1000,
+        candidatesTokenCount: 250,
+        totalTokenCount: 1250,
+      },
+    });
+
+    const recorded = await extract({ kind: 'text', text: sourceText, invoiceId: 'invoice-internal-2' });
+    const [recordingFile] = await readdir(directory);
+    const recording = JSON.parse(await readFile(join(directory, recordingFile!), 'utf8'));
+
+    vi.stubEnv('EXTRACT_MODE', 'replay');
+    mocks.generateContent.mockClear();
+    const replayed = await extract({ kind: 'text', text: sourceText, invoiceId: 'invoice-internal-2' });
+
+    expect(recording).toMatchObject({
+      model: 'gemini-3.1-flash-lite',
+      usageMetadata: {
+        promptTokenCount: 1000,
+        candidatesTokenCount: 250,
+        totalTokenCount: 1250,
+      },
+      costUsd: '0.00062500',
+    });
+    expect(replayed).toEqual(recorded);
+    expect(mocks.generateContent).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(log.mock.calls[1]?.[0])).costUsd).toBe('0.00062500');
+  });
+
+  it('reports unknown cost for legacy recordings without usage metadata', async () => {
+    const directory = await useTemporaryRecordingsDirectory();
+    vi.stubEnv('GEMINI_MODEL', '');
+    vi.stubEnv('EXTRACT_MODE', 'record');
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    mockClaimsResponse();
+
+    await extract({ kind: 'text', text: sourceText, invoiceId: 'invoice-internal-3' });
+    const [recordingFile] = await readdir(directory);
+    const recording = JSON.parse(await readFile(join(directory, recordingFile!), 'utf8'));
+    vi.stubEnv('EXTRACT_MODE', 'replay');
+    const replayed = await extract({ kind: 'text', text: sourceText, invoiceId: 'invoice-internal-3' });
+
+    expect(replayed.ok).toBe(true);
+    expect(recording.costUsd).toBeNull();
+    expect(recording).not.toHaveProperty('usageMetadata');
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(log.mock.calls[1]?.[0])).costUsd).toBeNull();
   });
 
   it.skipIf(!process.env.GEMINI_API_KEY)('smokes a live structured extraction with a fictional invoice', async () => {
