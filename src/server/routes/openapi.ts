@@ -188,6 +188,24 @@ const jsonResponse = (description: string, schema: JsonSchema | ReturnType<typeo
   content: jsonContent(schema),
 });
 const errorResponse = jsonResponse('La solicitud no se pudo completar.', ref('ApiError'));
+const paymentBatchQueryParameters: Array<Record<string, unknown>> = [
+  {
+    name: 'batch',
+    in: 'query',
+    required: false,
+    description: 'Con el valor 1, filtra las facturas listas por los IDs ready; las aprobadas se incluyen siempre. Otros valores no activan el filtro.',
+    schema: { type: 'string' },
+  },
+  {
+    name: 'ready',
+    in: 'query',
+    required: false,
+    description: 'ID de factura lista para incluir al usar batch=1. Puede repetirse.',
+    style: 'form',
+    explode: true,
+    schema: { type: 'array', items: { type: 'string' } },
+  },
+];
 
 function operation(
   operationId: string,
@@ -458,7 +476,12 @@ export const openApiDocument = {
     '/api/export/payments.csv': {
       get: operation('exportPaymentsCsv', 'Exportar el lote de pagos', {
         '200': { description: 'CSV de exportación.', content: { 'text/csv': { schema: { type: 'string' } } } },
-      }),
+      }, { parameters: paymentBatchQueryParameters }),
+    },
+    '/api/export/reconciliation.csv': {
+      get: operation('exportReconciliationCsv', 'Exportar la conciliación del lote', {
+        '200': { description: 'CSV con resultados, versiones y sello para conciliar el lote.', content: { 'text/csv': { schema: { type: 'string' } } } },
+      }, { parameters: paymentBatchQueryParameters }),
     },
     '/api/export/log.csv': {
       get: operation('exportLogCsv', 'Exportar la bitácora CSV', {
