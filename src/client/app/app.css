@@ -337,7 +337,7 @@ textarea {
   position: relative;
   display: grid;
   width: 100%;
-  grid-template-columns: 26px minmax(0, 1fr) minmax(86px, 112px) minmax(108px, 146px);
+  grid-template-columns: 26px minmax(0, 1fr) minmax(52px, 65px) minmax(86px, 112px) minmax(108px, 146px);
   align-items: start;
   gap: 8px;
   border: 0;
@@ -394,11 +394,21 @@ textarea {
 }
 
 .invoice-main,
+.invoice-region,
 .invoice-value,
 .invoice-state {
   display: flex;
   min-width: 0;
   flex-direction: column;
+}
+
+.invoice-region {
+  padding-top: 18px;
+  color: var(--soft);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .invoice-id {
@@ -1114,7 +1124,7 @@ textarea {
   .overview { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .metric-run { grid-column: 1 / -1; flex-direction: row; align-items: center; border-top: 1px solid var(--line); border-right: 0; }
   .workspace { gap: 16px; }
-  .invoice-row { grid-template-columns: 22px minmax(0, 1fr) minmax(78px, 100px); }
+  .invoice-row { grid-template-columns: 22px minmax(0, 1fr) minmax(54px, 70px) minmax(78px, 100px); }
   .invoice-state { grid-column: 2 / -1; flex-direction: row; align-items: center; justify-content: space-between; padding-top: 0; }
   .invoice-state .status-chip { flex: 1 1 auto; width: auto; align-items: flex-start; }
   .invoice-state .status-subtitle { text-align: left; }
@@ -1134,7 +1144,7 @@ textarea {
   .metric-count { font-size: 40px; }
   .metric-run { grid-column: 1 / -1; flex-direction: column; align-items: stretch; border-bottom: 0; }
   .workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; }
-  .invoice-row { grid-template-columns: 25px minmax(0, 1fr) minmax(92px, 112px); gap: 7px; padding: 12px 6px 12px 4px; }
+  .invoice-row { grid-template-columns: 25px minmax(0, 1fr) minmax(50px, 64px) minmax(92px, 112px); gap: 7px; padding: 12px 6px 12px 4px; }
   .invoice-value { padding-top: 17px; }
   .invoice-state { grid-column: 2 / -1; flex-direction: row; align-items: center; justify-content: space-between; padding-top: 2px; }
   .record { padding-top: 8px; }
@@ -1164,7 +1174,7 @@ textarea {
   .section-title { font-size: 23px; }
   .list-guide { padding: 8px 3px; }
   .list-guide span:last-child { display: none; }
-  .invoice-row { grid-template-columns: 22px minmax(0, 1fr) minmax(90px, 110px); gap: 6px; padding: 11px 4px; }
+  .invoice-row { grid-template-columns: 22px minmax(0, 1fr) minmax(48px, 60px) minmax(90px, 110px); gap: 6px; padding: 11px 4px; }
   .invoice-value { padding-top: 16px; font-size: 9px; }
   .invoice-value strong { font-size: 10px; }
   .invoice-name { font-size: 12px; }

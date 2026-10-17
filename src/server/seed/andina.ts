@@ -21,12 +21,12 @@ export function seed(): {
 } {
   return {
     vendors: [
-      { id: 'nube-andina', name: 'Nube Andina S.A.S.', taxId: '901.234.567-8', country: 'CO', payoutCurrency: 'USD', payoutAccount: 'Banco Ventaluz ···· 8890', status: 'allowed', version: 1 },
-      { id: 'valentina-ruiz', name: 'Valentina Ruiz', taxId: '900.123.456-7', country: 'CO', payoutCurrency: 'COP', payoutAccount: 'Banco Ventaluz ···· 7712', status: 'allowed', version: 1 },
-      { id: 'carlos-mendez', name: 'Carlos Méndez', taxId: 'MEX-920315-4K2', country: 'MX', payoutCurrency: 'MXN', payoutAccount: 'Banco Brumavela ···· 2038', status: 'allowed', version: 1 },
+      { id: 'nube-andina', name: 'Nube Andina Tecnología S. de R.L.', taxId: 'NAT010101AB1', country: 'MX', payoutCurrency: 'USD', payoutAccount: 'Banco Ventaluz ···· 8890', status: 'allowed', version: 1 },
+      { id: 'valentina-ruiz', name: 'Estudio Bruma S.A.S.', taxId: '900.123.456-7', country: 'CO', payoutCurrency: 'COP', payoutAccount: 'Banco Ventaluz ···· 7712', status: 'allowed', version: 1 },
+      { id: 'carlos-mendez', name: 'Codaluz Digital S. de R.L.', taxId: 'COD010101AA2', country: 'MX', payoutCurrency: 'MXN', payoutAccount: 'Banco Brumavela ···· 2038', status: 'allowed', version: 1 },
       { id: 'imprenta-caribe', name: 'Imprenta Caribe C.A.', taxId: 'J-40123456-1', country: 'VE', payoutCurrency: 'USD', payoutAccount: 'Banco Cielarroyo ···· 6130', status: 'allowed', version: 1 },
       { id: 'lex-delaware', name: 'Lex Delaware LLP', taxId: 'US-DE-004218', country: 'US', payoutCurrency: 'USD', payoutAccount: 'Banco Valleclaro ···· 4510', status: 'allowed', version: 1 },
-      { id: 'datos-avila', name: 'Datos del Ávila C.A.', taxId: 'J-30987654-2', country: 'VE', payoutCurrency: 'USD', payoutAccount: 'Banco Alborvia ···· 5206', status: 'allowed', version: 1 },
+      { id: 'datos-avila', name: 'Ladera Austral SpA', taxId: '76.384.219-3', country: 'CL', payoutCurrency: 'USD', payoutAccount: 'Banco Alborvia ···· 5206', status: 'allowed', version: 1 },
       { id: 'pixel-patio', name: 'Pixel Patio S.A.S.', taxId: '900.000.101-3', country: 'CO', payoutCurrency: 'USD', payoutAccount: 'Banco Altocauce ···· 1184', status: 'allowed', version: 1 },
       { id: 'norte-claro', name: 'Norte Claro Soluciones S.A.S.', taxId: '900.000.202-5', country: 'CO', payoutCurrency: 'USD', payoutAccount: 'Banco Altocauce ···· 2295', status: 'allowed', version: 1 },
       { id: 'estacion-solar', name: 'La Estación Solar C.A.', taxId: 'J-40000103-7', country: 'VE', payoutCurrency: 'USD', payoutAccount: 'Banco Alborvia ···· 3306', status: 'allowed', version: 1 },

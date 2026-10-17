@@ -14,6 +14,8 @@ function makeExpediente(): ExpedienteData {
     row: {
       id: 'AL-042',
       payee: 'Nube Andina S.A.S.',
+      country: 'MX',
+      currency: 'USD',
       concept: 'Hosting octubre',
       amount: 'USD 850,00',
       amountUsd: '850,00',

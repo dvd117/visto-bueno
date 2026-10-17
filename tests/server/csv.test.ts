@@ -53,6 +53,15 @@ describe('CSV data tables', () => {
     expect(Number.isInteger(amountMinor)).toBe(true);
   });
 
+  it('accepts Chile as a vendor country without adding a currency', () => {
+    const result = parseTable('vendors', templateCsv('vendors').replace(',CO,', ',CL,'));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rows[0]?.country).toBe('CL');
+    expect(result.rows[0]?.payoutCurrency).toBe('USD');
+  });
+
   it.each([
     ['contract amount', 'contracts', templateCsv('contracts').replace('850.00', '10.005'), 'amount'],
     ['contract amount with trailing zero', 'contracts', templateCsv('contracts').replace('850.00', '10.000'), 'amount'],

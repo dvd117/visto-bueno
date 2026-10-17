@@ -23,7 +23,8 @@ type TreasuryEditorRow =
 
 const countryOptions = [
   { value: 'CO', label: 'Colombia (CO)' }, { value: 'MX', label: 'México (MX)' },
-  { value: 'VE', label: 'Venezuela (VE)' }, { value: 'US', label: 'Estados Unidos (US)' },
+  { value: 'VE', label: 'Venezuela (VE)' }, { value: 'CL', label: 'Chile (CL)' },
+  { value: 'US', label: 'Estados Unidos (US)' },
 ];
 const currencyOptions = [
   { value: 'USD', label: 'Dólar estadounidense (USD)' },

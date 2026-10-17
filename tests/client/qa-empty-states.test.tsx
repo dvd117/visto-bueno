@@ -87,8 +87,9 @@ describe('FirstRunHint', () => {
 
     rerender(<FirstRunHint open onDismiss={vi.fn()} />);
     const hint = screen.getByRole('region', { name: 'Orientación de inicio' });
-    expect(within(hint).getByText(/organiza la revisión de facturas antes de preparar una decisión/i)).toBeTruthy();
-    expect(within(hint).getByText(/No hace pagos/i)).toBeTruthy();
+    expect(within(hint).getByText(/Andina Labs paga a 10 proveedores en 5 países/i)).toBeTruthy();
+    expect(within(hint).getByText(/Tú revisas las excepciones antes de decidir/i)).toBeTruthy();
+    expect(within(hint).getByText(/Visto Bueno no hace pagos/i)).toBeTruthy();
     expect(within(hint).getByText('Preparar datos')).toBeTruthy();
     expect(within(hint).getByText('Revisar reglas')).toBeTruthy();
     expect(within(hint).getByText('Recibir una factura')).toBeTruthy();

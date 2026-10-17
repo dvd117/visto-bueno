@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Datos, { type DatosApi, type DataRowMap, type DataTable, type DataTableValues } from '../../src/client/features/datos/Datos';
+import { datosApi } from '../../src/client/lib/api';
 
 // JSDOM rendering can exceed Vitest's 5s default when the full suite is parallel.
 const parallelTimeoutMs = 15_000;
@@ -15,7 +16,10 @@ const data: DataTableValues = {
   treasury: { balanceUsdMinor: 480_000, fx: [{ currency: 'USD', perUsd: '1', date: '2026-10-15' }] },
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function makeApi(uploadCsv = vi.fn(async () => ({ ok: true as const }))): DatosApi {
   return {
@@ -27,6 +31,21 @@ function makeApi(uploadCsv = vi.fn(async () => ({ ok: true as const }))): DatosA
 }
 
 describe('Preparar datos', () => {
+  it('accepts a Chilean vendor from the API and offers Chile in the country selector', async () => {
+    const vendor = { ...data.vendors[0]!, country: 'CL' as const };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([vendor]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })));
+
+    await expect(datosApi.getTable('vendors')).resolves.toEqual([vendor]);
+
+    const api = makeApi();
+    render(<Datos api={api} />);
+    const country = await screen.findByLabelText('País — Nube Andina S.A.S.') as HTMLSelectElement;
+    expect(Array.from(country.options, (option) => option.value)).toContain('CL');
+  });
+
   it('saves an inline vendor account edit through putRow', async () => {
     const api = makeApi();
     render(<Datos api={api} />);

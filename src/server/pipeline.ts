@@ -366,6 +366,7 @@ export async function processBatch(
       candidates: [],
     })));
     await evaluateJev(options, input.workspaceId, input.ip, judgmentMode, prepared);
+    const vendors = getWorkspaceData(options.db, input.workspaceId).vendors;
 
     for (const item of prepared.sort((left, right) => left.invoice.id.localeCompare(right.invoice.id))) {
       if (item.invoice.status === 'approved' || item.invoice.status === 'rejected') {
@@ -385,7 +386,7 @@ export async function processBatch(
         decideInvoice(options.db, input.workspaceId, item.invoice.id, { extraction: item.extraction, jev: item.jev });
         await emitSafely(input.emit, {
           type: 'decided',
-          row: toInvoiceRow(getInvoice(options.db, input.workspaceId, item.invoice.id)!),
+          row: toInvoiceRow(getInvoice(options.db, input.workspaceId, item.invoice.id)!, vendors),
           counters: getCounters(options.db, input.workspaceId),
         });
       } catch {

@@ -2,13 +2,14 @@
 // agreement with the coordinator.
 
 export type Currency = 'USD' | 'COP' | 'MXN';
+export type VendorCountry = 'CO' | 'MX' | 'VE' | 'CL' | 'US';
 /** Integer minor units plus an ISO currency. Never a float. */
 export interface Money { currency: Currency; minor: number }
 /** `perUsd` is a decimal string, e.g. '4171.30'. */
 export interface FxRate { currency: Currency; perUsd: string; date: string }
 
 export interface Vendor {
-  id: string; name: string; taxId: string; country: 'CO' | 'MX' | 'VE' | 'US';
+  id: string; name: string; taxId: string; country: VendorCountry;
   payoutCurrency: Currency; payoutAccount: string; status: 'allowed' | 'blocked'; version: number;
 }
 

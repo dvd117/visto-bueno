@@ -6,7 +6,9 @@ import { invoiceTemplates } from '../../src/shared/templates';
 
 const invoice = {
   id: 'invoice-1',
-  payee: 'Valentina Ruiz',
+  payee: 'Estudio Bruma S.A.S.',
+  country: 'CO',
+  currency: 'COP',
   concept: 'Diseño UX, octubre',
   amount: 'COP 4.800.000,00',
   amountUsd: 'US$ 1.150,72',
@@ -67,11 +69,19 @@ describe('RecibirPanel', () => {
 
   it('uses the Valentina seed values for the legitimate COP template', () => {
     const template = invoiceTemplates.find(({ id }) => id === 'legitimate-cop');
-    expect(template?.content).toContain('Beneficiaria: Valentina Ruiz');
+    expect(template?.content).toContain('Beneficiaria: Estudio Bruma S.A.S.');
     expect(template?.content).toContain('NIT: 900.123.456-7');
     expect(template?.content).toContain('Cuenta Banco Ventaluz ···· 7712');
     expect(template?.content).toContain('Monto total: COP 4.800.000,00');
     expect(template?.content).toContain('Período: noviembre de 2026');
+  });
+
+  it('labels every live template with its vendor country and invoice currency', () => {
+    expect(invoiceTemplates.map(({ label }) => label)).toEqual([
+      'Cobro por WhatsApp con urgencia · MX · USD',
+      'Intento de manipulación (prompt injection) · CL · USD',
+      'Cuenta de cobro legítima en COP · CO · COP',
+    ]);
   });
 
   it('creates pasted text and processes its id in live mode', async () => {

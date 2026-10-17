@@ -45,7 +45,7 @@ const vendorClaims: Record<VendorKey, {
   payeeName: string; payeeTaxId: string; payoutAccount: string; amountRaw: string; description: string;
 }> = {
   nube: {
-    payeeName: 'NUBE ANDINA S.A.S.', payeeTaxId: '901.234.567-8', payoutAccount: 'Banco Ventaluz ···· 8890',
+    payeeName: 'NUBE ANDINA TECNOLOGÍA S. DE R.L.', payeeTaxId: 'NAT010101AB1', payoutAccount: 'Banco Ventaluz ···· 8890',
     amountRaw: 'USD 850.00', description: 'Hosting administrado y respaldo de infraestructura',
   },
   norte: {
@@ -53,7 +53,7 @@ const vendorClaims: Record<VendorKey, {
     amountRaw: 'USD 950.00', description: 'Consultoría de seguridad de aplicaciones',
   },
   datos: {
-    payeeName: 'Datos del Ávila C.A.', payeeTaxId: 'J-30987654-2', payoutAccount: 'Banco Alborvia ···· 5206',
+    payeeName: 'Ladera Austral SpA', payeeTaxId: '76.384.219-3', payoutAccount: 'Banco Alborvia ···· 5206',
     amountRaw: 'USD 640.00', description: 'Restablecimiento urgente de enlace',
   },
 };
