@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readPdf } from '../../src/server/extract/pdf';
 import { seed, seededPriorPayments } from '../../src/server/seed/andina';
 import type { InvoiceStatus, SourceKind } from '../../src/shared/domain/types';
 
@@ -51,6 +52,25 @@ const invoiceContracts: Record<string, string | null> = {
 const priorPayments = seededPriorPayments as unknown as readonly PriorPayment[];
 
 describe('Andina seed', () => {
+  it('keeps known real tax IDs out of the seed and invoice fixtures', async () => {
+    const knownRealTaxIds = ['76.384.219-3', '900.123.456-7'];
+    const fixtureDirectory = resolve(process.cwd(), 'fixtures/invoices');
+    const fixtureFiles = readdirSync(fixtureDirectory);
+
+    const seedText = JSON.stringify(seed());
+    const sourceTexts = fixtureFiles.filter((name) => name.endsWith('.txt'))
+      .map((file) => readFileSync(resolve(fixtureDirectory, file), 'utf8'));
+    const pdfTexts = await Promise.all(fixtureFiles.filter((name) => name.endsWith('.pdf'))
+      .map(async (file) => (await readPdf(readFileSync(resolve(fixtureDirectory, file)))).text));
+
+    for (const realTaxId of knownRealTaxIds) {
+      expect(seedText).not.toContain(realTaxId);
+      for (const text of [...sourceTexts, ...pdfTexts]) {
+        expect(text).not.toContain(realTaxId);
+      }
+    }
+  });
+
   it('is internally consistent with the labeled invoice set', () => {
     const data = seed();
     const vendorIds = new Set(data.vendors.map((vendor) => vendor.id));
@@ -173,7 +193,17 @@ describe('Andina seed', () => {
     const chileVendors = data.vendors.filter(({ country }) => country === 'CL');
     expect(chileVendors).toHaveLength(1);
     expect(chileVendors[0]).toMatchObject({ payoutCurrency: 'USD' });
-    expect(chileVendors[0]?.taxId).toMatch(/^\d{1,2}\.\d{3}\.\d{3}-[\dK]$/u);
+    const chileRut = chileVendors[0]?.taxId;
+    expect(chileRut).toMatch(/^\d{1,2}\.\d{3}\.\d{3}-[\dK]$/u);
+    const [rutBody, rutCheckDigit] = chileRut!.replaceAll('.', '').split('-');
+    let checksum = 0;
+    let multiplier = 2;
+    for (const digit of [...rutBody!].reverse()) {
+      checksum += Number(digit) * multiplier;
+      multiplier = multiplier === 7 ? 2 : multiplier + 1;
+    }
+    const remainder = 11 - (checksum % 11);
+    expect(rutCheckDigit).toBe(remainder === 11 ? '0' : remainder === 10 ? 'K' : String(remainder));
     expect(new Set(data.contracts.map(({ currency }) => currency))).toEqual(new Set(['USD', 'COP', 'MXN']));
   });
 

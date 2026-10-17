@@ -38,7 +38,7 @@ function claimsFromFixture(id: string, source: string): ExtractionClaims {
       description: 'auditoría de accesibilidad del prototipo',
     },
     'AL-037': {
-      payeeName: 'ESTUDIO BRUMA S.A.S.', taxId: '900.123.456-7', account: 'Banco Ventaluz ···· 7712',
+      payeeName: 'ESTUDIO BRUMA S.A.S.', taxId: '989.876.543-5', account: 'Banco Ventaluz ···· 7712',
       invoiceId: 'AL-037', date: '15/10/2026', due: '20/10/2026', amount: 'COP 4.800.000,00', currency: 'COP',
       description: 'Diseño UX, octubre de 2026',
     },
@@ -58,7 +58,7 @@ function claimsFromFixture(id: string, source: string): ExtractionClaims {
       description: 'Hosting administrado, octubre de 2026',
     },
     'AL-045': {
-      payeeName: 'LADERA AUSTRAL SpA', taxId: '76.384.219-3', account: 'Banco Alborvia ···· 5206',
+      payeeName: 'LADERA AUSTRAL SpA', taxId: '99.876.543-9', account: 'Banco Alborvia ···· 5206',
       invoiceId: 'AL-045', date: '14/10/2026', due: '30/10/2026', amount: 'USD 640,00', currency: 'USD',
       description: 'Soporte de datos y conectividad, octubre de 2026',
     },

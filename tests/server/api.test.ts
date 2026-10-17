@@ -49,7 +49,7 @@ describe('T11 API', () => {
   it('accepts Chile as a vendor country through the data API', async () => {
     const { app } = makeRuntime();
     const vendor = {
-      id: 'ladera-austral', name: 'Ladera Austral SpA', taxId: '76.384.219-3', country: 'CL',
+      id: 'ladera-austral', name: 'Ladera Austral SpA', taxId: '99.876.543-9', country: 'CL',
       payoutCurrency: 'USD', payoutAccount: 'Banco Niebla Azul ···· 6341', status: 'allowed', version: 1,
     };
 

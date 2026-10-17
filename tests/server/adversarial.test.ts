@@ -53,7 +53,7 @@ const vendorClaims: Record<VendorKey, {
     amountRaw: 'USD 950.00', description: 'Consultoría de seguridad de aplicaciones',
   },
   datos: {
-    payeeName: 'Ladera Austral SpA', payeeTaxId: '76.384.219-3', payoutAccount: 'Banco Alborvia ···· 5206',
+    payeeName: 'Ladera Austral SpA', payeeTaxId: '99.876.543-9', payoutAccount: 'Banco Alborvia ···· 5206',
     amountRaw: 'USD 640.00', description: 'Restablecimiento urgente de enlace',
   },
 };

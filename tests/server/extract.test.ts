@@ -29,11 +29,11 @@ import { ProviderCallLimitError } from '../../src/server/model-attempt';
 const claims = {
   amountsFound: ['USD 100.00'],
   accountsFound: ['0123456789'],
-  taxIdsFound: ['900123456-7'],
+  taxIdsFound: ['989876543-5'],
   invoiceIdsFound: ['A-101'],
   currenciesFound: ['USD'],
   payeeName: 'Nube Andina SAS',
-  payeeTaxId: '900123456-7',
+  payeeTaxId: '989876543-5',
   payoutAccount: '0123456789',
   invoiceId: 'A-101',
   invoiceDate: '2026-10-15',
@@ -408,7 +408,7 @@ describe('invoice extraction', () => {
     vi.stubEnv('EXTRACT_MODE', 'live');
     const result = await extract({
       kind: 'text',
-      text: 'FACTURA A-101\nProveedor: Nube Andina SAS\nNIT: 900123456-7\nTotal: USD 100.00\nFecha: 2026-10-15',
+      text: 'FACTURA A-101\nProveedor: Nube Andina SAS\nNIT: 989876543-5\nTotal: USD 100.00\nFecha: 2026-10-15',
     });
 
     expect(result.ok).toBe(true);

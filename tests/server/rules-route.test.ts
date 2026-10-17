@@ -49,7 +49,7 @@ function extraction(
     ? (vendor === 'nube' ? 'USD 850.00' : 'USD 640.00')
     : input.amountRaw;
   const payeeName = vendor === 'nube' ? 'Nube Andina Tecnología S. de R.L.' : 'Ladera Austral SpA';
-  const payeeTaxId = vendor === 'nube' ? 'NAT010101AB1' : '76.384.219-3';
+  const payeeTaxId = vendor === 'nube' ? 'NAT010101AB1' : '99.876.543-9';
   const payoutAccount = vendor === 'nube' ? 'Banco Ventaluz ···· 8890' : 'Banco Alborvia ···· 5206';
   const date = input.invoiceDate ?? '2026-10-16';
   const claims: ExtractionClaims = {
