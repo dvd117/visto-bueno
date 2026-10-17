@@ -78,7 +78,7 @@ export default function App() {
   const [rowRevisions, setRowRevisions] = useState<Record<string, number>>({});
   const [toast, setToast] = useState('');
   const toastTimer = useRef<number | undefined>(undefined);
-  const resetInProgress = useRef(false);
+  const resetOutcome = useRef<Promise<boolean> | null>(null);
   const resetGeneration = useRef(0);
   const selectedStatus = rows.find((row) => row.id === selectedId)?.status;
   const detailKey = JSON.stringify([selectedId, selectedStatus]);
@@ -161,6 +161,16 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(''), 3200);
   }, []);
 
+  const shouldDiscardReceive = useCallback(async (generation: number) => {
+    while (true) {
+      const outcome = resetOutcome.current;
+      if (!outcome) break;
+      if (await outcome) return true;
+      if (resetOutcome.current === outcome) break;
+    }
+    return generation !== resetGeneration.current;
+  }, []);
+
   const handleProcessEvent = useCallback((event: ProcessEvent) => {
     if (event.type === 'decided') {
       setRows((current) => replaceRow(current, event.row));
@@ -196,7 +206,7 @@ export default function App() {
     async createInvoiceText(text) {
       const generation = resetGeneration.current;
       const row = await createInvoice({ text });
-      if (resetInProgress.current || generation !== resetGeneration.current) {
+      if (await shouldDiscardReceive(generation)) {
         throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
       }
       setRows((current) => replaceRow(current, row));
@@ -208,7 +218,7 @@ export default function App() {
     async createInvoiceFile(file) {
       const generation = resetGeneration.current;
       const row = await createInvoice(file);
-      if (resetInProgress.current || generation !== resetGeneration.current) {
+      if (await shouldDiscardReceive(generation)) {
         throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
       }
       setRows((current) => replaceRow(current, row));
@@ -218,7 +228,7 @@ export default function App() {
       return row;
     },
     async *process(request: ProcessRequest) {
-      if (processing || resetInProgress.current) throw new ApiRequestError('Ya hay una evaluación o reinicio en curso. Inténtalo al terminar.', 409);
+      if (processing || resetOutcome.current) throw new ApiRequestError('Ya hay una evaluación o reinicio en curso. Inténtalo al terminar.', 409);
       const generation = resetGeneration.current;
       setProcessing(true);
       try {
@@ -230,7 +240,7 @@ export default function App() {
         if (generation === resetGeneration.current) await loadWorkspace(false);
       }
     },
-  }), [handleProcessEvent, loadWorkspace, processing]);
+  }), [handleProcessEvent, loadWorkspace, processing, shouldDiscardReceive]);
 
   const handleDropFiles = useCallback(async (files: File[]) => {
     if (files.length === 0 || actionBusy) return;
@@ -240,11 +250,11 @@ export default function App() {
       let firstId: string | null = null;
       for (const file of files) {
         const row = await createInvoice(file);
-        if (resetInProgress.current || generation !== resetGeneration.current) return;
+        if (await shouldDiscardReceive(generation)) return;
         firstId ??= row.id;
         setRows((current) => replaceRow(current, row));
       }
-      if (resetInProgress.current || generation !== resetGeneration.current) return;
+      if (await shouldDiscardReceive(generation)) return;
       if (firstId) setSelectedId(firstId);
       await loadWorkspace(false);
       showToast('Factura recibida. Pulsa Procesar para iniciar su revisión.');
@@ -253,17 +263,19 @@ export default function App() {
     } finally {
       setActionBusy(false);
     }
-  }, [actionBusy, loadWorkspace, showToast]);
+  }, [actionBusy, loadWorkspace, shouldDiscardReceive, showToast]);
 
   const handleReset = useCallback(async () => {
-    if (actionBusy || processing || resetInProgress.current) return;
-    resetInProgress.current = true;
-    // Invalidate requests already in flight, then catch any started during reset on success.
-    resetGeneration.current += 1;
+    if (actionBusy || processing || resetOutcome.current) return;
+    let settleResetOutcome!: (succeeded: boolean) => void;
+    const pendingReset = new Promise<boolean>((resolve) => { settleResetOutcome = resolve; });
+    resetOutcome.current = pendingReset;
     setActionBusy(true);
     try {
       await resetWorkspace();
+      // Only a successful server reset invalidates uploads started in the old workspace.
       resetGeneration.current += 1;
+      settleResetOutcome(true);
       setActiveSection('inbox');
       setSelectedId(null);
       setExpediente(null);
@@ -272,9 +284,10 @@ export default function App() {
       await loadWorkspace(true);
       showToast('Demo reiniciada.');
     } catch (error) {
+      settleResetOutcome(false);
       showToast(errorMessage(error));
     } finally {
-      resetInProgress.current = false;
+      resetOutcome.current = null;
       setActionBusy(false);
     }
   }, [actionBusy, loadWorkspace, processing, showToast]);
