@@ -12,10 +12,10 @@ const EXTRACTION_FAILURE_REASONS: Record<Extract<ExtractionResult, { ok: false }
 };
 
 const SOURCE_FIELDS = [
-  ['amountRaw', 'monto'],
-  ['payoutAccount', 'cuenta bancaria'],
-  ['payeeTaxId', 'identificación tributaria'],
-  ['invoiceId', 'número de factura'],
+  ['amountRaw', 'Fuente del monto'],
+  ['payoutAccount', 'Fuente de la cuenta bancaria'],
+  ['payeeTaxId', 'Fuente de la identificación tributaria'],
+  ['invoiceId', 'Fuente del número de factura'],
 ] as const;
 
 function check(
@@ -119,19 +119,21 @@ export function verifyClaims(
   const money = parseClaimedAmount(claims.amountRaw, currency);
   const checks: CheckResult[] = [check('extraction_failed', 'Extracción disponible', true, 'none', 'La factura se pudo leer.')];
 
-  if (sourceKind !== 'image') {
-    for (const [field, label] of SOURCE_FIELDS) {
-      const value = claims[field];
-      if (value === null || value.trim() === '') continue;
-      const passed = hasLiteralWithWhitespaceNormalization(sourceText, value);
-      checks.push(check(
-        `source_${field}`,
-        `Fuente del ${label}`,
-        passed,
-        passed ? 'none' : 'review',
-        passed ? 'El dato aparece en el documento.' : `No pude confirmar ${field === 'amountRaw' ? 'el monto' : field === 'payoutAccount' ? 'la cuenta bancaria' : field === 'payeeTaxId' ? 'la identificación tributaria' : 'el número de factura'} en el documento`,
-      ));
+  for (const [field, label] of SOURCE_FIELDS) {
+    if (sourceKind === 'image') {
+      checks.push(check(`source_${field}`, label, false, 'approval', 'No verificable en imagen.'));
+      continue;
     }
+    const value = claims[field];
+    if (value === null || value.trim() === '') continue;
+    const passed = hasLiteralWithWhitespaceNormalization(sourceText, value);
+    checks.push(check(
+      `source_${field}`,
+      label,
+      passed,
+      passed ? 'none' : 'review',
+      passed ? 'El dato aparece en el documento.' : `No pude confirmar ${field === 'amountRaw' ? 'el monto' : field === 'payoutAccount' ? 'la cuenta bancaria' : field === 'payeeTaxId' ? 'la identificación tributaria' : 'el número de factura'} en el documento`,
+    ));
   }
 
   const singleAccount = hasSingleUnambiguousAccount([...claims.accountsFound, claims.payoutAccount]);

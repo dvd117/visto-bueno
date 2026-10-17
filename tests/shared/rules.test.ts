@@ -121,6 +121,17 @@ describe('evaluateRules', () => {
     expectFail(evaluate({ claims: claims({ payoutAccount: null }) }), 'R2', 'stop');
   });
 
+  it('marks image account and amount agreement as unverifiable and approval-gated', () => {
+    const result = evaluate({ sourceKind: 'image' });
+
+    expect(getCheck(result, 'R2')).toMatchObject({
+      passed: false, effect: 'approval', reason: 'No verificable en imagen.',
+    });
+    expect(getCheck(result, 'R5')).toMatchObject({
+      passed: false, effect: 'approval', reason: 'No verificable en imagen.',
+    });
+  });
+
   it('R2 fails closed when a standalone X is ambiguous before a full account number', () => {
     const result = evaluate({ claims: claims({ payoutAccount: 'Banco Altocauce X 11112228890' }) });
     expectFail(result, 'R2', 'stop');

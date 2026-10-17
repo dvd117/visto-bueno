@@ -1,8 +1,11 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { rmSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { getInvoice, openDb } from '../../src/server/db/db';
 import { createServerApp, serverRuntime } from '../../src/server/app';
 import { readExampleFixtures } from '../../src/server/fixtures';
 import { createLiveCallLimiter } from '../../src/server/middleware/limits';
+import type { ExtractionClaims, ExtractionResult, JevAnswers, SourceKind } from '../../src/shared/domain/types';
 
 const runtimes: Array<ReturnType<typeof createServerApp>> = [];
 
@@ -19,6 +22,7 @@ function makeRuntime(options: Partial<Parameters<typeof createServerApp>[0]> = {
 
 afterEach(() => {
   for (const runtime of runtimes.splice(0)) runtime.dispose();
+  rmSync(resolve('.w', 'api-image-approval'), { recursive: true, force: true });
   vi.unstubAllEnvs();
 });
 
@@ -128,6 +132,57 @@ describe('T11 API', () => {
       body: JSON.stringify({ approver: 'Demo', reason: 'Revisado', idempotencyKey: 'stop-approval' }),
     });
     expect(approval.status).toBe(409);
+  });
+
+  it('requires the registered account suffix for image approval over HTTP', async () => {
+    const claims: ExtractionClaims = {
+      amountsFound: ['USD 850.00'], accountsFound: ['Bancolombia ···· 8890'], taxIdsFound: ['901.234.567-8'],
+      invoiceIdsFound: ['IMG-API-001'], currenciesFound: ['USD'], payeeName: 'Nube Andina S.A.S.',
+      payeeTaxId: '901.234.567-8', payoutAccount: 'Bancolombia ···· 8890', invoiceId: 'IMG-API-001',
+      invoiceDate: '2026-10-16', dueDate: '2026-10-20', currency: 'USD', amountRaw: 'USD 850.00',
+      subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null, description: 'Hosting',
+      documentTypeHint: 'factura', hasMultipleCurrenciesShown: false, evidenceQuotes: {}, suspiciousPassages: [],
+    };
+    const jev: JevAnswers = {
+      ok: true,
+      answers: {
+        instructs_agent: { type: 'noul', noul: 0 },
+        artificial_urgency: { type: 'noul', noul: 0 },
+        scope_match: { type: 'score', score: 0, probabilities: { '0': 1, '1': 0, '2': 0 }, confidence: 1 },
+        document_type: { type: 'choice', choice: 'factura', probabilities: { factura: 1 }, confidence: 1 },
+      },
+      latencyMs: 0, recorded: true, inputTokens: 1,
+    };
+    const extractProvider = vi.fn(async (input: { kind: SourceKind }): Promise<ExtractionResult> => ({
+      ok: true, claims, sourceText: '', sourceKind: input.kind,
+    }));
+    const { app, db } = makeRuntime({
+      uploadDirectory: resolve('.w', 'api-image-approval'),
+      extractProvider,
+      jevProvider: async () => jev,
+    });
+    const form = new FormData();
+    form.set('file', new File([Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])], 'invoice.png', { type: 'image/png' }));
+    const created = await app.request('/api/invoices', { method: 'POST', body: form });
+    expect(created.status).toBe(201);
+    const invoice = await created.json() as { id: string };
+    const cookie = created.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const workspaceId = cookie.slice('workspace_id='.length);
+
+    const process = await app.request('/api/process', {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ ids: [invoice.id], mode: 'replay' }),
+    });
+    expect(await process.text()).toContain('approval_required');
+
+    const approve = (body: Record<string, string>) => app.request(`/api/invoices/${invoice.id}/approve`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body),
+    });
+    const base = { approver: 'Demo', reason: 'Revisada', idempotencyKey: 'image-route-missing' };
+    expect((await approve(base)).status).toBe(409);
+    expect((await approve({ ...base, idempotencyKey: 'image-route-wrong', accountLast4: '4412' })).status).toBe(409);
+    expect((await approve({ ...base, idempotencyKey: 'image-route-correct', accountLast4: '8890' })).status).toBe(200);
+    expect(getInvoice(db, workspaceId, invoice.id)?.status).toBe('approved');
   });
 
   it('rejects an oversized upload before parsing and leaves live quota untouched', async () => {

@@ -145,8 +145,61 @@ describe('database persistence', () => {
     expect(record.decision.status).toBe('approval_required');
     expect(record.decision.checks.find((check) => check.id === 'image_confirmation'))
       .toMatchObject({ passed: true, effect: 'approval' });
-    expect(record.decision.checks.some((check) => check.id.startsWith('source_'))).toBe(false);
+    for (const id of ['source_amountRaw', 'source_payoutAccount', 'source_payeeTaxId']) {
+      expect(record.decision.checks.find((check) => check.id === id)).toMatchObject({
+        passed: false, effect: 'approval', reason: expect.stringContaining('No verificable en imagen'),
+      });
+    }
+    expect(record.decision.checks.find((check) => check.id === 'R2'))
+      .toMatchObject({ passed: false, effect: 'approval', reason: 'No verificable en imagen.' });
+    expect(record.decision.checks.find((check) => check.id === 'R5'))
+      .toMatchObject({ passed: false, effect: 'approval', reason: 'No verificable en imagen.' });
     expect(getInvoice(db, workspaceId, 'IMAGE-001')?.status).toBe('approval_required');
+  });
+
+  it('never verifies the account or becomes ready for an image with conflicting accounts', () => {
+    const workspaceId = 'image-two-accounts';
+    ensureWorkspace(db, workspaceId);
+    createInvoice(db, workspaceId, { id: 'IMAGE-ACCOUNTS-001', sourceKind: 'image' });
+    const inputs = readyInput('IMAGE-ACCOUNTS-001', {
+      payoutAccount: 'Bancolombia ···· 8890',
+      accountsFound: ['Bancolombia 1234569999', 'Bancolombia ···· 8890'],
+    });
+    if (!inputs.extraction.ok) throw new Error('test setup');
+    inputs.extraction = { ...inputs.extraction, sourceKind: 'image' };
+
+    const record = decideInvoice(db, workspaceId, 'IMAGE-ACCOUNTS-001', inputs);
+
+    expect(record.decision.status).toBe('stopped');
+    expect(record.decision.checks.find((check) => check.id === 'R2'))
+      .toMatchObject({ passed: false, effect: 'approval' });
+    expect(record.decision.checks.find((check) => check.id === 'two_accounts'))
+      .toMatchObject({ passed: false, effect: 'stop' });
+  });
+
+  it('requires image account digits to match the registered account before approval', () => {
+    const workspaceId = 'image-approval-digits';
+    ensureWorkspace(db, workspaceId);
+    createInvoice(db, workspaceId, { id: 'IMAGE-APPROVAL-001', sourceKind: 'image' });
+    const inputs = readyInput('IMAGE-APPROVAL-001');
+    if (!inputs.extraction.ok) throw new Error('test setup');
+    inputs.extraction = { ...inputs.extraction, sourceKind: 'image' };
+    const pending = decideInvoice(db, workspaceId, 'IMAGE-APPROVAL-001', inputs);
+    expect(pending.decision.status).toBe('approval_required');
+
+    expect(approveInvoice(db, workspaceId, 'IMAGE-APPROVAL-001', {
+      approver: 'Demo Reviewer', reason: 'Revisada', idempotencyKey: 'image-missing-last4',
+    })).toMatchObject({ ok: false, status: 409 });
+    expect(approveInvoice(db, workspaceId, 'IMAGE-APPROVAL-001', {
+      approver: 'Demo Reviewer', reason: 'Revisada', idempotencyKey: 'image-wrong-last4', accountLast4: '4412',
+    })).toMatchObject({ ok: false, status: 409 });
+    expect(getInvoice(db, workspaceId, 'IMAGE-APPROVAL-001')?.status).toBe('approval_required');
+
+    const approval = approveInvoice(db, workspaceId, 'IMAGE-APPROVAL-001', {
+      approver: 'Demo Reviewer', reason: 'Revisada', idempotencyKey: 'image-correct-last4', accountLast4: '8890',
+    });
+    expect(approval).toMatchObject({ ok: true });
+    expect(getInvoice(db, workspaceId, 'IMAGE-APPROVAL-001')?.status).toBe('approved');
   });
 
   it('counts reserved spend in limits but only committed spend for contract-period uniqueness', () => {

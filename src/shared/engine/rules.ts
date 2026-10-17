@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 import { parseAmount, toUsdMinor } from '../domain/money';
 import type {
-  Budget, CheckResult, Contract, CostCenter, Currency, ExtractionClaims, Money, Rules, Treasury, Vendor,
+  Budget, CheckResult, Contract, CostCenter, Currency, ExtractionClaims, Money, Rules, SourceKind, Treasury, Vendor,
 } from '../domain/types';
 import { normalize, normalizeAccount } from './normalize';
 
@@ -20,6 +20,7 @@ export interface RuleContext {
   contracts: Contract[];
   money: Money | null;
   claims: ExtractionClaims;
+  sourceKind?: SourceKind;
   treasury: Treasury;
   budgets: Budget[];
   rules: Rules;
@@ -59,6 +60,10 @@ function maskAccount(account: string | null): string {
   const key = account ? normalizeAccount(account) : '';
   const suffix = key.match(/:([0-9]{4})$/u)?.[1];
   return `···· ${suffix ?? '—'}`;
+}
+
+function imageAccountCheck(): CheckResult {
+  return check('R2', 'Cuenta bancaria registrada', false, 'approval', 'No verificable en imagen.');
 }
 
 function monthFromDate(date: string | null): string | null {
@@ -116,10 +121,11 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
   const invoiceKey = claims.payoutAccount ? normalizeAccount(claims.payoutAccount) : '';
   const registeredKey = vendor ? normalizeAccount(vendor.payoutAccount) : '';
   const accountMatches = !vendor || (invoiceKey !== '' && registeredKey !== '' && invoiceKey === registeredKey);
+  const imageSource = ctx.sourceKind === 'image';
   const accountEvidence = vendor && claims.payoutAccount
     ? { invoice: maskAccount(claims.payoutAccount), record: maskAccount(vendor.payoutAccount) }
     : undefined;
-  checks.push(check(
+  checks.push(imageSource ? imageAccountCheck() : check(
     'R2', 'Cuenta bancaria registrada', accountMatches, accountMatches ? 'none' : 'stop',
     accountMatches
       ? 'La cuenta de la factura coincide con la cuenta registrada.'
@@ -145,8 +151,10 @@ export function evaluateRules(ctx: RuleContext): { checks: CheckResult[]; contra
   const fixedAmountMatches = !contract || contract.type !== 'fixed' || ctx.money === null
     || (contract.amountMinor !== undefined && ctx.money.minor === contract.amountMinor);
   checks.push(check(
-    'R5', 'Monto fijo según el acuerdo', fixedAmountMatches, fixedAmountMatches ? 'none' : 'stop',
-    fixedAmountMatches ? 'El monto coincide con el acuerdo o no aplica.' : 'El monto no coincide con el monto acordado.',
+    'R5', 'Monto fijo según el acuerdo', imageSource ? false : fixedAmountMatches,
+    imageSource ? 'approval' : fixedAmountMatches ? 'none' : 'stop',
+    imageSource ? 'No verificable en imagen.'
+      : fixedAmountMatches ? 'El monto coincide con el acuerdo o no aplica.' : 'El monto no coincide con el monto acordado.',
   ));
 
   const variableContract = contract?.type === 'variable' ? contract : null;

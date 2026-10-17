@@ -96,6 +96,13 @@ describe('simulateImpact', () => {
     expect(result.unsafeApprovals).toBe(0);
   });
 
+  it('keeps image invoices in approval even when every extracted claim matches', () => {
+    const result = simulateImpact(input([invoice('image-invoice', { sourceKind: 'image' })]), rules);
+
+    expect(result.counts).toEqual({ ready: 0, approval_required: 1, review_required: 0, stopped: 0 });
+    expect(result.unsafeApprovals).toBe(0);
+  });
+
   it('never turns a failed hard rule into ready under the permissive preset', () => {
     const snapshot = input([invoice('invoice-1')], {
       vendors: [{ ...vendor, status: 'blocked' }],
