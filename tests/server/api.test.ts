@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { evaluationResultSchema, type Expediente } from '../../src/shared/api';
+import { decideResponseSchema } from '../../src/shared/api-schemas';
 import { getInvoice, getWorkspaceData, openDb, putRules } from '../../src/server/db/db';
 import { createServerApp, serverRuntime } from '../../src/server/app';
 import { readExampleFixtures } from '../../src/server/fixtures';
@@ -26,6 +27,7 @@ afterEach(() => {
   rmSync(resolve('.w', 'api-image-approval'), { recursive: true, force: true });
   rmSync(resolve('.w', 'api-reset'), { recursive: true, force: true });
   rmSync(resolve('.w', 'api-eval'), { recursive: true, force: true });
+  rmSync(resolve('.w', 'api-decide'), { recursive: true, force: true });
   vi.unstubAllEnvs();
 });
 
@@ -276,6 +278,122 @@ describe('T11 API', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ country, payoutCurrency });
+  });
+
+  it('decides new text through the live pipeline and replays the workspace-scoped idempotency key', async () => {
+    const limiter = createLiveCallLimiter();
+    const reserveCall = vi.spyOn(limiter, 'reserveCall');
+    const extractProvider = vi.fn(async (input: { kind: SourceKind; onAttempt?: () => void }) => {
+      input.onAttempt?.();
+      return { ok: false as const, error: 'unreadable' as const, sourceKind: input.kind };
+    });
+    const { app, db } = makeRuntime({ seedExamples: false, limiter: { reserveCall }, extractProvider });
+    const submit = (cookie = '', text = 'Factura desconocida de prueba') => app.request('/api/v1/decide', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json', 'Idempotency-Key': 'decide-text-001',
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ text }),
+    });
+
+    const first = await submit();
+    const cookieA = first.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const workspaceA = cookieA.slice('workspace_id='.length);
+    const firstBody: unknown = await first.json();
+    expect(first.status).toBe(200);
+    expect(decideResponseSchema.safeParse(firstBody).success).toBe(true);
+    expect(firstBody).toMatchObject({ state: 'review_required' });
+    expect(reserveCall).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: workspaceA, mode: 'live' }));
+    expect(extractProvider).toHaveBeenCalledOnce();
+    expect(db.prepare('SELECT action, input_fingerprint FROM idempotency_keys WHERE workspace_id = ? AND idempotency_key = ?')
+      .get(workspaceA, 'decide-text-001')).toMatchObject({ action: 'decided', input_fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+
+    const retry = await submit(cookieA);
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual(firstBody);
+    expect(extractProvider).toHaveBeenCalledOnce();
+
+    const mismatch = await submit(cookieA, 'Different input must not run again');
+    expect(mismatch.status).toBe(409);
+    expect(await mismatch.json()).toMatchObject({ error: 'idempotency_conflict' });
+    expect(extractProvider).toHaveBeenCalledOnce();
+
+    const secondWorkspace = await submit();
+    const cookieB = secondWorkspace.headers.get('set-cookie')?.split(';')[0] ?? '';
+    expect(cookieB).not.toBe(cookieA);
+    expect(secondWorkspace.status).toBe(200);
+    expect(await secondWorkspace.json()).not.toEqual(firstBody);
+    expect(extractProvider).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires a nonblank Idempotency-Key of at most 120 trimmed characters', async () => {
+    const { app, db } = makeRuntime({ seedExamples: false });
+    const request = (key?: string) => app.request('/api/v1/decide', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(key === undefined ? {} : { 'Idempotency-Key': key }),
+      },
+      body: JSON.stringify({ text: 'Factura de prueba' }),
+    });
+
+    expect((await request()).status).toBe(400);
+    expect((await request('   ')).status).toBe(400);
+    expect((await request(` ${'x'.repeat(121)} `)).status).toBe(400);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM invoices').get()).toMatchObject({ count: 0 });
+  });
+
+  it('replays a seeded invoice through the same pipeline without reserving live calls', async () => {
+    vi.stubEnv('EXTRACT_MODE', 'live');
+    vi.stubEnv('JEV_MODE', 'live');
+    const reserveCall = vi.fn(createLiveCallLimiter().reserveCall);
+    const claims: ExtractionClaims = {
+      amountsFound: [], accountsFound: [], taxIdsFound: [], invoiceIdsFound: [], currenciesFound: [],
+      payeeName: null, payeeTaxId: null, payoutAccount: null, invoiceId: null, invoiceDate: null, dueDate: null,
+      currency: null, amountRaw: null, subtotalRaw: null, taxesRaw: null, quantity: null, rateRaw: null,
+      description: null, documentTypeHint: null, hasMultipleCurrenciesShown: false, evidenceQuotes: {}, suspiciousPassages: [],
+    };
+    const extractProvider = vi.fn(async (input: { kind: SourceKind }) => ({
+      ok: true as const, sourceKind: input.kind, sourceText: 'Factura de ejemplo', claims,
+    }));
+    const jevProvider = vi.fn(async (): Promise<JevAnswers> => ({ ok: false, error: 'missing_recording' }));
+    const { app } = makeRuntime({
+      limiter: { reserveCall }, extractProvider, jevProvider,
+    });
+    const response = await app.request('/api/v1/decide', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'Idempotency-Key': 'decide-seed-030' },
+      body: JSON.stringify({ invoiceId: 'AL-030' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ state: expect.any(String) });
+    expect(extractProvider).toHaveBeenCalledWith(expect.objectContaining({ mode: 'replay' }));
+    expect(jevProvider).toHaveBeenCalledWith(expect.objectContaining({ mode: 'replay' }));
+    expect(reserveCall).not.toHaveBeenCalled();
+  });
+
+  it('accepts a validated image upload and persists it in the current workspace', async () => {
+    const uploadDirectory = resolve('.w', 'api-decide');
+    const extractProvider = vi.fn(async (input: { kind: SourceKind }) => ({
+      ok: false as const, error: 'unreadable' as const, sourceKind: input.kind,
+    }));
+    const { app, db } = makeRuntime({ uploadDirectory, seedExamples: false, extractProvider });
+    const form = new FormData();
+    form.set('file', new File([Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])], 'invoice.png', { type: 'image/png' }));
+    const response = await app.request('/api/v1/decide', {
+      method: 'POST', headers: { 'Idempotency-Key': 'decide-file-001' }, body: form,
+    });
+    const cookie = response.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const workspaceId = cookie.slice('workspace_id='.length);
+    const saved = db.prepare('SELECT source_kind, file_path FROM invoices WHERE workspace_id = ?')
+      .get(workspaceId) as { source_kind: string; file_path: string } | undefined;
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ state: 'review_required' });
+    expect(saved).toMatchObject({ source_kind: 'image', file_path: expect.stringMatching(/^uploads\//) });
+    expect(extractProvider).toHaveBeenCalledWith(expect.objectContaining({ kind: 'image', mode: 'live' }));
   });
 
   it('serves the real committed invoice file from the workspace-scoped files route', async () => {

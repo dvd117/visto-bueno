@@ -25,6 +25,50 @@ afterEach(() => {
 afterAll(() => serverRuntime.dispose());
 
 describe('OpenAPI document', () => {
+  it('documents the single-invoice decision endpoint and its idempotency contract', async () => {
+    const { app } = makeRuntime();
+    const response = await app.request('/api/openapi.json');
+    const document = await response.json() as {
+      paths?: Record<string, Record<string, {
+        parameters?: Array<{ name?: string; in?: string; required?: boolean; schema?: JsonSchema }>;
+        requestBody?: { required?: boolean; content?: Record<string, { schema?: JsonSchema }> };
+        responses?: Record<string, { content?: Record<string, { schema?: JsonSchema }> }>;
+      }>>;
+      components?: { schemas?: Record<string, JsonSchema> };
+    };
+    const decide = document.paths?.['/api/v1/decide']?.post;
+    const key = decide?.parameters?.[0];
+
+    expect(decide).toBeDefined();
+    expect(key).toMatchObject({ name: 'Idempotency-Key', in: 'header', required: true });
+    expect(key?.schema?.['x-maxLengthAfterTrim']).toBe(120);
+    const keyPattern = new RegExp(key?.schema?.pattern as string);
+    expect(keyPattern.test(` ${'x'.repeat(120)} `)).toBe(true);
+    expect(keyPattern.test(` ${'x'.repeat(121)} `)).toBe(false);
+    expect(keyPattern.test('   ')).toBe(false);
+    expect(decide?.requestBody).toMatchObject({
+      required: true,
+      content: {
+        'application/json': { schema: { $ref: '#/components/schemas/DecideRequest' } },
+        'multipart/form-data': { schema: { $ref: '#/components/schemas/DecideFile' } },
+      },
+    });
+    expect(decide?.responses?.['200']?.content?.['application/json']?.schema).toEqual({
+      $ref: '#/components/schemas/DecideResponse',
+    });
+    expect(document.components?.schemas?.DecideResponse).toMatchObject({
+      type: 'object',
+      required: ['state', 'headline', 'reasons', 'checks', 'sealId', 'decisionRecordId'],
+      properties: {
+        state: { enum: ['ready', 'approval_required', 'review_required', 'stopped'] },
+        reasons: { type: 'array', items: { type: 'string' } },
+        checks: { type: 'array', items: { properties: { outcome: { enum: ['passed', 'failed', 'pending', 'not_applicable'] } } } },
+      },
+    });
+    expect(document.components?.schemas?.DecideRequest?.oneOf).toBeDefined();
+    expect(document.components?.schemas?.DecideFile?.properties?.file).toMatchObject({ type: 'string', format: 'binary' });
+  });
+
   it('is an OpenAPI 3.1 document and includes every registered API route', async () => {
     const { app } = makeRuntime();
     const response = await app.request('/api/openapi.json');

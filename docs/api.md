@@ -22,3 +22,17 @@ curl -sS -b cookies.txt "$BASE/api/invoices/$ID"
 
 El primer acceso crea el workspace y entrega la cookie `workspace_id`; conserva el mismo cookie jar.
 No apruebes ni rechaces desde una integración: son acciones humanas registradas con identidad declarada.
+
+## Decidir una factura
+
+`POST /api/v1/decide` recibe una factura y devuelve `state`, `headline`, `reasons`, `checks`, `sealId` y `decisionRecordId`. Requiere `Idempotency-Key`; la clave queda aislada por workspace y repetirla devuelve el mismo resultado. El endpoint registra la decisión, pero no aprueba ni ejecuta pagos.
+
+Para procesar una factura de ejemplo en replay, usa un ID sembrado en el mismo workspace:
+
+```sh
+curl -sS -b cookies.txt -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: demo-al030-1' \
+  -d '{"invoiceId":"AL-030"}' "$BASE/api/v1/decide"
+```
+
+Para una factura nueva, envía texto JSON (`{"text":"..."}`) o un archivo PDF/imagen con `-F 'file=@factura.pdf'`. Esas entradas nuevas usan el modo live y los límites existentes por llamada a modelo; configura las credenciales de proveedor antes de probarlas. Un fallo de extracción o evaluación conserva el comportamiento fail-closed del pipeline.
