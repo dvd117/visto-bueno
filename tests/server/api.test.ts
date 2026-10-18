@@ -1,12 +1,12 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { evaluationResultSchema } from '../../src/shared/api';
+import { evaluationResultSchema, type Expediente } from '../../src/shared/api';
 import { getInvoice, getWorkspaceData, openDb, putRules } from '../../src/server/db/db';
 import { createServerApp, serverRuntime } from '../../src/server/app';
 import { readExampleFixtures } from '../../src/server/fixtures';
 import { createLiveCallLimiter } from '../../src/server/middleware/limits';
-import type { ExtractionClaims, ExtractionResult, JevAnswers, SourceKind } from '../../src/shared/domain/types';
+import type { Contract, ExtractionClaims, ExtractionResult, JevAnswers, Rules, SourceKind } from '../../src/shared/domain/types';
 
 const runtimes: Array<ReturnType<typeof createServerApp>> = [];
 
@@ -33,6 +33,43 @@ afterAll(() => serverRuntime.dispose());
 
 function assertLabeledReplayEvidenceAvailable(complete: boolean, required: boolean): void {
   if (required && !complete) throw new Error('REQUIRE_LABELED_SET=1 but genuine replay evidence is incomplete.');
+}
+
+async function replaySeededInvoice(
+  app: ReturnType<typeof createServerApp>['app'],
+  invoiceId: string,
+): Promise<{ cookie: string; expediente: Expediente }> {
+  const response = await app.request('/api/process', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ids: [invoiceId], mode: 'replay' }),
+  });
+  expect(response.status).toBe(200);
+  const cookie = response.headers.get('set-cookie')?.split(';')[0] ?? '';
+  expect(cookie).toMatch(/^workspace_id=/);
+  const frames = (await response.text()).split(/\r?\n\r?\n/).filter(Boolean)
+    .map((frame) => frame.split(/\r?\n/).find((line) => line.startsWith('data:'))?.slice(5).trim())
+    .filter((data): data is string => Boolean(data))
+    .map((data) => JSON.parse(data) as { type: string; row?: { id: string } });
+  const decisions = frames.filter((frame) => frame.type === 'decided');
+  expect(decisions).toHaveLength(1);
+  expect(decisions[0]?.row?.id).toBe(invoiceId);
+
+  const expedienteResponse = await app.request(`/api/invoices/${invoiceId}`, { headers: { cookie } });
+  expect(expedienteResponse.status).toBe(200);
+  return { cookie, expediente: await expedienteResponse.json() as Expediente };
+}
+
+async function reevaluateSeededInvoice(
+  app: ReturnType<typeof createServerApp>['app'],
+  cookie: string,
+  invoiceId: string,
+): Promise<Expediente> {
+  const response = await app.request(`/api/invoices/${invoiceId}/reevaluate`, {
+    method: 'POST', headers: { cookie },
+  });
+  expect(response.status).toBe(200);
+  return await response.json() as Expediente;
 }
 
 describe('T11 API', () => {
@@ -291,6 +328,111 @@ describe('T11 API', () => {
   it('fails closed when the mandatory labeled-set gate is activated without complete recordings', () => {
     expect(() => assertLabeledReplayEvidenceAvailable(false, true))
       .toThrow('REQUIRE_LABELED_SET=1 but genuine replay evidence is incomplete.');
+  });
+
+  it('re-evaluates a seeded invoice against the current monthly limit and records an R12 reason', async () => {
+    const { app } = makeRuntime();
+    const { cookie, expediente: original } = await replaySeededInvoice(app, 'AL-030');
+    expect(original.row.status).toBe('ready');
+    expect(original.record?.jev).toMatchObject({ ok: true, recorded: true });
+    expect(original.record?.decision.checks.find(({ id }) => id === 'R12')).toMatchObject({ outcome: 'passed' });
+    const amountUsdMinor = original.record?.decision.amountUsdMinor;
+    if (amountUsdMinor === undefined || amountUsdMinor === null || amountUsdMinor <= 0) {
+      throw new Error('AL-030 replay did not produce a positive USD amount.');
+    }
+
+    const rulesResponse = await app.request('/api/rules', { headers: { cookie } });
+    expect(rulesResponse.status).toBe(200);
+    const rules = await rulesResponse.json() as Rules;
+    const update = await app.request('/api/rules', {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ ...rules, monthlyLimitUsdMinor: amountUsdMinor - 1 }),
+    });
+    expect(update.status).toBe(200);
+
+    const reevaluated = await reevaluateSeededInvoice(app, cookie, 'AL-030');
+    expect(reevaluated.row.status).toBe('stopped');
+    expect(reevaluated.record?.decision.checks.find(({ id }) => id === 'R12')).toMatchObject({
+      outcome: 'failed', effect: 'stop', reason: 'El total mensual supera el límite configurado.',
+    });
+  });
+
+  it('re-evaluates a seeded invoice against a reduced cost-center budget and records an R13 reason', async () => {
+    const { app } = makeRuntime();
+    const { cookie, expediente: original } = await replaySeededInvoice(app, 'AL-030');
+    expect(original.row.status).toBe('ready');
+    expect(original.record?.jev).toMatchObject({ ok: true, recorded: true });
+    expect(original.record?.decision.checks.find(({ id }) => id === 'R13')).toMatchObject({ outcome: 'passed' });
+    const decision = original.record?.decision;
+    const amountUsdMinor = decision?.amountUsdMinor;
+    if (!decision?.costCenter || amountUsdMinor === undefined || amountUsdMinor === null || amountUsdMinor <= 0) {
+      throw new Error('AL-030 replay did not produce a cost center and positive USD amount.');
+    }
+
+    const budgetsResponse = await app.request('/api/data/budgets', { headers: { cookie } });
+    expect(budgetsResponse.status).toBe(200);
+    const budgets = await budgetsResponse.json() as Array<{ costCenter: string; month: string; approvedUsdMinor: number }>;
+    const budget = budgets.find(({ costCenter, month }) => costCenter === decision.costCenter && month === '2026-10');
+    if (!budget) throw new Error('AL-030 cost-center budget for October 2026 is missing.');
+    const update = await app.request('/api/data/budgets', {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ ...budget, approvedUsdMinor: amountUsdMinor - 1 }),
+    });
+    expect(update.status).toBe(200);
+
+    const reevaluated = await reevaluateSeededInvoice(app, cookie, 'AL-030');
+    expect(reevaluated.row.status).toBe('stopped');
+    expect(reevaluated.record?.decision.checks.find(({ id }) => id === 'R13')).toMatchObject({
+      outcome: 'failed', effect: 'stop',
+      reason: 'El presupuesto disponible del centro de costo no cubre este monto.',
+    });
+  });
+
+  it('re-evaluates a seeded invoice after a fixed contract amount change and records R5', async () => {
+    const { app } = makeRuntime();
+    const { cookie, expediente: original } = await replaySeededInvoice(app, 'AL-030');
+    expect(original.row.status).toBe('ready');
+    expect(original.record?.jev).toMatchObject({ ok: true, recorded: true });
+    expect(original.record?.decision.checks.find(({ id }) => id === 'R5')).toMatchObject({ outcome: 'passed' });
+    const contractId = original.record?.decision.contractId;
+    if (!contractId) throw new Error('AL-030 replay did not match a contract.');
+
+    const contractsResponse = await app.request('/api/data/contracts', { headers: { cookie } });
+    expect(contractsResponse.status).toBe(200);
+    const contracts = await contractsResponse.json() as Contract[];
+    const contract = contracts.find(({ id }) => id === contractId);
+    if (!contract || contract.type !== 'fixed' || contract.amountMinor === undefined) {
+      throw new Error('AL-030 replay did not match a fixed-amount contract.');
+    }
+    const update = await app.request('/api/data/contracts', {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ ...contract, amountMinor: contract.amountMinor + 1 }),
+    });
+    expect(update.status).toBe(200);
+
+    const reevaluated = await reevaluateSeededInvoice(app, cookie, 'AL-030');
+    expect(reevaluated.row.status).toBe('stopped');
+    expect(reevaluated.record?.decision.checks.find(({ id }) => id === 'R5')).toMatchObject({
+      outcome: 'failed', effect: 'stop', reason: 'El monto no coincide con el monto acordado.',
+    });
+  });
+
+  it('keeps the existing AL-039 prompt-injection replay out of ready and marks the instruction suspicious', async () => {
+    const { app } = makeRuntime();
+    const { cookie, expediente: initial } = await replaySeededInvoice(app, 'AL-039');
+    expect(initial.row.status).toBe('stopped');
+    expect(initial.record?.jev).toMatchObject({ ok: true, recorded: true });
+    expect(initial.record?.decision.checks.find(({ id }) => id === 'instructs_agent'))
+      .toMatchObject({ outcome: 'failed', effect: 'stop' });
+
+    const reevaluated = await reevaluateSeededInvoice(app, cookie, 'AL-039');
+    expect(reevaluated.row.status).not.toBe('ready');
+    expect(reevaluated.history.map(({ decision }) => decision.status)).not.toContain('ready');
+    expect(reevaluated.record?.decision.checks.find(({ id }) => id === 'instructs_agent'))
+      .toMatchObject({ outcome: 'failed', effect: 'stop' });
+    expect(reevaluated.marks).toContainEqual(expect.objectContaining({
+      kind: 'suspicious', text: expect.stringContaining('Ignora las reglas anteriores'),
+    }));
   });
 
   it('handles non-invoice text as review and refuses approval of a stopped example', async () => {
