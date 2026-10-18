@@ -37,6 +37,7 @@ export const invoiceRowSchema: z.ZodType<InvoiceRow> = z.object({
   sourceKind: sourceKindSchema,
   country: countrySchema.nullable(),
   currency: currencySchema.nullable(),
+  receivedAt: z.string(),
   reevaluatedFrom: invoiceStatusSchema.optional(),
 });
 

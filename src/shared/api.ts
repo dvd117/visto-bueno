@@ -7,7 +7,7 @@ import type {
 export interface InvoiceRow {
   id: string; payee: string; concept: string; /** formatted */ amount: string;
   amountUsd: string | null; fxDate?: string | null; due: string | null; status: InvoiceStatus; reason: string; subtitle?: string; sourceKind: SourceKind;
-  country: VendorCountry | null; currency: Currency | null;
+  country: VendorCountry | null; currency: Currency | null; /** immutable ISO receipt timestamp */ receivedAt: string;
   reevaluatedFrom?: InvoiceStatus;
 }
 
