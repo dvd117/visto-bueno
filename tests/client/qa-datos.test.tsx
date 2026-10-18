@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Datos, { type DatosApi, type DataRowMap, type DataTable, type DataTableValues } from '../../src/client/features/datos/Datos';
 import type { CompanyPreview, CompanyRecord } from '../../src/shared/api';
@@ -70,6 +70,16 @@ function contrastRatio(foreground: string, background: string) {
 }
 
 describe('Preparar datos — QA visual', () => {
+  it('keeps the enabled company save button white against the global button cascade', async () => {
+    render(<Datos api={makeApi()} />);
+    fireEvent.change(await screen.findByLabelText('Nombre de la empresa'), { target: { value: 'Marea Norte SpA' } });
+
+    const button = screen.getByRole('button', { name: 'Guardar perfil' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(button.classList.contains('datos-save-button')).toBe(true);
+    expect(getComputedStyle(button).color).toBe('rgb(255, 255, 255)');
+  });
+
   it('keeps the primary label readable against the real global button cascade', async () => {
     document.body.style.color = '#191919';
     const unrepairedButton = document.createElement('button');
