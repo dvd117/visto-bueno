@@ -3,6 +3,10 @@ import type { VendorCountry } from './types';
 const RIF_TYPE_VALUES: Record<string, number> = { V: 1, E: 2, J: 3, P: 4, G: 5 };
 const CHECK_DIGIT_WEIGHTS = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2] as const;
 const CUIT_PREFIXES = new Set(['20', '23', '24', '27', '30', '33', '34']);
+// SUNAT references for Peruvian RUC formats and prefix usage:
+// https://centrovirtual.sunat.gob.pe/tramites/inscribete-ruc
+// https://www.sunat.gob.pe/orientacion/pvs/registro/manual/mu-0441-pvs-T-Registro_RM_170_2023_TR.pdf
+const PE_RUC_PREFIXES = new Set(['10', '15', '17', '20']);
 
 function nationalTaxIdDigits(value: string): string | null {
   const match = /^(\d{2})[-\s]?(\d{8})[-\s]?(\d)$/u.exec(value.trim());
@@ -26,7 +30,7 @@ export function taxIdChecksumValid(country: VendorCountry, value: string): boole
 
   if (country === 'PE') {
     const digits = nationalTaxIdDigits(value);
-    if (!digits || !/^(10|20)\d{9}$/u.test(digits)) return false;
+    if (!digits || !/^\d{11}$/u.test(digits) || !PE_RUC_PREFIXES.has(digits.slice(0, 2))) return false;
     const sum = [...digits.slice(0, 10)].reduce(
       (total, digit, index) => total + Number(digit) * CHECK_DIGIT_WEIGHTS[index]!, 0,
     );

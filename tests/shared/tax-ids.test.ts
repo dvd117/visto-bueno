@@ -4,6 +4,8 @@ import { taxIdChecksumValid } from '../../src/shared/domain/tax-ids';
 // Test-only synthetic IDs; checksums do not establish that a tax ID is registered or real.
 const examples = [
   ['VE', 'J-00000000-0'],
+  ['PE', '10-00000000-6'],
+  ['PE', '15-00000000-8'],
   ['PE', '20-00000000-1'],
   ['AR', '30-00000000-7'],
 ] as const;
@@ -15,10 +17,15 @@ describe('country tax ID checksums', () => {
 
   it.each([
     ['VE', 'J-00000000-1'],
+    ['PE', '15-00000000-7'],
     ['PE', '20-00000000-0'],
     ['AR', '30-00000000-6'],
   ] as const)('rejects an incorrect %s check digit', (country, taxId) => {
     expect(taxIdChecksumValid(country, taxId)).toBe(false);
+  });
+
+  it('rejects prefix 16 even with a valid mod-11 check digit', () => {
+    expect(taxIdChecksumValid('PE', '16-00000000-4')).toBe(false);
   });
 
   it('accepts common display separators and RIF case but rejects unrelated letters', () => {
