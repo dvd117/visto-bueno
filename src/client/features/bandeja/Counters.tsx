@@ -37,6 +37,7 @@ function Metric({ label, glyph, tone, value, selected, onClick }: MetricProps) {
     >
       <div className="metric-label"><span className="metric-glyph" aria-hidden="true">{glyph}</span>{label}</div>
       <motion.span className="metric-count">{displayed}</motion.span>
+      {selected && <span className="metric-hint">Toca para quitar el filtro</span>}
     </button>
   );
 }

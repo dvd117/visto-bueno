@@ -21,9 +21,10 @@ interface StatusChipProps {
   delay?: number;
   revision?: number;
   announce?: boolean;
+  glyphOnly?: boolean;
 }
 
-export function StatusChip({ status, subtitle, large = false, animate = false, delay = 0, revision = 0, announce = true }: StatusChipProps) {
+export function StatusChip({ status, subtitle, large = false, animate = false, delay = 0, revision = 0, announce = true, glyphOnly = false }: StatusChipProps) {
   const reduceMotion = useReducedMotion();
   const subtitleId = useId();
   const { glyph, label, tone } = statusText[status];
@@ -32,7 +33,7 @@ export function StatusChip({ status, subtitle, large = false, animate = false, d
     <>
       <span className="status-label">
         <span className="status-glyph" aria-hidden="true">{glyph}</span>
-        <span>{label}</span>
+        {!glyphOnly && <span>{label}</span>}
       </span>
       {subtitle && <span className="status-subtitle" id={subtitleId}>{subtitle}</span>}
     </>
