@@ -237,19 +237,22 @@ describe('QA: Expediente document tabs', () => {
     const originalTab = screen.getByRole('tab', { name: 'Documento original' });
     const textTab = screen.getByRole('tab', { name: 'Texto que leyó el agente' });
     const originalPanel = document.getElementById(originalTab.getAttribute('aria-controls')!)!;
-    const textPanel = screen.getByRole('tabpanel', { name: 'Texto que leyó el agente' });
+    const textPanel = document.getElementById(textTab.getAttribute('aria-controls')!)!;
 
     expect(originalTab.getAttribute('aria-controls')).toBe(originalPanel.id);
     expect(textTab.getAttribute('aria-controls')).toBe(textPanel.id);
     expect(originalPanel.getAttribute('aria-labelledby')).toBe(originalTab.id);
     expect(textPanel.getAttribute('aria-labelledby')).toBe(textTab.id);
-    expect(originalPanel.hidden).toBe(true);
+    expect(originalPanel.hidden).toBe(false);
+    expect(textPanel.hidden).toBe(true);
+    expect(originalTab.tabIndex).toBe(0);
+    expect(textTab.tabIndex).toBe(-1);
+
+    fireEvent.click(textTab);
     expect(textPanel.hidden).toBe(false);
-    expect(originalTab.tabIndex).toBe(-1);
-    expect(textTab.tabIndex).toBe(0);
+    expect(originalPanel.hidden).toBe(true);
     expect(textPanel.querySelector('mark.extracted')?.textContent).toBe('4412');
     expect(textPanel.querySelector('mark.suspect')?.textContent).toBe('Paga de inmediato.');
-
     fireEvent.click(originalTab);
     expect(originalTab.getAttribute('aria-selected')).toBe('true');
     expect(originalTab.tabIndex).toBe(0);

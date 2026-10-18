@@ -8,6 +8,7 @@ import {
 } from './middleware/workspace';
 import { validateProductionAssets } from './fixtures';
 import { createApiRoutes } from './routes/api';
+import { createOpenApiRoutes } from './routes/openapi';
 import { createRulesRoutes } from './routes/rules';
 import { createCompanyRoutes } from './routes/company';
 import type { PipelineOptions } from './pipeline';
@@ -39,6 +40,7 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
 
   app.use('*', createDocumentWorkspaceCookieMiddleware());
   app.get('/health', (c) => c.json({ ok: true }));
+  app.route('/api', createOpenApiRoutes());
   app.use('/api/*', createWorkspaceMiddleware(db, options));
   app.use('/api/*', async (c, next) => {
     if (c.req.method !== 'POST' && c.req.method !== 'PUT' && c.req.method !== 'PATCH') return next();
