@@ -1,13 +1,13 @@
 // API request/response types (plan Task 11). Routes live under /api, scoped to the workspace cookie.
 import { z } from 'zod';
 import type {
-  CompanyProfile, Currency, DecisionRecord, InvoiceStatus, Rules, SourceKind, VendorCountry,
+  CheckResult, CompanyProfile, Currency, DecisionRecord, InvoiceStatus, Rules, SourceKind, VendorCountry,
 } from './domain/types';
 
 export interface InvoiceRow {
   id: string; payee: string; concept: string; /** formatted */ amount: string;
   amountUsd: string | null; fxDate?: string | null; due: string | null; status: InvoiceStatus; reason: string; subtitle?: string; sourceKind: SourceKind;
-  country: VendorCountry | null; currency: Currency | null;
+  country: VendorCountry | null; currency: Currency | null; /** immutable ISO receipt timestamp */ receivedAt: string;
   reevaluatedFrom?: InvoiceStatus;
 }
 
@@ -202,6 +202,14 @@ export interface NewInvoiceText { text: string }
 
 /** POST /api/invoices/:id/approve and /reject. 409 returns ConflictResponse. */
 export interface DecisionAction { approver: string; reason: string; idempotencyKey: string; accountLast4?: string }
+export interface DecideResponse {
+  state: 'ready' | 'approval_required' | 'review_required' | 'stopped';
+  headline: string;
+  reasons: string[];
+  checks: CheckResult[];
+  sealId: string;
+  decisionRecordId: string;
+}
 
 /** POST /api/invoices/:id/flags/:flagId/resolve */
 export interface FlagResolution { choice: string; reason: string; approver: string }

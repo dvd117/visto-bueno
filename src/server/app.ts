@@ -8,6 +8,7 @@ import {
 } from './middleware/workspace';
 import { validateProductionAssets } from './fixtures';
 import { createApiRoutes } from './routes/api';
+import { createDecideRoutes } from './routes/decide';
 import { createOpenApiRoutes } from './routes/openapi';
 import { createRulesRoutes } from './routes/rules';
 import { createCompanyRoutes } from './routes/company';
@@ -50,15 +51,19 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
     c.set('requestBytes', result.bytes);
     await next();
   });
-  app.route('/api', createApiRoutes({
+  const routeOptions = {
     db,
     uploadDirectory,
-    ...(options.evaluationReportPath ? { evaluationReportPath: options.evaluationReportPath } : {}),
-    lastRuns,
     limiter,
     ...(options.extractProvider ? { extractProvider: options.extractProvider } : {}),
     ...(options.jevProvider ? { jevProvider: options.jevProvider } : {}),
     ...(options.now ? { now: options.now } : {}),
+  };
+  app.route('/api', createDecideRoutes(routeOptions));
+  app.route('/api', createApiRoutes({
+    ...routeOptions,
+    ...(options.evaluationReportPath ? { evaluationReportPath: options.evaluationReportPath } : {}),
+    lastRuns,
   }));
   app.route('/api', createRulesRoutes({ db }));
   app.route('/api', createCompanyRoutes({ db }));

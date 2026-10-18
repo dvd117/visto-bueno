@@ -487,7 +487,7 @@ export const datosApi: DatosApi = {
   putRow,
   uploadCsv,
   templateUrl,
-  getCompany,
+  getCompany: () => requestJson('/api/company', companyRecordSchema),
   saveCompany: (company) => requestJson('/api/company', companyRecordSchema, jsonInit('PUT', company)),
   previewCompany: (company) => requestJson('/api/company/preview', companyPreviewSchema, jsonInit('POST', company)),
 };

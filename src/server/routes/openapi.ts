@@ -11,6 +11,7 @@ import {
   clientSwitchResponseSchema,
   companyPreviewSchema,
   conflictSchema,
+  decideResponseSchema,
   expedienteSchema,
   invoiceRowSchema,
   logEntrySchema,
@@ -339,6 +340,24 @@ const components: Record<string, JsonSchema> = {
   ProcessEvent: zodSchema(processEventSchema),
   ProcessRequest: processRequestSchema,
   NewInvoiceText: invoiceTextSchema,
+  DecideRequest: {
+    oneOf: [
+      ref('NewInvoiceText'),
+      {
+        type: 'object',
+        properties: { invoiceId: { type: 'string', minLength: 1, maxLength: 80, pattern: '\\S' } },
+        required: ['invoiceId'],
+        additionalProperties: false,
+      },
+    ],
+    description: 'Envía texto nuevo o un invoiceId existente en el workspace; las facturas de ejemplo se procesan en replay.',
+  },
+  DecideFile: {
+    type: 'object',
+    properties: { file: { type: 'string', format: 'binary', description: 'PDF o imagen PNG, JPEG o WebP.' } },
+    required: ['file'],
+  },
+  DecideResponse: zodSchema(decideResponseSchema),
   DecisionAction: decisionActionSchema,
   FlagResolution: flagResolutionSchema,
   Vendor: vendorSchemaBase,
@@ -495,6 +514,32 @@ export const openApiDocument = {
       }, {
         requestBody: requestBody('IDs y modo opcionales; examples=true procesa las facturas de demostración.', {
           'application/json': { schema: ref('ProcessRequest') },
+        }),
+      }),
+    },
+    '/api/v1/decide': {
+      post: operation('decideInvoice', 'Recibir y decidir una factura', {
+        '200': jsonResponse('Resultado del pipeline completo de decisión.', ref('DecideResponse')),
+        '400': jsonResponse('La entrada o la clave de idempotencia no es válida.', ref('ApiError')),
+        '404': jsonResponse('No se encontró la factura de ejemplo en este workspace.', ref('ApiError')),
+        '409': jsonResponse('La factura ya es final o la clave se usó para otra acción.', ref('ApiError')),
+        '413': jsonResponse('La solicitud supera el límite de carga.', ref('ApiError')),
+      }, {
+        description: 'Texto y archivos nuevos usan el modo live y los límites actuales por llamada; un invoiceId de ejemplo usa replay. Siempre ejecuta el pipeline común y no puede aprobar una factura.',
+        parameters: [{
+          name: 'Idempotency-Key',
+          in: 'header',
+          required: true,
+          description: 'Clave idempotente limitada al workspace. Se recorta antes de validar el máximo de 120 caracteres.',
+          schema: {
+            type: 'string',
+            pattern: '^\\s*(?:\\S[\\s\\S]{0,118}\\S|\\S)\\s*$',
+            'x-maxLengthAfterTrim': 120,
+          },
+        }],
+        requestBody: requestBody('Envía texto JSON, un archivo PDF/imagen o el ID de una factura de ejemplo ya existente.', {
+          'application/json': { schema: ref('DecideRequest') },
+          'multipart/form-data': { schema: ref('DecideFile') },
         }),
       }),
     },

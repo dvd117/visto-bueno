@@ -14,6 +14,7 @@ const rules = {
 const row = {
   id: 'andina-private', payee: 'ANDINA PRIVATE', concept: 'Servicio', amount: 'USD 100.00', amountUsd: 'USD 100.00',
   fxDate: null, due: null, status: 'ready', reason: 'Cumple', sourceKind: 'text', country: 'US', currency: 'USD',
+  receivedAt: '2026-10-17T12:00:00.000Z',
 };
 const clients = [
   { id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 1, readyCount: 1 },

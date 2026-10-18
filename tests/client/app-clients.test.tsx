@@ -56,6 +56,7 @@ describe('App client switcher', () => {
     const invoice = {
       id: 'AL-CLIENT-001', payee: 'Proveedor Andina', concept: 'Servicio mensual', amount: 'USD 100.00', amountUsd: 'USD 100.00',
       fxDate: null, due: '31 oct 2026', status: 'ready', reason: 'Cumple las reglas', sourceKind: 'text', country: 'US', currency: 'USD',
+      receivedAt: '2026-10-17T12:00:00.000Z',
     };
     const workspace = {
       company: { name: 'Legacy summary value', fictional: true },
@@ -114,6 +115,7 @@ describe('App client switcher', () => {
     const invoice = {
       id: 'private-andina', payee: 'ANDINA PRIVATE PENDING', concept: 'Servicio', amount: 'USD 100.00',
       amountUsd: 'USD 100.00', fxDate: null, due: null, status: 'queued', reason: 'Pendiente', sourceKind: 'text',
+      receivedAt: '2026-10-17T12:00:00.000Z',
       country: 'US', currency: 'USD',
     };
     const workspace = {
