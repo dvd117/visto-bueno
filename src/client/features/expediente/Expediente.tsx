@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow } from '../../../shared/api';
 import type { CheckResult, Flag, InvoiceStatus } from '../../../shared/domain/types';
@@ -254,12 +254,17 @@ export function Expediente({
 }: ExpedienteProps) {
   const fileUrl = safeFileUrl(expediente?.fileUrl ?? null);
   const hasOriginalFile = Boolean(fileUrl && (expediente?.row.sourceKind === 'pdf' || expediente?.row.sourceKind === 'image'));
-  const [documentMode, setDocumentMode] = useState<DocumentMode>(() => hasOriginalFile ? 'original' : 'text');
+  const [documentView, setDocumentView] = useState<{ invoiceId: string; mode: DocumentMode } | null>(null);
+  const documentMode = documentView && documentView.invoiceId === expediente?.row.id
+    ? documentView.mode
+    : hasOriginalFile ? 'original' : 'text';
   const [approver, setApprover] = useState('');
   const [reason, setReason] = useState('');
   const [accountConfirmation, setAccountConfirmation] = useState({ invoiceId: expediente?.row.id ?? '', digits: '' });
   const [showHistory, setShowHistory] = useState(false);
-  useEffect(() => setDocumentMode(hasOriginalFile ? 'original' : 'text'), [expediente?.row.id, hasOriginalFile]);
+  const selectDocumentMode = (mode: DocumentMode) => {
+    if (expediente) setDocumentView({ invoiceId: expediente.row.id, mode });
+  };
   const documentTabsId = useId();
   const originalTabRef = useRef<HTMLButtonElement>(null);
   const textTabRef = useRef<HTMLButtonElement>(null);
@@ -308,7 +313,7 @@ export function Expediente({
     if (!next) return;
 
     event.preventDefault();
-    setDocumentMode(next);
+    selectDocumentMode(next);
     (next === 'original' ? originalTabRef : textTabRef).current?.focus();
   }
 
@@ -408,7 +413,7 @@ export function Expediente({
                 aria-controls={originalPanelId}
                 aria-selected={documentMode === 'original'}
                 tabIndex={documentMode === 'original' ? 0 : -1}
-                onClick={() => setDocumentMode('original')}
+                onClick={() => selectDocumentMode('original')}
                 onKeyDown={(event) => handleDocumentTabKeyDown(event, 'original')}
               >
                 Documento original
@@ -421,7 +426,7 @@ export function Expediente({
                 aria-controls={textPanelId}
                 aria-selected={documentMode === 'text'}
                 tabIndex={documentMode === 'text' ? 0 : -1}
-                onClick={() => setDocumentMode('text')}
+                onClick={() => selectDocumentMode('text')}
                 onKeyDown={(event) => handleDocumentTabKeyDown(event, 'text')}
               >
                 Texto que leyó el agente

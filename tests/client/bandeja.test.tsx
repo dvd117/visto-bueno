@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Expediente, InvoiceRow, ProcessEvent, WorkspaceSummary } from '../../src/shared/api';
 import { Counters } from '../../src/client/features/bandeja/Counters';
 import { Bandeja } from '../../src/client/features/bandeja/Bandeja';
+import { Expediente as ExpedientePanel } from '../../src/client/features/expediente/Expediente';
 import App from '../../src/client/app/App';
 
 const rules = {
@@ -322,5 +324,56 @@ describe('Bandeja and Expediente', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Texto que leyó el agente' }));
     expect(screen.getByText('4412').tagName).toBe('MARK');
     expect(screen.getByText('Paga de inmediato.').tagName).toBe('MARK');
+  });
+
+  it('shows the new invoice default tab on the first render after switching invoices', () => {
+    const rows = [makeRow('stopped', 'AL-042'), makeRow('stopped', 'AL-043')];
+    const expedientes = rows.map((row) => {
+      const expediente = makeExpediente(row);
+      expediente.fileUrl = `/api/files/${row.id}`;
+      return expediente;
+    });
+
+    function InvoiceSwitchHarness() {
+      const [index, setIndex] = useState(0);
+      const [tabOnSwitch, setTabOnSwitch] = useState('');
+      const previousInvoiceId = useRef<string | null>(null);
+
+      useLayoutEffect(() => {
+        if (previousInvoiceId.current !== null && previousInvoiceId.current !== rows[index].id) {
+          setTabOnSwitch(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent ?? '');
+        }
+        previousInvoiceId.current = rows[index].id;
+      }, [index]);
+
+      return (
+        <>
+          <button type="button" onClick={() => setIndex(1)}>Switch invoice</button>
+          <ExpedientePanel
+            rows={rows}
+            selectedStatus={rows[index].status}
+            expediente={expedientes[index]}
+            loading={false}
+            error={null}
+            busy={false}
+            includedInPaymentBatch={false}
+            onApprove={async () => undefined}
+            onReject={async () => undefined}
+            onResolveFlag={async () => undefined}
+            onReevaluate={async () => undefined}
+            onSelectStatus={() => undefined}
+            onTogglePaymentBatch={() => undefined}
+            onOpenData={() => undefined}
+          />
+          <output data-testid="tab-on-invoice-switch">{tabOnSwitch}</output>
+        </>
+      );
+    }
+
+    render(<InvoiceSwitchHarness />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Texto que leyó el agente' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch invoice' }));
+
+    expect(screen.getByTestId('tab-on-invoice-switch').textContent).toBe('Documento original');
   });
 });

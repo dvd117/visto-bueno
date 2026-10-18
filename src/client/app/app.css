@@ -1155,6 +1155,8 @@ textarea {
   .invoice-state { grid-column: 2 / -1; flex-direction: row; align-items: center; justify-content: space-between; padding-top: 0; }
   .invoice-state .status-chip { flex: 1 1 auto; width: auto; align-items: flex-start; }
   .invoice-state .status-subtitle { text-align: left; }
+  .record-evidence-grid { grid-template-columns: minmax(0, 1fr); }
+  .record-evidence-grid > .document-section { order: -1; }
 }
 
 @media (max-width: 760px) {
@@ -1176,8 +1178,6 @@ textarea {
   .invoice-state { grid-column: 2 / -1; flex-direction: row; align-items: center; justify-content: space-between; padding-top: 2px; }
   .record { padding-top: 8px; }
   .record-vendor { font-size: 27px; }
-  .record-evidence-grid { grid-template-columns: minmax(0, 1fr); }
-  .record-evidence-grid > .document-section { order: -1; }
 }
 
 @media (max-width: 480px) {
