@@ -38,6 +38,7 @@ import './app.css';
 
 type AppSection = 'inbox' | 'reglas' | 'datos' | 'bitacora' | 'evaluacion';
 type ActionableStatus = Extract<InvoiceStatus, 'ready' | 'approval_required' | 'review_required' | 'stopped'>;
+interface ReceiveGeneration { reset: number; client: number }
 
 const FIRST_RUN_DISMISSED_KEY = 'visto-bueno:first-run-dismissed';
 
@@ -95,6 +96,7 @@ export default function App() {
   const resetOutcome = useRef<Promise<boolean> | null>(null);
   const resetGeneration = useRef(0);
   const clientContextGeneration = useRef(0);
+  const receiptGenerations = useRef(new Map<string, ReceiveGeneration>());
   const clientSwitchInProgress = useRef(false);
   const selectedStatus = rows.find((row) => row.id === selectedId)?.status;
   const detailKey = JSON.stringify([selectedId, selectedStatus]);
@@ -236,15 +238,22 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(''), 3200);
   }, []);
 
-  const shouldDiscardReceive = useCallback(async (generation: number) => {
+  const shouldDiscardReceive = useCallback(async (generation: ReceiveGeneration) => {
     while (true) {
       const outcome = resetOutcome.current;
       if (!outcome) break;
       if (await outcome) return true;
       if (resetOutcome.current === outcome) break;
     }
-    return generation !== resetGeneration.current;
+    return generation.reset !== resetGeneration.current || generation.client !== clientContextGeneration.current;
   }, []);
+
+  const receiveInvalidationError = useCallback((generation: ReceiveGeneration) => new ApiRequestError(
+    generation.client !== clientContextGeneration.current
+      ? 'Cambiaste de cliente durante la carga; vuelve a enviarla si aún la necesitas.'
+      : 'La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.',
+    409,
+  ), []);
 
   const handleProcessEvent = useCallback((event: ProcessEvent) => {
     if (event.type === 'decided') {
@@ -293,11 +302,12 @@ export default function App() {
 
   const receivingApi = useMemo<RecibirApi>(() => ({
     async createInvoiceText(text) {
-      const generation = resetGeneration.current;
+      const generation = { reset: resetGeneration.current, client: clientContextGeneration.current };
       const row = await createInvoice({ text });
       if (await shouldDiscardReceive(generation)) {
-        throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
+        throw receiveInvalidationError(generation);
       }
+      receiptGenerations.current.set(row.id, generation);
       setRows((current) => replaceRow(current, row));
       setSelectedId(row.id);
       setExpediente(null);
@@ -305,11 +315,12 @@ export default function App() {
       return row;
     },
     async createInvoiceFile(file) {
-      const generation = resetGeneration.current;
+      const generation = { reset: resetGeneration.current, client: clientContextGeneration.current };
       const row = await createInvoice(file);
       if (await shouldDiscardReceive(generation)) {
-        throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
+        throw receiveInvalidationError(generation);
       }
+      receiptGenerations.current.set(row.id, generation);
       setRows((current) => replaceRow(current, row));
       setSelectedId(row.id);
       setExpediente(null);
@@ -318,22 +329,36 @@ export default function App() {
     },
     async *process(request: ProcessRequest) {
       if (processing || resetOutcome.current) throw new ApiRequestError('Ya hay una evaluación o reinicio en curso. Inténtalo al terminar.', 409);
-      const generation = resetGeneration.current;
+      const requestIds = request.ids ?? [];
+      const generations = requestIds
+        .map((id) => receiptGenerations.current.get(id))
+        .filter((generation): generation is ReceiveGeneration => generation !== undefined);
+      const generation = generations[0] ?? { reset: resetGeneration.current, client: clientContextGeneration.current };
+      const mixedGenerations = generations.some((item) => item.reset !== generation.reset || item.client !== generation.client);
+      if (mixedGenerations || await shouldDiscardReceive(generation)) {
+        for (const id of requestIds) receiptGenerations.current.delete(id);
+        throw receiveInvalidationError(generation);
+      }
+      for (const id of requestIds) receiptGenerations.current.delete(id);
       setProcessing(true);
       try {
         yield* processInvoiceEvents(request, (event) => {
-          if (generation === resetGeneration.current) handleProcessEvent(event);
+          if (generation.reset === resetGeneration.current && generation.client === clientContextGeneration.current) {
+            handleProcessEvent(event);
+          }
         });
       } finally {
         setProcessing(false);
-        if (generation === resetGeneration.current) await loadWorkspace(false);
+        if (generation.reset === resetGeneration.current && generation.client === clientContextGeneration.current) {
+          await loadWorkspace(false);
+        }
       }
     },
-  }), [handleProcessEvent, loadWorkspace, processing, shouldDiscardReceive]);
+  }), [handleProcessEvent, loadWorkspace, processing, receiveInvalidationError, shouldDiscardReceive]);
 
   const handleDropFiles = useCallback(async (files: File[]) => {
     if (files.length === 0 || actionBusy) return;
-    const generation = resetGeneration.current;
+    const generation = { reset: resetGeneration.current, client: clientContextGeneration.current };
     setActionBusy(true);
     try {
       let firstId: string | null = null;
