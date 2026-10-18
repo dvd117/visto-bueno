@@ -98,6 +98,7 @@ describe('database persistence', () => {
     const dbPath = resolve(directory, 'legacy.sqlite');
     mkdirSync(directory, { recursive: true });
     const legacySchema = readFileSync(resolve(process.cwd(), 'src/server/db/schema.sql'), 'utf8')
+      .replace('  input_fingerprint TEXT,\n', '')
       .replace("('approved', 'rejected', 'decided')", "('approved', 'rejected')");
     const legacy = new Database(dbPath);
     legacy.pragma('foreign_keys = ON');
@@ -116,6 +117,8 @@ describe('database persistence', () => {
     try {
       expect(migrated.prepare('SELECT action FROM idempotency_keys WHERE workspace_id = ? AND idempotency_key = ?')
         .get('legacy', 'old-key')).toMatchObject({ action: 'approved' });
+      expect(migrated.prepare('SELECT input_fingerprint FROM idempotency_keys WHERE workspace_id = ? AND idempotency_key = ?')
+        .get('legacy', 'old-key')).toMatchObject({ input_fingerprint: null });
       migrated.prepare(`UPDATE idempotency_keys SET action = 'decided'
         WHERE workspace_id = ? AND idempotency_key = ?`).run('legacy', 'old-key');
       expect(migrated.prepare('SELECT action FROM idempotency_keys WHERE workspace_id = ? AND idempotency_key = ?')

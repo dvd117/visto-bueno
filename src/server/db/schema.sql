@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   invoice_id TEXT NOT NULL,
   record_id TEXT NOT NULL,
   action TEXT NOT NULL CHECK (action IN ('approved', 'rejected', 'decided')),
+  input_fingerprint TEXT,
   created_at TEXT NOT NULL,
   PRIMARY KEY (workspace_id, idempotency_key),
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,

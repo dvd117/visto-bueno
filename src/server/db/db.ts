@@ -72,6 +72,7 @@ export function openDb(path: string): Db {
   const schema = readFileSync(fileURLToPath(new URL('./schema.sql', import.meta.url)), 'utf8');
   db.exec(schema);
   migrateIdempotencyActions(db);
+  migrateIdempotencyInputFingerprint(db);
   return db;
 }
 
@@ -80,6 +81,9 @@ function migrateIdempotencyActions(db: Db): void {
     const table = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'idempotency_keys'")
       .get() as { sql: string } | undefined;
     if (table?.sql.includes("'decided'")) return;
+    const columns = db.prepare('PRAGMA table_info(idempotency_keys)').all() as Array<{ name: string }>;
+    const fingerprint = columns.some(({ name }) => name === 'input_fingerprint')
+      ? 'input_fingerprint' : 'NULL';
 
     db.exec(`CREATE TABLE idempotency_keys_next (
       workspace_id TEXT NOT NULL,
@@ -87,18 +91,25 @@ function migrateIdempotencyActions(db: Db): void {
       invoice_id TEXT NOT NULL,
       record_id TEXT NOT NULL,
       action TEXT NOT NULL CHECK (action IN ('approved', 'rejected', 'decided')),
+      input_fingerprint TEXT,
       created_at TEXT NOT NULL,
       PRIMARY KEY (workspace_id, idempotency_key),
       FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
       FOREIGN KEY (workspace_id, invoice_id) REFERENCES invoices(workspace_id, id) ON DELETE CASCADE,
       FOREIGN KEY (workspace_id, record_id) REFERENCES decision_records(workspace_id, id)
     );
-    INSERT INTO idempotency_keys_next(workspace_id, idempotency_key, invoice_id, record_id, action, created_at)
-      SELECT workspace_id, idempotency_key, invoice_id, record_id, action, created_at FROM idempotency_keys;
+    INSERT INTO idempotency_keys_next(workspace_id, idempotency_key, invoice_id, record_id, action, input_fingerprint, created_at)
+      SELECT workspace_id, idempotency_key, invoice_id, record_id, action, ${fingerprint}, created_at FROM idempotency_keys;
     DROP TABLE idempotency_keys;
     ALTER TABLE idempotency_keys_next RENAME TO idempotency_keys;`);
   });
   migrate.immediate();
+}
+
+function migrateIdempotencyInputFingerprint(db: Db): void {
+  const columns = db.prepare('PRAGMA table_info(idempotency_keys)').all() as Array<{ name: string }>;
+  if (columns.some(({ name }) => name === 'input_fingerprint')) return;
+  db.exec('ALTER TABLE idempotency_keys ADD COLUMN input_fingerprint TEXT');
 }
 
 export function getWorkspaceData(db: Db, workspaceId: string): WorkspaceData {

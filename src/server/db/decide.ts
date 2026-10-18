@@ -19,6 +19,7 @@ export interface DecisionInputs {
 export interface EvaluationOptions {
   today?: string;
   idempotencyKey?: string;
+  idempotencyFingerprint?: string;
 }
 
 export interface InvoiceAction {
@@ -353,11 +354,11 @@ function imageAccountConfirmationMatches(db: Db, workspaceId: string, invoice: S
 
 function recordIdempotency(
   db: Db, workspaceId: string, invoiceId: string, recordId: string,
-  action: 'approved' | 'rejected' | 'decided', key: string,
+  action: 'approved' | 'rejected' | 'decided', key: string, inputFingerprint?: string,
 ): void {
-  db.prepare(`INSERT INTO idempotency_keys(workspace_id, idempotency_key, invoice_id, record_id, action, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(workspaceId, key, invoiceId, recordId, action, nowIso());
+  db.prepare(`INSERT INTO idempotency_keys(workspace_id, idempotency_key, invoice_id, record_id, action, input_fingerprint, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(workspaceId, key, invoiceId, recordId, action, inputFingerprint ?? null, nowIso());
 }
 
 export function decideInvoice(
@@ -389,7 +390,7 @@ export function decideInvoice(
       recordId: result.record.id,
     });
     if (options.idempotencyKey) {
-      recordIdempotency(db, workspaceId, invoiceId, result.record.id, 'decided', options.idempotencyKey);
+      recordIdempotency(db, workspaceId, invoiceId, result.record.id, 'decided', options.idempotencyKey, options.idempotencyFingerprint);
     }
     return result.record;
   }).immediate();

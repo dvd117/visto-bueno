@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Hono, type Context } from 'hono';
@@ -22,6 +22,23 @@ type DecideInput =
   | { kind: 'file'; sourceKind: 'pdf' | 'image'; extension: string; bytes: Uint8Array };
 type ParsedInput = { ok: true; input: DecideInput } | { ok: false };
 type CachedResult = { type: 'response'; response: DecideResponse } | { type: 'conflict' };
+
+function inputFingerprint(input: DecideInput): string {
+  const hash = createHash('sha256');
+  switch (input.kind) {
+    case 'text':
+      hash.update(`text\0${input.text}`, 'utf8');
+      break;
+    case 'seed':
+      hash.update(`seed\0${input.invoiceId}`, 'utf8');
+      break;
+    case 'file':
+      hash.update(`file\0${input.sourceKind}\0`);
+      hash.update(input.bytes);
+      break;
+  }
+  return hash.digest('hex');
+}
 
 function requestBytes(c: Context<ServerEnv>): Uint8Array {
   return c.get('requestBytes') ?? new Uint8Array();
@@ -79,12 +96,12 @@ function responseFor(record: DecisionRecord): DecideResponse {
   });
 }
 
-function cachedResult(db: Db, workspaceId: string, key: string): CachedResult | null {
-  const existing = db.prepare(`SELECT record_id, action FROM idempotency_keys
+function cachedResult(db: Db, workspaceId: string, key: string, fingerprint: string): CachedResult | null {
+  const existing = db.prepare(`SELECT record_id, action, input_fingerprint FROM idempotency_keys
     WHERE workspace_id = ? AND idempotency_key = ?`).get(workspaceId, key) as
-    { record_id: string; action: string } | undefined;
+    { record_id: string; action: string; input_fingerprint: string | null } | undefined;
   if (!existing) return null;
-  if (existing.action !== 'decided') return { type: 'conflict' };
+  if (existing.action !== 'decided' || existing.input_fingerprint !== fingerprint) return { type: 'conflict' };
 
   const row = db.prepare('SELECT record_json FROM decision_records WHERE workspace_id = ? AND id = ?')
     .get(workspaceId, existing.record_id) as { record_json: string } | undefined;
@@ -126,9 +143,10 @@ export function createDecideRoutes(options: DecideRouteOptions): Hono<ServerEnv>
 
     const workspaceId = c.get('workspaceId');
     const key = parsedKey.data;
+    const fingerprint = inputFingerprint(parsedInput.input);
     const lockKey = `${workspaceId}\0${key}`;
     return withKeyLock(locks, lockKey, async () => {
-      const cached = cachedResult(db, workspaceId, key);
+      const cached = cachedResult(db, workspaceId, key, fingerprint);
       if (cached?.type === 'conflict') {
         return c.json({ error: 'idempotency_conflict', message: 'La clave Idempotency-Key ya se usó para otra acción.' }, 409);
       }
@@ -136,6 +154,7 @@ export function createDecideRoutes(options: DecideRouteOptions): Hono<ServerEnv>
 
       let invoiceId: string;
       let mode: ProcessMode;
+      let createdInvoice = false;
       let savedFile: string | null = null;
       if (parsedInput.input.kind === 'seed') {
         const invoice = getInvoice(db, workspaceId, parsedInput.input.invoiceId);
@@ -153,6 +172,7 @@ export function createDecideRoutes(options: DecideRouteOptions): Hono<ServerEnv>
         if (parsedInput.input.kind === 'text') {
           try {
             createInvoice(db, workspaceId, { id: invoiceId, sourceKind: 'text', sourceText: parsedInput.input.text });
+            createdInvoice = true;
           } catch {
             return c.json({ error: 'server_error', message: 'No pude guardar la factura recibida.' }, 500);
           }
@@ -165,6 +185,7 @@ export function createDecideRoutes(options: DecideRouteOptions): Hono<ServerEnv>
             createInvoice(db, workspaceId, {
               id: invoiceId, sourceKind: parsedInput.input.sourceKind, filePath: `uploads/${name}`,
             });
+            createdInvoice = true;
           } catch {
             if (savedFile) await rm(savedFile, { force: true });
             return c.json({ error: 'server_error', message: 'No pude guardar el archivo recibido.' }, 500);
@@ -178,17 +199,33 @@ export function createDecideRoutes(options: DecideRouteOptions): Hono<ServerEnv>
         mode,
         ip: c.get('clientIp'),
         idempotencyKey: key,
+        idempotencyFingerprint: fingerprint,
         emit: () => undefined,
       });
 
-      const completed = cachedResult(db, workspaceId, key);
+      const currentInvoice = getInvoice(db, workspaceId, invoiceId);
+      if (currentInvoice?.status === 'approved' || currentInvoice?.status === 'rejected') {
+        return c.json({ error: 'conflict', message: 'La factura ya tiene una decisión humana final.' }, 409);
+      }
+
+      const completed = cachedResult(db, workspaceId, key, fingerprint);
       if (completed?.type === 'conflict') {
         return c.json({ error: 'idempotency_conflict', message: 'La clave Idempotency-Key ya se usó para otra acción.' }, 409);
       }
       if (completed?.type === 'response') return c.json(completed.response);
 
-      if (savedFile) await rm(savedFile, { force: true });
-      db.prepare('DELETE FROM invoices WHERE workspace_id = ? AND id = ?').run(workspaceId, invoiceId);
+      if (createdInvoice) {
+        const removed = db.prepare(`DELETE FROM invoices WHERE workspace_id = ? AND id = ?
+          AND status NOT IN ('approved', 'rejected')`).run(workspaceId, invoiceId);
+        if (removed.changes > 0) {
+          if (savedFile) await rm(savedFile, { force: true });
+        } else {
+          const latest = getInvoice(db, workspaceId, invoiceId);
+          if (latest?.status === 'approved' || latest?.status === 'rejected') {
+            return c.json({ error: 'conflict', message: 'La factura ya tiene una decisión humana final.' }, 409);
+          }
+        }
+      }
       return c.json({ error: 'server_error', message: 'No pude guardar la decisión de esta factura.' }, 500);
     });
   });

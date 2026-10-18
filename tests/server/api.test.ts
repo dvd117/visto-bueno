@@ -286,12 +286,17 @@ describe('T11 API', () => {
     expect(firstBody).toMatchObject({ state: 'review_required' });
     expect(reserveCall).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: workspaceA, mode: 'live' }));
     expect(extractProvider).toHaveBeenCalledOnce();
-    expect(db.prepare('SELECT action FROM idempotency_keys WHERE workspace_id = ? AND idempotency_key = ?')
-      .get(workspaceA, 'decide-text-001')).toMatchObject({ action: 'decided' });
+    expect(db.prepare('SELECT action, input_fingerprint FROM idempotency_keys WHERE workspace_id = ? AND idempotency_key = ?')
+      .get(workspaceA, 'decide-text-001')).toMatchObject({ action: 'decided', input_fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
 
-    const retry = await submit(cookieA, 'Different input must not run again');
+    const retry = await submit(cookieA);
     expect(retry.status).toBe(200);
     expect(await retry.json()).toEqual(firstBody);
+    expect(extractProvider).toHaveBeenCalledOnce();
+
+    const mismatch = await submit(cookieA, 'Different input must not run again');
+    expect(mismatch.status).toBe(409);
+    expect(await mismatch.json()).toMatchObject({ error: 'idempotency_conflict' });
     expect(extractProvider).toHaveBeenCalledOnce();
 
     const secondWorkspace = await submit();

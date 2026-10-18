@@ -308,6 +308,7 @@ export async function processBatch(
     workspaceId: string; ids: string[]; mode: ProcessMode; ip: string | null; emit: Emit;
     extractMode?: ProviderMode; jevMode?: ProviderMode;
     idempotencyKey?: string;
+    idempotencyFingerprint?: string;
   },
 ): Promise<RunStats> {
   const now = options.now ?? Date.now;
@@ -392,7 +393,10 @@ export async function processBatch(
       try {
         decideInvoice(options.db, input.workspaceId, item.invoice.id, {
           extraction: item.extraction, jev: item.jev,
-        }, input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {});
+        }, input.idempotencyKey ? {
+          idempotencyKey: input.idempotencyKey,
+          ...(input.idempotencyFingerprint ? { idempotencyFingerprint: input.idempotencyFingerprint } : {}),
+        } : {});
         await emitSafely(input.emit, {
           type: 'decided',
           row: toInvoiceRow(getInvoice(options.db, input.workspaceId, item.invoice.id)!, vendors),
