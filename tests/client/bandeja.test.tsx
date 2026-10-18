@@ -221,6 +221,19 @@ describe('Bandeja and Expediente', () => {
     }
   });
 
+  it('shows an original CLP amount beside USD and the applied rate date', async () => {
+    const row: InvoiceRow = {
+      ...makeRow(), currency: 'CLP', amount: 'CLP 950', amountUsd: 'USD 1,00', fxDate: '2026-10-15',
+    };
+    installApi([row], makeExpediente(row));
+
+    render(<App />);
+
+    expect(await screen.findByText('CLP 950')).not.toBeNull();
+    expect(screen.getByText('USD 1,00')).not.toBeNull();
+    expect(screen.getByText('Tasa ilustrativa · 2026-10-15')).not.toBeNull();
+  });
+
   it('does not show an approve control for a stopped invoice', async () => {
     installApi([makeRow('stopped')]);
 
