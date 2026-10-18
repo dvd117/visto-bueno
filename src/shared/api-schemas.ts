@@ -4,6 +4,7 @@ import type {
   Comparison,
   ConflictResponse,
   Counters,
+  DecideResponse,
   Expediente,
   InvoiceRow,
   LogEntry,
@@ -12,7 +13,7 @@ import type {
   SimulationResult,
   WorkspaceSummary,
 } from './api';
-import type { DecisionRecord, Rules } from './domain/types';
+import type { CheckResult, DecisionRecord, Rules } from './domain/types';
 import { CURRENCIES } from './domain/currencies';
 
 const invoiceStatusSchema = z.enum([
@@ -127,6 +128,25 @@ const decisionSchema = z.object({
   contractId: z.string().nullable(),
   costCenter: z.enum(['ingenieria', 'diseno', 'operaciones', 'legal']).nullable(),
 });
+const decisionCheckResponseSchema: z.ZodType<CheckResult> = z.object({
+  id: z.string(),
+  kind: z.enum(['verify', 'rule', 'judgment']),
+  label: z.string(),
+  passed: z.boolean(),
+  outcome: z.enum(['passed', 'failed', 'pending', 'not_applicable']),
+  effect: z.enum(['none', 'stop', 'approval', 'review']),
+  reason: z.string(),
+  probability: z.number().optional(),
+  evidence: z.object({ invoice: z.string().optional(), record: z.string().optional() }).optional(),
+});
+export const decideResponseSchema: z.ZodType<DecideResponse> = z.object({
+  state: decisionSchema.shape.status,
+  headline: z.string(),
+  reasons: z.array(z.string()),
+  checks: z.array(decisionCheckResponseSchema),
+  sealId: z.string(),
+  decisionRecordId: z.string(),
+}).strict();
 const decisionRecordSchema: z.ZodType<DecisionRecord> = z.object({
   id: z.string(),
   invoiceId: z.string(),

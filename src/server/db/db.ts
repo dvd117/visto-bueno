@@ -71,7 +71,34 @@ export function openDb(path: string): Db {
   if (path !== ':memory:') db.pragma('journal_mode = WAL');
   const schema = readFileSync(fileURLToPath(new URL('./schema.sql', import.meta.url)), 'utf8');
   db.exec(schema);
+  migrateIdempotencyActions(db);
   return db;
+}
+
+function migrateIdempotencyActions(db: Db): void {
+  const migrate = db.transaction(() => {
+    const table = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'idempotency_keys'")
+      .get() as { sql: string } | undefined;
+    if (table?.sql.includes("'decided'")) return;
+
+    db.exec(`CREATE TABLE idempotency_keys_next (
+      workspace_id TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      invoice_id TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('approved', 'rejected', 'decided')),
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (workspace_id, idempotency_key),
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (workspace_id, invoice_id) REFERENCES invoices(workspace_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (workspace_id, record_id) REFERENCES decision_records(workspace_id, id)
+    );
+    INSERT INTO idempotency_keys_next(workspace_id, idempotency_key, invoice_id, record_id, action, created_at)
+      SELECT workspace_id, idempotency_key, invoice_id, record_id, action, created_at FROM idempotency_keys;
+    DROP TABLE idempotency_keys;
+    ALTER TABLE idempotency_keys_next RENAME TO idempotency_keys;`);
+  });
+  migrate.immediate();
 }
 
 export function getWorkspaceData(db: Db, workspaceId: string): WorkspaceData {

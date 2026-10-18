@@ -18,6 +18,7 @@ export interface DecisionInputs {
 
 export interface EvaluationOptions {
   today?: string;
+  idempotencyKey?: string;
 }
 
 export interface InvoiceAction {
@@ -350,7 +351,10 @@ function imageAccountConfirmationMatches(db: Db, workspaceId: string, invoice: S
   return registeredLast4 !== undefined && registeredLast4 === accountLast4;
 }
 
-function recordIdempotency(db: Db, workspaceId: string, invoiceId: string, recordId: string, action: 'approved' | 'rejected', key: string): void {
+function recordIdempotency(
+  db: Db, workspaceId: string, invoiceId: string, recordId: string,
+  action: 'approved' | 'rejected' | 'decided', key: string,
+): void {
   db.prepare(`INSERT INTO idempotency_keys(workspace_id, idempotency_key, invoice_id, record_id, action, created_at)
     VALUES (?, ?, ?, ?, ?, ?)`)
     .run(workspaceId, key, invoiceId, recordId, action, nowIso());
@@ -384,6 +388,9 @@ export function decideInvoice(
       seal: result.record.seal,
       recordId: result.record.id,
     });
+    if (options.idempotencyKey) {
+      recordIdempotency(db, workspaceId, invoiceId, result.record.id, 'decided', options.idempotencyKey);
+    }
     return result.record;
   }).immediate();
 }

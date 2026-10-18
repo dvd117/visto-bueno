@@ -47,6 +47,39 @@ describe('OpenAPI document', () => {
     expect(document.components?.securitySchemes?.workspaceCookie).toMatchObject({
       type: 'apiKey', in: 'cookie', name: 'workspace_id',
     });
+    const decideOperation = document.paths?.['/api/v1/decide']?.post as {
+      parameters?: Array<{ schema?: JsonSchema }>;
+    } | undefined;
+    expect(decideOperation).toMatchObject({
+      operationId: 'decideInvoice',
+      parameters: [{
+        name: 'Idempotency-Key', in: 'header', required: true,
+        schema: { type: 'string', 'x-maxLengthAfterTrim': 120 },
+      }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': { schema: { $ref: '#/components/schemas/DecideRequest' } },
+          'multipart/form-data': { schema: { $ref: '#/components/schemas/DecideFile' } },
+        },
+      },
+      responses: {
+        '200': { content: { 'application/json': { schema: { $ref: '#/components/schemas/DecideResponse' } } } },
+      },
+    });
+    const keyPattern = new RegExp(decideOperation?.parameters?.[0]?.schema?.pattern as string);
+    expect(keyPattern.test(` ${'x'.repeat(120)} `)).toBe(true);
+    expect(keyPattern.test(` ${'x'.repeat(121)} `)).toBe(false);
+    expect(keyPattern.test('   ')).toBe(false);
+    expect(document.components?.schemas?.DecideResponse).toMatchObject({
+      type: 'object',
+      required: ['state', 'headline', 'reasons', 'checks', 'sealId', 'decisionRecordId'],
+      properties: {
+        state: { enum: ['ready', 'approval_required', 'review_required', 'stopped'] },
+        reasons: { type: 'array', items: { type: 'string' } },
+        checks: { type: 'array', items: { required: expect.arrayContaining(['outcome']) } },
+      },
+    });
     for (const path of ['/api/export/payments.csv', '/api/export/reconciliation.csv']) {
       expect(document.paths?.[path]?.get).toMatchObject({
         parameters: [

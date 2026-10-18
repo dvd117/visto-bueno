@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ExtractionClaims, ExtractionResult, JevAnswers } from '../../src/shared/domain/types';
 import {
@@ -90,6 +91,40 @@ describe('database persistence', () => {
   });
   afterEach(() => {
     if (db.open) db.close();
+  });
+
+  it('adds the decide action to existing idempotency tables without losing rows', () => {
+    const directory = resolve(process.cwd(), '.w', 'db-idempotency-migration');
+    const dbPath = resolve(directory, 'legacy.sqlite');
+    mkdirSync(directory, { recursive: true });
+    const legacySchema = readFileSync(resolve(process.cwd(), 'src/server/db/schema.sql'), 'utf8')
+      .replace("('approved', 'rejected', 'decided')", "('approved', 'rejected')");
+    const legacy = new Database(dbPath);
+    legacy.pragma('foreign_keys = ON');
+    legacy.exec(legacySchema);
+    legacy.prepare('INSERT INTO workspaces(id, created_at, last_seen) VALUES (?, ?, ?)')
+      .run('legacy', '2026-10-16', '2026-10-16');
+    legacy.prepare(`INSERT INTO invoices(workspace_id, id, status, source_kind, created_at, updated_at)
+      VALUES (?, ?, 'queued', 'text', ?, ?)`).run('legacy', 'INV-001', '2026-10-16', '2026-10-16');
+    legacy.prepare(`INSERT INTO decision_records(workspace_id, id, invoice_id, record_json, created_at)
+      VALUES (?, ?, ?, '{}', ?)`).run('legacy', 'REC-001', 'INV-001', '2026-10-16');
+    legacy.prepare(`INSERT INTO idempotency_keys(workspace_id, idempotency_key, invoice_id, record_id, action, created_at)
+      VALUES (?, ?, ?, ?, 'approved', ?)`).run('legacy', 'old-key', 'INV-001', 'REC-001', '2026-10-16');
+    legacy.close();
+
+    const migrated = openDb(dbPath);
+    try {
+      expect(migrated.prepare('SELECT action FROM idempotency_keys WHERE workspace_id = ? AND idempotency_key = ?')
+        .get('legacy', 'old-key')).toMatchObject({ action: 'approved' });
+      migrated.prepare(`UPDATE idempotency_keys SET action = 'decided'
+        WHERE workspace_id = ? AND idempotency_key = ?`).run('legacy', 'old-key');
+      expect(migrated.prepare('SELECT action FROM idempotency_keys WHERE workspace_id = ? AND idempotency_key = ?')
+        .get('legacy', 'old-key')).toMatchObject({ action: 'decided' });
+      expect(migrated.pragma('foreign_key_check')).toEqual([]);
+    } finally {
+      migrated.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('clones seed data and prior committed payments with their vendor, contract and period', () => {

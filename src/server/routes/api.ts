@@ -117,7 +117,7 @@ function jsonFailure(c: ApiContext, status: 400 | 404 | 409 | 413 | 429 | 500 | 
   return c.json(error(message, code), status);
 }
 
-function fileKind(file: File): { sourceKind: 'pdf' | 'image'; extension: string; mimeType: string } | null {
+export function fileKind(file: File): { sourceKind: 'pdf' | 'image'; extension: string; mimeType: string } | null {
   const mime = file.type.toLowerCase();
   const ext = file.name.toLowerCase().split('.').pop();
   if (mime === 'application/pdf' || ext === 'pdf') return { sourceKind: 'pdf', extension: 'pdf', mimeType: 'application/pdf' };
@@ -127,7 +127,7 @@ function fileKind(file: File): { sourceKind: 'pdf' | 'image'; extension: string;
   return null;
 }
 
-function validFileBytes(bytes: Uint8Array, kind: 'pdf' | 'image', mimeType: string): boolean {
+export function validFileBytes(bytes: Uint8Array, kind: 'pdf' | 'image', mimeType: string): boolean {
   if (kind === 'pdf') return Buffer.from(bytes.subarray(0, 5)).toString('ascii') === '%PDF-';
   if (mimeType === 'image/png') return Buffer.from(bytes.subarray(0, 8)).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (mimeType === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
