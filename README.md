@@ -1,16 +1,29 @@
 # Visto Bueno
 
+> Ni un bolívar, sol ni peso sale sin su visto bueno.
+
+Hecho para el reto **Blinka** («Agentes que pagan por la empresa») del **Hackathon 30X**, del 16 al 18 de octubre de 2026.
+
 Una factura llega por correo, PDF o chat; un cambio de cuenta puede desviar un pago. Visto Bueno contrasta cada factura con su fuente, los registros y las reglas de la empresa antes de preparar una decisión. El modelo aporta señales; **el código conserva la autoridad final**.
 
 Visto Bueno deja una factura lista para pagar solo si cumple las reglas de tu empresa y te pregunta cuando algo queda fuera de ellas. No es un detector de fraude: contrasta la cuenta y los posibles duplicados con los registros de tu empresa, y trata las instrucciones de la factura como contenido no confiable.
 
 ## Demo
 
-[visto-bueno.aragort.com](https://visto-bueno.aragort.com) — demo de **Andina Labs Inc.**, con datos ficticios. No se ejecutan pagos reales.
+[visto-bueno.aragort.com](https://visto-bueno.aragort.com) — demo con dos clientes ficticios, **Andina Labs Inc.** (con datos sembrados) y **Marea Norte SpA** (vacío). No se ejecutan pagos reales.
 
 > **Estado de implementación:** la demo desplegada integra este flujo y sirve el informe de evaluación en `GET /api/eval`. `EXTRACT_MODE=replay` y `JEV_MODE=replay` permiten probar sin llamadas externas.
 
 El contrato OpenAPI 3.1 está en `/api/openapi.json`. El servidor MCP Streamable HTTP está en `/mcp`; conexión y herramientas en `docs/api.md`.
+
+## Qué incluye
+
+- **Bandeja por estado:** facturas agrupadas por estado, las más recientes primero y los grupos plegados; los contadores filtran la lista.
+- **Expediente:** el documento original al lado de la comparación, un resumen de reglas (No cumple, Alerta, Pendiente, Cumple, No aplica) y la trazabilidad de la decisión agrupada por resultado.
+- **Acciones humanas y lote de pagos:** controles según el estado, una barra persistente con el lote autorizado y exportación CSV de pagos y de conciliación. Una factura **Frenada** se rechaza o se corrige y se vuelve a evaluar; nunca se aprueba.
+- **Varios clientes:** cada cliente es un espacio de trabajo aislado, con su perfil de empresa editable y una vista previa del impacto antes de guardar.
+- **Monedas e identificación fiscal:** USD, COP, MXN, CLP, PEN, ARS y VES, con la fecha del tipo de cambio en las exportaciones. El RIF (VE), el RUC (PE) y el CUIT (AR) de proveedores nuevos o modificados se validan por formato y dígito verificador; eso no comprueba el registro ni la identidad.
+- **Integraciones:** contrato OpenAPI 3.1, `POST /api/v1/decide` con `Idempotency-Key` y un servidor MCP con `decide`, `explain` y `export_batch`. Ninguna integración puede aprobar ni rechazar: esa decisión queda en la interfaz humana.
 
 ## Cómo decide
 
