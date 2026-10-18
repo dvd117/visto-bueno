@@ -66,7 +66,7 @@ Cambiar reglas o datos de proveedor o contrato puede dejar una decisión pendien
 - En PDF y texto, el monto, la cuenta, el ID fiscal y el ID de factura seleccionados deben aparecer literalmente en la fuente; el expediente los compara con los registros de tu empresa.
 - Cada decisión conserva la versión de las reglas, las versiones del proveedor y el contrato, la fecha del tipo de cambio y las respuestas JEV, junto con un sello; la bitácora exporta el estado y el sello para conciliación.
 - Las reglas deterministas calculan el estado; JEV aporta señales para escalar. Ninguna salida del modelo puede convertir un control fallido en «Lista para pagar».
-- Puedes pegar texto o soltar un PDF o una imagen para evaluar la factura por el mismo flujo de comprobaciones. La extracción costó en promedio USD 0,00075 por factura (medición del 17-10-2026); el costo de JEV no está medido ni se incluye en esa cifra.
+- Puedes pegar texto o soltar un PDF o una imagen para evaluar la factura por el mismo flujo de comprobaciones. La extracción costó en promedio USD 0,00075 por factura (medición del 17-10-2026) y JEV USD 0,00014 por factura (promedio de las pruebas hasta el 18-10-2026).
 
 ## Ejecución local
 
@@ -104,13 +104,15 @@ El informe de evaluación lo genera una ejecución local de pruebas de confianza
 - **Seguridad de regresión:** 0 aprobaciones indebidas en 30 pruebas adversariales.
 - **Conjunto etiquetado:** 20/20 estados correctos, 0 falsos escalamientos y 75 % de autonomía, en respuestas grabadas.
 - **Muestra en vivo:** Sin muestra en vivo; requiere facturas no vistas y latencia, costo y fallos medidos.
-- **Costo por 1.000 facturas:** Extracción (solo Gemini): ≈ USD 0,75, calculado a partir del promedio medido de USD 0,00075 por factura el 17-10-2026. El costo de JEV no se ha medido ni está incluido.
+- **Costo por 1.000 facturas:** ≈ USD 0,89 en total. Extracción (Gemini): ≈ USD 0,75, a partir del promedio medido de USD 0,00075 por factura el 17-10-2026. JEV: ≈ USD 0,14, a partir del promedio de USD 0,00014 por llamada en las pruebas hasta el 18-10-2026.
 
 ### Costo por factura
 
 La extracción registra `usageMetadata` de Gemini por llamada. El costo estimado suma tokens de entrada a USD 0,25 y tokens de salida (candidatos y razonamiento) a USD 1,50 por millón para `gemini-3.1-flash-lite`, según la tarifa Standard de la [API Gemini Developer](https://ai.google.dev/gemini-api/docs/pricing). Si falta el uso registrado, el costo queda desconocido.
 
 **Costo medido por factura:** USD 0,00075 en promedio (USD 0,0150 por las 20 facturas etiquetadas), medido el 17-10-2026 con una sola llamada real por factura, sin reintentos: 9.948 tokens de entrada y 8.309 de salida en total. Por tipo: texto USD 0,00074 (3), PDF USD 0,00073 (16), imagen USD 0,00106 (1).
+
+**Costo medido de JEV:** USD 0,00014 por factura en promedio (USD 0,0186 por 134 llamadas, 459.900 tokens en total), según el uso que reporta la API de TypeSafe para todas las pruebas hasta el 18-10-2026. Visto Bueno hace una sola llamada a JEV por factura, con todas sus preguntas y sin reintentos. La cifra es un promedio de pruebas, no de una muestra en vivo, y el número de preguntas varía según la factura.
 
 Estas tres evidencias —seguridad, conjunto etiquetado y muestra en vivo— se mantienen separadas; una no sustituye a otra.
 
