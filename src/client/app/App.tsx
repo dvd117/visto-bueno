@@ -1,6 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EvaluationResult } from '../lib/api-types';
-import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow, ProcessEvent, ProcessRequest, WorkspaceSummary } from '../../shared/api';
+import type {
+  ClientDirectory, CompanyRecord, DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow,
+  ProcessEvent, ProcessRequest, WorkspaceSummary,
+} from '../../shared/api';
 import type { InvoiceStatus } from '../../shared/domain/types';
 import {
   ApiRequestError,
@@ -8,6 +11,8 @@ import {
   approveInvoice,
   createInvoice,
   datosApi,
+  getClients,
+  getCompany,
   getExpediente,
   getEvaluation,
   getInvoices,
@@ -19,6 +24,7 @@ import {
   rejectInvoice,
   resetWorkspace,
   resolveFlag,
+  switchClient,
 } from '../lib/api';
 import { Bandeja } from '../features/bandeja/Bandeja';
 import { Counters } from '../features/bandeja/Counters';
@@ -26,6 +32,7 @@ import { ActionBar } from '../features/expediente/ActionBar';
 import { Expediente } from '../features/expediente/Expediente';
 import { Evaluacion } from '../features/evaluacion/Evaluacion';
 import { FirstRunHint } from '../features/ayuda/FirstRunHint';
+import { ClientSwitcher } from './ClientSwitcher';
 import type { RecibirApi } from '../features/recibir/RecibirPanel';
 import './app.css';
 
@@ -62,6 +69,8 @@ function replaceRow(rows: InvoiceRow[], nextRow: InvoiceRow): InvoiceRow[] {
 
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
+  const [company, setCompany] = useState<CompanyRecord | null>(null);
+  const [clientDirectory, setClientDirectory] = useState<ClientDirectory | null>(null);
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [heldReadyIds, setHeldReadyIds] = useState<Set<string>>(() => new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -76,6 +85,7 @@ export default function App() {
   const [firstRunOpen, setFirstRunOpen] = useState(shouldShowFirstRunHint);
   const [processing, setProcessing] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [clientSwitching, setClientSwitching] = useState(false);
   const [activeSection, setActiveSection] = useState<AppSection>('inbox');
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -84,6 +94,8 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined);
   const resetOutcome = useRef<Promise<boolean> | null>(null);
   const resetGeneration = useRef(0);
+  const clientContextGeneration = useRef(0);
+  const clientSwitchInProgress = useRef(false);
   const selectedStatus = rows.find((row) => row.id === selectedId)?.status;
   const detailKey = JSON.stringify([selectedId, selectedStatus]);
   const detailError = detailFailure?.key === detailKey ? detailFailure.message : null;
@@ -93,27 +105,79 @@ export default function App() {
   ));
 
   const loadWorkspace = useCallback(async (showLoading: boolean) => {
+    if (clientSwitchInProgress.current) return;
+    const generation = clientContextGeneration.current;
     if (showLoading) setLoading(true);
     try {
-      const [summary, invoices] = await Promise.all([getWorkspace(), getInvoices()]);
+      const [summary, invoices, profile, directory] = await Promise.all([
+        getWorkspace(), getInvoices(), getCompany().catch(() => null), getClients().catch(() => null),
+      ]);
+      if (generation !== clientContextGeneration.current) return;
       setConnectionError(null);
       setWorkspace(summary);
+      setCompany(profile);
+      setClientDirectory(directory);
       setRows(invoices);
       setSelectedId((current) => current && invoices.some((row) => row.id === current)
         ? current
         : invoices[0]?.id ?? null);
     } catch (error) {
+      if (generation !== clientContextGeneration.current) return;
       setWorkspace(null);
+      setCompany(null);
+      setClientDirectory(null);
       setRows([]);
       setSelectedId(null);
       setExpediente(null);
       setConnectionError(errorMessage(error));
     } finally {
-      setLoading(false);
+      if (generation === clientContextGeneration.current) setLoading(false);
     }
   }, []);
 
+  const handleClientSwitch = useCallback(async (clientId: string) => {
+    if (clientSwitching || actionBusy || processing) return;
+    clientSwitchInProgress.current = true;
+    const generation = ++clientContextGeneration.current;
+    setClientSwitching(true);
+    setLoading(true);
+    setConnectionError(null);
+    setWorkspace(null);
+    setCompany(null);
+    setClientDirectory(null);
+    setRows([]);
+    setHeldReadyIds(new Set());
+    setSelectedId(null);
+    setExpediente(null);
+    setDetailFailure(null);
+    setDetailRevision((current) => current + 1);
+    setEvaluationResult(null);
+    setEvaluationLoading(false);
+    setEvaluationError(null);
+    setRowRevisions({});
+    setActiveSection('inbox');
+    setFirstRunOpen(false);
+    setReceiveOpen(false);
+    setHelpOpen(false);
+    setToast('');
+    try {
+      await switchClient(clientId);
+      if (generation !== clientContextGeneration.current) return;
+      clientSwitchInProgress.current = false;
+      await loadWorkspace(true);
+    } catch (error) {
+      if (generation === clientContextGeneration.current) setConnectionError(errorMessage(error));
+    } finally {
+      if (generation === clientContextGeneration.current) {
+        clientSwitchInProgress.current = false;
+        setClientSwitching(false);
+        setLoading(false);
+      }
+    }
+  }, [actionBusy, clientSwitching, loadWorkspace, processing]);
+
   const openEvaluation = useCallback(() => {
+    if (clientSwitching) return;
     setActiveSection('evaluacion');
     setEvaluationLoading(true);
     setEvaluationError(null);
@@ -121,7 +185,7 @@ export default function App() {
       .then(setEvaluationResult)
       .catch((error: unknown) => setEvaluationError(errorMessage(error)))
       .finally(() => setEvaluationLoading(false));
-  }, []);
+  }, [clientSwitching]);
 
   const dismissFirstRun = useCallback(() => {
     setFirstRunOpen(false);
@@ -132,13 +196,20 @@ export default function App() {
     }
   }, []);
 
-  const openReceive = useCallback(() => setReceiveOpen(true), []);
-  const openHelp = useCallback(() => setHelpOpen(true), []);
+  const openReceive = useCallback(() => {
+    if (!clientSwitching) setReceiveOpen(true);
+  }, [clientSwitching]);
+  const openHelp = useCallback(() => {
+    if (!clientSwitching) setHelpOpen(true);
+  }, [clientSwitching]);
   const openData = useCallback(() => {
+    if (clientSwitching) return;
     setActiveSection('datos');
     void loadWorkspace(false);
-  }, [loadWorkspace]);
-  const openRules = useCallback(() => setActiveSection('reglas'), []);
+  }, [clientSwitching, loadWorkspace]);
+  const openRules = useCallback(() => {
+    if (!clientSwitching) setActiveSection('reglas');
+  }, [clientSwitching]);
 
   useEffect(() => {
     void loadWorkspace(false);
@@ -284,7 +355,7 @@ export default function App() {
   }, [actionBusy, loadWorkspace, shouldDiscardReceive, showToast]);
 
   const handleReset = useCallback(async () => {
-    if (actionBusy || processing || resetOutcome.current) return;
+    if (actionBusy || processing || clientSwitching || resetOutcome.current) return;
     let settleResetOutcome!: (succeeded: boolean) => void;
     const pendingReset = new Promise<boolean>((resolve) => { settleResetOutcome = resolve; });
     resetOutcome.current = pendingReset;
@@ -309,7 +380,7 @@ export default function App() {
       resetOutcome.current = null;
       setActionBusy(false);
     }
-  }, [actionBusy, loadWorkspace, processing, showToast]);
+  }, [actionBusy, clientSwitching, loadWorkspace, processing, showToast]);
 
   const withSelectedAction = useCallback(async (
     action: (id: string) => Promise<ExpedienteData>,
@@ -359,42 +430,52 @@ export default function App() {
             <a className="wordmark" href="#inbox" aria-label="Visto Bueno">visto.bueno</a>
             <span className="masthead-divider" aria-hidden="true" />
             <div className="company-line">
-              <h1>{displayedWorkspace?.company.name ?? 'Andina Labs Inc.'}</h1>
+              {clientDirectory ? (
+                <ClientSwitcher
+                  clients={clientDirectory.clients}
+                  activeId={clientDirectory.activeId}
+                  activeCompanyName={company?.name ?? displayedWorkspace?.company.name ?? 'Cargando cliente…'}
+                  disabled={clientSwitching || actionBusy || processing || loading}
+                  onSwitch={handleClientSwitch}
+                />
+              ) : (
+                <h1>{company?.name ?? displayedWorkspace?.company.name ?? 'Cargando cliente…'}</h1>
+              )}
               <span className="fictional-tag">Datos ficticios</span>
             </div>
           </div>
           <nav className="navigation" aria-label="Secciones">
             <a href="#inbox" aria-current={activeSection === 'inbox' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); setActiveSection('inbox'); void loadWorkspace(false);
+              event.preventDefault(); if (clientSwitching) return; setActiveSection('inbox'); void loadWorkspace(false);
             }}>Bandeja</a>
             <a href="#reglas" aria-current={activeSection === 'reglas' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); setActiveSection('reglas');
+              event.preventDefault(); if (clientSwitching) return; setActiveSection('reglas');
             }}>Reglas</a>
             <a href="#datos" aria-current={activeSection === 'datos' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); setActiveSection('datos'); void loadWorkspace(false);
+              event.preventDefault(); if (clientSwitching) return; setActiveSection('datos'); void loadWorkspace(false);
             }}>Preparar datos</a>
             <a href="#bitacora" aria-current={activeSection === 'bitacora' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); setActiveSection('bitacora'); void loadWorkspace(false);
+              event.preventDefault(); if (clientSwitching) return; setActiveSection('bitacora'); void loadWorkspace(false);
             }}>Bitácora</a>
             <a href="#evaluacion" aria-current={activeSection === 'evaluacion' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); openEvaluation();
+              event.preventDefault(); if (clientSwitching) return; openEvaluation();
             }}>Evaluación</a>
           </nav>
           <div className="header-actions">
-            <button className="button button-secondary" type="button" onClick={openHelp}>
+            <button className="button button-secondary" type="button" disabled={clientSwitching} onClick={openHelp}>
               Cómo decide
             </button>
-            <button className="button button-primary" type="button" disabled={actionBusy || processing} onClick={openReceive}>
+            <button className="button button-primary" type="button" disabled={actionBusy || processing || clientSwitching} onClick={openReceive}>
               + Recibir factura
             </button>
-            <button className="button button-secondary" type="button" disabled={actionBusy || processing} onClick={() => void handleReset()}>
+            <button className="button button-secondary" type="button" disabled={actionBusy || processing || clientSwitching} onClick={() => void handleReset()}>
               Reiniciar demo
             </button>
           </div>
         </header>
 
         <FirstRunHint
-          open={firstRunOpen}
+          open={firstRunOpen && !clientSwitching}
           onDismiss={dismissFirstRun}
           onOpenData={openData}
           onOpenRules={openRules}

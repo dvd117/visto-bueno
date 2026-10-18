@@ -2,6 +2,7 @@ import Decimal from 'decimal.js';
 import { z } from 'zod';
 import type {
   ApiError,
+  ClientDirectory,
   CompanyPreview,
   CompanyRecord,
   Comparison,
@@ -172,6 +173,13 @@ const workspaceSummarySchema: z.ZodType<WorkspaceSummary> = z.object({
   counters: countersSchema,
   lastRun: runStatsSchema.nullable(),
 });
+const clientDirectorySchema: z.ZodType<ClientDirectory> = z.object({
+  activeId: z.string(),
+  clients: z.array(z.object({
+    id: z.string(), name: z.string().min(1), invoiceCount: z.number().int().nonnegative(), readyCount: z.number().int().nonnegative(),
+  }).strict()),
+}).strict();
+const switchedClientSchema = z.object({ activeId: z.string() }).strict();
 const apiErrorSchema: z.ZodType<ApiError> = z.object({ error: z.string(), message: z.string() });
 const conflictSchema: z.ZodType<ConflictResponse> = z.object({ error: z.literal('conflict'), expediente: expedienteSchema });
 
@@ -333,6 +341,18 @@ function jsonInit(method: string, body?: unknown): RequestInit {
 
 export function getWorkspace(): Promise<WorkspaceSummary> {
   return requestJson('/api/workspace', workspaceSummarySchema);
+}
+
+export function getCompany(): Promise<CompanyRecord> {
+  return requestJson('/api/company', companyRecordSchema);
+}
+
+export function getClients(): Promise<ClientDirectory> {
+  return requestJson('/api/clients', clientDirectorySchema);
+}
+
+export function switchClient(clientId: string): Promise<{ activeId: string }> {
+  return requestJson('/api/clients/switch', switchedClientSchema, jsonInit('POST', { clientId }));
 }
 
 export function getInvoices(): Promise<InvoiceRow[]> {
@@ -552,7 +572,7 @@ export const datosApi: DatosApi = {
   putRow,
   uploadCsv,
   templateUrl,
-  getCompany: () => requestJson('/api/company', companyRecordSchema),
+  getCompany,
   saveCompany: (company) => requestJson('/api/company', companyRecordSchema, jsonInit('PUT', company)),
   previewCompany: (company) => requestJson('/api/company/preview', companyPreviewSchema, jsonInit('POST', company)),
 };

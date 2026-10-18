@@ -43,7 +43,7 @@ describe('workspace cold start', () => {
     }));
 
     expect(ids).toEqual(Array(4).fill(workspaceId));
-    expect(workspaceCount(runtime.db)).toBe(1);
+    expect(workspaceCount(runtime.db)).toBe(2);
     expect(runtime.db.prepare('SELECT COUNT(*) AS count FROM invoices WHERE workspace_id = ?').get(workspaceId))
       .toMatchObject({ count: 20 });
   });
@@ -73,7 +73,7 @@ describe('workspace cold start', () => {
     }));
 
     expect(invoiceLists.map((invoices) => invoices.length)).toEqual([20, 20]);
-    expect(workspaceCount(runtime.db)).toBe(1);
+    expect(workspaceCount(runtime.db)).toBe(2);
     expect(runtime.db.prepare('SELECT COUNT(*) AS count FROM invoices WHERE workspace_id = ?').get('cold-start-shared'))
       .toMatchObject({ count: 20 });
   });
@@ -85,7 +85,7 @@ describe('workspace cold start', () => {
 
     expect(response.status).toBe(200);
     expect(setCookie).toMatch(/^workspace_id=[A-Za-z0-9_-]+; Path=\/; HttpOnly; SameSite=Lax; Max-Age=86400/);
-    expect(workspaceCount(runtime.db)).toBe(1);
+    expect(workspaceCount(runtime.db)).toBe(2);
   });
 
   it('does not mint a workspace for static assets or health', async () => {
