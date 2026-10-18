@@ -49,6 +49,7 @@ function makeApi(
 
 describe('Preparar datos', () => {
   it('accepts a Chilean vendor from the API and offers Chile in the country selector', async () => {
+    sessionStorage.setItem('visto-bueno:client-id', 'client-andina');
     const vendor = { ...data.vendors[0]!, country: 'CL' as const };
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([vendor]), {
       status: 200,

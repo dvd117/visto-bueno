@@ -30,16 +30,19 @@ describe('OpenAPI document', () => {
     const response = await app.request('/api/openapi.json');
     const document = await response.json() as {
       paths?: Record<string, Record<string, {
-        parameters?: Array<{ name?: string; in?: string; required?: boolean; schema?: JsonSchema }>;
+        parameters?: Array<{ name?: string; in?: string; required?: boolean; description?: string; schema?: JsonSchema }>;
         requestBody?: { required?: boolean; content?: Record<string, { schema?: JsonSchema }> };
         responses?: Record<string, { content?: Record<string, { schema?: JsonSchema }> }>;
       }>>;
       components?: { schemas?: Record<string, JsonSchema> };
     };
     const decide = document.paths?.['/api/v1/decide']?.post;
-    const key = decide?.parameters?.[0];
+    const clientHeader = decide?.parameters?.find(({ name }) => name === 'X-Client-Id');
+    const key = decide?.parameters?.find(({ name }) => name === 'Idempotency-Key');
 
     expect(decide).toBeDefined();
+    expect(clientHeader).toMatchObject({ name: 'X-Client-Id', in: 'header', required: false });
+    expect(clientHeader?.description).toContain('Si se omite, se usa active_client_id');
     expect(key).toMatchObject({ name: 'Idempotency-Key', in: 'header', required: true });
     expect(key?.schema?.['x-maxLengthAfterTrim']).toBe(120);
     const keyPattern = new RegExp(key?.schema?.pattern as string);
@@ -94,11 +97,16 @@ describe('OpenAPI document', () => {
     for (const path of ['/api/export/payments.csv', '/api/export/reconciliation.csv']) {
       expect(document.paths?.[path]?.get).toMatchObject({
         parameters: [
+          {
+            name: 'X-Client-Id', in: 'header', required: false,
+            schema: { type: 'string', minLength: 1, maxLength: 80, pattern: '^[A-Za-z0-9_-]+$' },
+          },
           { name: 'batch', in: 'query', required: false, schema: { type: 'string' } },
           {
             name: 'ready', in: 'query', required: false, style: 'form', explode: true,
             schema: { type: 'array', items: { type: 'string' } },
           },
+          { name: 'client_id', in: 'query', required: false, schema: { type: 'string', minLength: 1, maxLength: 80, pattern: '^[A-Za-z0-9_-]+$' } },
         ],
         responses: { '200': { content: { 'text/csv': { schema: { type: 'string' } } } } },
       });
@@ -113,6 +121,27 @@ describe('OpenAPI document', () => {
         `${route.method} ${route.path} must be documented`,
       ).toBeDefined();
     }
+  });
+
+  it('documents the optional client header and direct-download client query', async () => {
+    const { app } = makeRuntime();
+    const response = await app.request('/api/openapi.json');
+    const document = await response.json() as { paths?: Record<string, Record<string, Record<string, unknown>>> };
+    const mutation = document.paths?.['/api/data/{table}']?.put;
+    const file = document.paths?.['/api/files/{invoiceId}']?.get;
+    const exportPayment = document.paths?.['/api/export/payments.csv']?.get;
+    const parameters = mutation?.parameters as Array<Record<string, unknown>> | undefined;
+
+    expect(parameters).toContainEqual(expect.objectContaining({
+      name: 'X-Client-Id', in: 'header', required: false,
+      description: expect.stringContaining('Si se omite, se usa active_client_id'),
+    }));
+    expect(mutation?.responses).not.toHaveProperty('409');
+    expect(file?.parameters).toContainEqual(expect.objectContaining({
+      name: 'client_id', in: 'query', required: false,
+      description: expect.stringContaining('debe pertenecer al owner'),
+    }));
+    expect(exportPayment?.parameters).toContainEqual(expect.objectContaining({ name: 'client_id', in: 'query' }));
   });
 
   it('documents runtime input refinements and cross-field constraints', async () => {
@@ -209,6 +238,49 @@ describe('OpenAPI document', () => {
     });
     expect(schemas.CompanyRecord?.properties?.name?.maxLength).toBeUndefined();
     expect(schemas.CompanyPreview?.properties?.staleCount).toMatchObject({ type: 'integer', minimum: 0 });
+  });
+
+  it('documents the K1 client directory and switching request and responses', async () => {
+    const { app } = makeRuntime();
+    const response = await app.request('/api/openapi.json');
+    const document = await response.json() as {
+      paths?: Record<string, Record<string, unknown>>;
+      components?: { schemas?: Record<string, JsonSchema> };
+    };
+    const schemas = document.components?.schemas ?? {};
+
+    expect(document.paths?.['/api/clients']?.get).toMatchObject({
+      operationId: 'listClients',
+      responses: {
+        '200': { content: { 'application/json': { schema: { $ref: '#/components/schemas/ClientDirectory' } } } },
+      },
+    });
+    expect(document.paths?.['/api/clients/switch']?.post).toMatchObject({
+      operationId: 'switchClient',
+      requestBody: {
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ClientSwitchRequest' } } },
+      },
+      responses: {
+        '200': { content: { 'application/json': { schema: { $ref: '#/components/schemas/ClientSwitchResponse' } } } },
+        '400': { content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } } },
+        '404': { content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } } },
+      },
+    });
+    expect(schemas.ClientDirectory).toMatchObject({
+      type: 'object', required: ['activeId', 'clients'],
+      properties: {
+        activeId: { type: 'string' },
+        clients: { type: 'array', items: { type: 'object', required: ['id', 'name', 'invoiceCount', 'readyCount'] } },
+      },
+    });
+    expect(schemas.ClientSwitchRequest).toMatchObject({
+      type: 'object', required: ['clientId'], properties: {
+        clientId: { type: 'string', minLength: 1, maxLength: 80, pattern: '^[A-Za-z0-9_-]+$' },
+      },
+    });
+    expect(schemas.ClientSwitchResponse).toMatchObject({
+      type: 'object', required: ['activeId'], properties: { activeId: { type: 'string' } },
+    });
   });
 
   it('is available without creating a workspace or setting a cookie', async () => {

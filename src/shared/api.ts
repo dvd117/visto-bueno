@@ -178,6 +178,22 @@ export interface WorkspaceSummary {
   rules: Rules; counters: Counters; lastRun: RunStats | null;
 }
 
+/** GET /api/clients; client ids are opaque and only usable by their owning visitor. */
+export interface ClientSummary {
+  id: string;
+  name: string;
+  invoiceCount: number;
+  readyCount: number;
+}
+
+export interface ClientDirectory {
+  activeId: string;
+  clients: ClientSummary[];
+}
+
+export interface ClientSwitchRequest { clientId: string }
+export interface ClientSwitchResponse { activeId: string }
+
 /** POST /api/process (response is an SSE stream of ProcessEvent) */
 export interface ProcessRequest { ids?: string[]; mode?: 'replay' | 'live'; examples?: true }
 

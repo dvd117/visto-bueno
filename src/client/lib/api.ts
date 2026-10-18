@@ -2,6 +2,9 @@ import Decimal from 'decimal.js';
 import { z } from 'zod';
 import type {
   ApiError,
+  ClientDirectory,
+  ClientSwitchResponse,
+  CompanyRecord,
   ConflictResponse,
   DecisionAction,
   Expediente,
@@ -17,6 +20,8 @@ import { evaluationResultSchema } from '../../shared/api';
 import type { Budget, Contract, FxRate, Treasury, Vendor } from '../../shared/domain/types';
 import {
   apiErrorSchema,
+  clientDirectorySchema,
+  clientSwitchResponseSchema,
   companyPreviewSchema,
   companyRecordSchema,
   conflictSchema,
@@ -32,6 +37,9 @@ import {
 } from '../../shared/api-schemas';
 export {
   apiErrorSchema,
+  clientDirectorySchema,
+  clientSwitchRequestSchema,
+  clientSwitchResponseSchema,
   companyPreviewSchema,
   companyRecordSchema,
   conflictSchema,
@@ -45,6 +53,101 @@ export {
 import type {
   BitacoraApi, CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi, EvaluationResult, ReglasApi,
 } from './api-types';
+
+const CLIENT_CONTEXT_STORAGE_KEY = 'visto-bueno:client-context-switch';
+const TAB_CLIENT_ID_STORAGE_KEY = 'visto-bueno:client-id';
+let exportGeneration = 0;
+let clientContextReady = false;
+let clientDirectoryInitialization: Promise<ClientDirectory> | null = null;
+
+interface BrowserEventHost {
+  addEventListener(type: string, listener: (event: { key?: string | null }) => void): void;
+  localStorage?: { setItem(key: string, value: string): void };
+  sessionStorage?: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+    removeItem(key: string): void;
+  };
+}
+
+function browserEventHost(): BrowserEventHost | null {
+  return (globalThis as unknown as { window?: BrowserEventHost }).window ?? null;
+}
+
+if (browserEventHost()) {
+  browserEventHost()?.addEventListener('storage', (event) => {
+    if (event.key !== CLIENT_CONTEXT_STORAGE_KEY) return;
+    // Another tab changed the shared cookie. Keep this tab's selected client,
+    // but discard downloads that began before that switch.
+    exportGeneration += 1;
+  });
+}
+
+export function getExportGeneration(): number {
+  return exportGeneration;
+}
+
+export function isExportGenerationCurrent(generation: number): boolean {
+  return generation === exportGeneration;
+}
+
+function invalidateClientExports(): void {
+  exportGeneration += 1;
+}
+
+function readTabClientId(): string | null {
+  try {
+    return browserEventHost()?.sessionStorage?.getItem(TAB_CLIENT_ID_STORAGE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeTabClientId(clientId: string): void {
+  const storage = browserEventHost()?.sessionStorage;
+  if (!storage) throw new Error('Session storage is unavailable.');
+  storage.setItem(TAB_CLIENT_ID_STORAGE_KEY, clientId);
+}
+
+function restoreTabClientId(clientId: string | null): void {
+  const storage = browserEventHost()?.sessionStorage;
+  if (!storage) return;
+  if (clientId) storage.setItem(TAB_CLIENT_ID_STORAGE_KEY, clientId);
+  else storage.removeItem(TAB_CLIENT_ID_STORAGE_KEY);
+}
+
+function broadcastClientContextSwitch(): void {
+  const browser = browserEventHost();
+  if (!browser?.localStorage) return;
+  try {
+    browser.localStorage.setItem(CLIENT_CONTEXT_STORAGE_KEY, `${Date.now()}-${Math.random()}`);
+  } catch {
+    // The same-tab generation guard still protects exports when storage is unavailable.
+  }
+}
+
+function withClientContextQuery(path: string): string {
+  const activeClientId = readTabClientId();
+  if (!activeClientId) return path;
+  const url = new URL(path, 'http://localhost');
+  url.searchParams.set('client_id', activeClientId);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+async function apiFetch(
+  path: string,
+  init?: RequestInit,
+  options: { omitClientContext?: boolean } = {},
+): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const browser = browserEventHost();
+  const activeClientId = readTabClientId();
+  if (!options.omitClientContext && browser && !activeClientId) {
+    throw new Error('This tab has no selected client. Initialize its client context first.');
+  }
+  if (!options.omitClientContext && activeClientId) headers.set('X-Client-Id', activeClientId);
+  return fetch(path, { ...init, headers });
+}
 
 const safeInteger = z.number().int().refine(Number.isSafeInteger, 'Debe ser un entero seguro.');
 const positiveInteger = safeInteger.min(1);
@@ -131,8 +234,13 @@ async function readError(response: Response): Promise<ApiRequestError> {
   return new ApiRequestError('No pude completar la solicitud.', response.status);
 }
 
-async function requestJson<T>(url: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+async function requestJson<T>(
+  url: string,
+  schema: z.ZodType<T>,
+  init?: RequestInit,
+  options: { omitClientContext?: boolean } = {},
+): Promise<T> {
+  const response = await apiFetch(url, init, options);
   if (!response.ok) throw await readError(response);
   let raw: unknown;
   try {
@@ -157,12 +265,62 @@ export function getWorkspace(): Promise<WorkspaceSummary> {
   return requestJson('/api/workspace', workspaceSummarySchema);
 }
 
+export function getCompany(): Promise<CompanyRecord> {
+  return requestJson('/api/company', companyRecordSchema);
+}
+
+export function getClients(): Promise<ClientDirectory> {
+  if (clientContextReady) return requestJson('/api/clients', clientDirectorySchema);
+  if (!clientDirectoryInitialization) {
+    const initialClientId = readTabClientId();
+    clientDirectoryInitialization = (async () => {
+      if (initialClientId) {
+        try {
+          // Validate a tab's saved selection without ever replacing it from a response.
+          return await requestJson('/api/clients', clientDirectorySchema);
+        } catch (error) {
+          if (!(error instanceof ApiRequestError) || (error.status !== 403 && error.status !== 404)) throw error;
+        }
+      }
+
+      // This one-time bootstrap is the only headerless directory request: no tab
+      // selection exists yet, so the server supplies the owner's default/cookie client.
+      const directory = await requestJson(
+        '/api/clients', clientDirectorySchema, undefined, { omitClientContext: true },
+      );
+      if (readTabClientId() === initialClientId) writeTabClientId(directory.activeId);
+      return directory;
+    })().then((directory) => {
+      clientContextReady = true;
+      return directory;
+    }, (error: unknown) => {
+      clientDirectoryInitialization = null;
+      throw error;
+    });
+  }
+  return clientDirectoryInitialization;
+}
+
+export async function switchClient(clientId: string): Promise<ClientSwitchResponse> {
+  const previousClientId = readTabClientId();
+  writeTabClientId(clientId);
+  invalidateClientExports();
+  try {
+    const response = await requestJson('/api/clients/switch', clientSwitchResponseSchema, jsonInit('POST', { clientId }));
+    broadcastClientContextSwitch();
+    return response;
+  } catch (error) {
+    if (readTabClientId() === clientId) restoreTabClientId(previousClientId);
+    throw error;
+  }
+}
+
 export function getInvoices(): Promise<InvoiceRow[]> {
   return requestJson('/api/invoices', z.array(invoiceRowSchema));
 }
 
 export async function getEvaluation(): Promise<EvaluationResult | null> {
-  const response = await fetch('/api/eval');
+  const response = await apiFetch('/api/eval');
   if (response.status === 503) return null;
   if (!response.ok) throw await readError(response);
 
@@ -178,7 +336,10 @@ export async function getEvaluation(): Promise<EvaluationResult | null> {
 }
 
 export function getExpediente(id: string): Promise<Expediente> {
-  return requestJson(`/api/invoices/${encodeURIComponent(id)}`, expedienteSchema);
+  return requestJson(`/api/invoices/${encodeURIComponent(id)}`, expedienteSchema).then((expediente) => ({
+    ...expediente,
+    fileUrl: expediente.fileUrl ? withClientContextQuery(expediente.fileUrl) : null,
+  }));
 }
 
 function isNewInvoiceText(input: File | NewInvoiceText): input is NewInvoiceText {
@@ -197,7 +358,7 @@ export function createInvoice(input: File | NewInvoiceText): Promise<InvoiceRow>
 }
 
 export async function resetWorkspace(): Promise<void> {
-  const response = await fetch('/api/workspace/reset', { method: 'POST' });
+  const response = await apiFetch('/api/workspace/reset', { method: 'POST' });
   if (!response.ok) throw await readError(response);
 }
 
@@ -206,7 +367,7 @@ export async function processInvoices(
   onEvent: (event: ProcessEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch('/api/process', {
+  const response = await apiFetch('/api/process', {
     ...jsonInit('POST', request),
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     signal,
@@ -328,7 +489,7 @@ export async function putRow<T extends DataTable>(table: T, row: DataRowMap[T]):
 export async function uploadCsv(table: CsvTable, file: File): Promise<DataUploadResult> {
   const body = new FormData();
   body.append('file', file);
-  const response = await fetch(`/api/data/${table}/csv`, { method: 'POST', body });
+  const response = await apiFetch(`/api/data/${table}/csv`, { method: 'POST', body });
   if (response.ok) {
     try {
       const result: unknown = await response.json();
@@ -344,7 +505,7 @@ export async function uploadCsv(table: CsvTable, file: File): Promise<DataUpload
 }
 
 export function templateUrl(table: CsvTable): string {
-  return `/api/data/${table}/template.csv`;
+  return withClientContextQuery(`/api/data/${table}/template.csv`);
 }
 
 export function getLog(): Promise<LogEntry[]> {
@@ -352,9 +513,14 @@ export function getLog(): Promise<LogEntry[]> {
 }
 
 async function getExportText(path: string): Promise<string> {
-  const response = await fetch(path);
+  const generation = getExportGeneration();
+  const response = await apiFetch(withClientContextQuery(path));
   if (!response.ok) throw await readError(response);
-  return response.text();
+  const content = await response.text();
+  if (!isExportGenerationCurrent(generation)) {
+    throw new ApiRequestError('El cliente cambió mientras se preparaba el archivo.', 409);
+  }
+  return content;
 }
 
 export function exportPaymentsCsv(): Promise<string> {
@@ -367,6 +533,12 @@ export function exportLogCsv(): Promise<string> {
 
 export function exportReportMd(): Promise<string> {
   return getExportText('/api/export/report.md');
+}
+
+export function exportPaymentBatchCsv(kind: 'payments' | 'reconciliation', readyIds: string[]): Promise<string> {
+  const query = new URLSearchParams({ batch: '1' });
+  readyIds.forEach((id) => query.append('ready', id));
+  return getExportText(`/api/export/${kind}.csv?${query.toString()}`);
 }
 
 export const datosApi: DatosApi = {

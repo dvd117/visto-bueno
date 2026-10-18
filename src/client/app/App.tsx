@@ -1,6 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EvaluationResult } from '../lib/api-types';
-import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow, ProcessEvent, ProcessRequest, WorkspaceSummary } from '../../shared/api';
+import type {
+  ClientDirectory, CompanyRecord, DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow,
+  ProcessEvent, ProcessRequest, WorkspaceSummary,
+} from '../../shared/api';
 import type { InvoiceStatus } from '../../shared/domain/types';
 import {
   ApiRequestError,
@@ -8,6 +11,8 @@ import {
   approveInvoice,
   createInvoice,
   datosApi,
+  getClients,
+  getCompany,
   getExpediente,
   getEvaluation,
   getInvoices,
@@ -19,6 +24,7 @@ import {
   rejectInvoice,
   resetWorkspace,
   resolveFlag,
+  switchClient,
 } from '../lib/api';
 import { Bandeja } from '../features/bandeja/Bandeja';
 import { Counters, type CounterFilter } from '../features/bandeja/Counters';
@@ -26,11 +32,14 @@ import { ActionBar } from '../features/expediente/ActionBar';
 import { Expediente } from '../features/expediente/Expediente';
 import { Evaluacion } from '../features/evaluacion/Evaluacion';
 import { FirstRunHint } from '../features/ayuda/FirstRunHint';
+import { ClientSwitcher } from './ClientSwitcher';
 import type { RecibirApi } from '../features/recibir/RecibirPanel';
 import './app.css';
 
 type AppSection = 'inbox' | 'reglas' | 'datos' | 'bitacora' | 'evaluacion';
 type ActionableStatus = Extract<InvoiceStatus, 'ready' | 'approval_required' | 'review_required' | 'stopped'>;
+interface ReceiveGeneration { reset: number }
+interface AppProps { reloadPage?: () => void }
 
 const FIRST_RUN_DISMISSED_KEY = 'visto-bueno:first-run-dismissed';
 
@@ -60,8 +69,10 @@ function replaceRow(rows: InvoiceRow[], nextRow: InvoiceRow): InvoiceRow[] {
   return rows.map((row) => row.id === nextRow.id ? nextRow : row);
 }
 
-export default function App() {
+export default function App({ reloadPage = () => window.location.reload() }: AppProps = {}) {
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
+  const [company, setCompany] = useState<CompanyRecord | null>(null);
+  const [clientDirectory, setClientDirectory] = useState<ClientDirectory | null>(null);
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [heldReadyIds, setHeldReadyIds] = useState<Set<string>>(() => new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -76,6 +87,7 @@ export default function App() {
   const [firstRunOpen, setFirstRunOpen] = useState(shouldShowFirstRunHint);
   const [processing, setProcessing] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [clientSwitching, setClientSwitching] = useState(false);
   const [activeSection, setActiveSection] = useState<AppSection>('inbox');
   const [inboxFilter, setInboxFilter] = useState<CounterFilter | null>(null);
   const [receiveOpen, setReceiveOpen] = useState(false);
@@ -85,6 +97,8 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined);
   const resetOutcome = useRef<Promise<boolean> | null>(null);
   const resetGeneration = useRef(0);
+  const receiptGenerations = useRef(new Map<string, ReceiveGeneration>());
+  const clientSwitchInProgress = useRef(false);
   const selectedStatus = rows.find((row) => row.id === selectedId)?.status;
   const detailKey = JSON.stringify([selectedId, selectedStatus]);
   const detailError = detailFailure?.key === detailKey ? detailFailure.message : null;
@@ -94,27 +108,59 @@ export default function App() {
   ));
 
   const loadWorkspace = useCallback(async (showLoading: boolean) => {
+    if (clientSwitchInProgress.current) return;
     if (showLoading) setLoading(true);
     try {
-      const [summary, invoices] = await Promise.all([getWorkspace(), getInvoices()]);
+      // The first directory request initializes this tab's sessionStorage id;
+      // later refreshes send it and never adopt a cookie/response selection.
+      const directory = await getClients();
+      if (clientSwitchInProgress.current) return;
+      const [summary, invoices, profile] = await Promise.all([
+        getWorkspace(), getInvoices(), getCompany().catch(() => null),
+      ]);
+      if (clientSwitchInProgress.current) return;
       setConnectionError(null);
       setWorkspace(summary);
+      setCompany(profile);
+      setClientDirectory(directory);
       setRows(invoices);
       setSelectedId((current) => current && invoices.some((row) => row.id === current)
         ? current
         : invoices[0]?.id ?? null);
     } catch (error) {
+      if (clientSwitchInProgress.current) return;
       setWorkspace(null);
+      setCompany(null);
+      setClientDirectory(null);
       setRows([]);
       setSelectedId(null);
       setExpediente(null);
       setConnectionError(errorMessage(error));
     } finally {
-      setLoading(false);
+      if (!clientSwitchInProgress.current) setLoading(false);
     }
   }, []);
 
+  const handleClientSwitch = useCallback(async (clientId: string) => {
+    if (clientSwitching || actionBusy || processing) return;
+    clientSwitchInProgress.current = true;
+    setClientSwitching(true);
+    setLoading(true);
+    setConnectionError(null);
+    try {
+      await switchClient(clientId);
+      // A fresh document is the boundary for all client-scoped UI and drafts.
+      reloadPage();
+    } catch (error) {
+      clientSwitchInProgress.current = false;
+      setConnectionError(errorMessage(error));
+      setClientSwitching(false);
+      setLoading(false);
+    }
+  }, [actionBusy, clientSwitching, processing, reloadPage]);
+
   const openEvaluation = useCallback(() => {
+    if (clientSwitching) return;
     setActiveSection('evaluacion');
     setEvaluationLoading(true);
     setEvaluationError(null);
@@ -122,7 +168,7 @@ export default function App() {
       .then(setEvaluationResult)
       .catch((error: unknown) => setEvaluationError(errorMessage(error)))
       .finally(() => setEvaluationLoading(false));
-  }, []);
+  }, [clientSwitching]);
 
   const dismissFirstRun = useCallback(() => {
     setFirstRunOpen(false);
@@ -133,13 +179,20 @@ export default function App() {
     }
   }, []);
 
-  const openReceive = useCallback(() => setReceiveOpen(true), []);
-  const openHelp = useCallback(() => setHelpOpen(true), []);
+  const openReceive = useCallback(() => {
+    if (!clientSwitching) setReceiveOpen(true);
+  }, [clientSwitching]);
+  const openHelp = useCallback(() => {
+    if (!clientSwitching) setHelpOpen(true);
+  }, [clientSwitching]);
   const openData = useCallback(() => {
+    if (clientSwitching) return;
     setActiveSection('datos');
     void loadWorkspace(false);
-  }, [loadWorkspace]);
-  const openRules = useCallback(() => setActiveSection('reglas'), []);
+  }, [clientSwitching, loadWorkspace]);
+  const openRules = useCallback(() => {
+    if (!clientSwitching) setActiveSection('reglas');
+  }, [clientSwitching]);
 
   useEffect(() => {
     void loadWorkspace(false);
@@ -166,15 +219,22 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(''), 3200);
   }, []);
 
-  const shouldDiscardReceive = useCallback(async (generation: number) => {
+  const shouldDiscardReceive = useCallback(async (generation: ReceiveGeneration) => {
     while (true) {
       const outcome = resetOutcome.current;
       if (!outcome) break;
       if (await outcome) return true;
       if (resetOutcome.current === outcome) break;
     }
-    return generation !== resetGeneration.current;
+    return generation.reset !== resetGeneration.current || clientSwitchInProgress.current;
   }, []);
+
+  const receiveInvalidationError = useCallback(() => new ApiRequestError(
+    clientSwitchInProgress.current
+      ? 'Cambiaste de cliente durante la carga; vuelve a enviarla si aún la necesitas.'
+      : 'La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.',
+    409,
+  ), []);
 
   const handleProcessEvent = useCallback((event: ProcessEvent) => {
     if (event.type === 'decided') {
@@ -223,11 +283,12 @@ export default function App() {
 
   const receivingApi = useMemo<RecibirApi>(() => ({
     async createInvoiceText(text) {
-      const generation = resetGeneration.current;
+      const generation = { reset: resetGeneration.current };
       const row = await createInvoice({ text });
       if (await shouldDiscardReceive(generation)) {
-        throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
+        throw receiveInvalidationError();
       }
+      receiptGenerations.current.set(row.id, generation);
       setRows((current) => replaceRow(current, row));
       setSelectedId(row.id);
       setExpediente(null);
@@ -235,11 +296,12 @@ export default function App() {
       return row;
     },
     async createInvoiceFile(file) {
-      const generation = resetGeneration.current;
+      const generation = { reset: resetGeneration.current };
       const row = await createInvoice(file);
       if (await shouldDiscardReceive(generation)) {
-        throw new ApiRequestError('La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.', 409);
+        throw receiveInvalidationError();
       }
+      receiptGenerations.current.set(row.id, generation);
       setRows((current) => replaceRow(current, row));
       setSelectedId(row.id);
       setExpediente(null);
@@ -248,22 +310,36 @@ export default function App() {
     },
     async *process(request: ProcessRequest) {
       if (processing || resetOutcome.current) throw new ApiRequestError('Ya hay una evaluación o reinicio en curso. Inténtalo al terminar.', 409);
-      const generation = resetGeneration.current;
+      const requestIds = request.ids ?? [];
+      const generations = requestIds
+        .map((id) => receiptGenerations.current.get(id))
+        .filter((generation): generation is ReceiveGeneration => generation !== undefined);
+      const generation = generations[0] ?? { reset: resetGeneration.current };
+      const mixedGenerations = generations.some((item) => item.reset !== generation.reset);
+      if (mixedGenerations || await shouldDiscardReceive(generation)) {
+        for (const id of requestIds) receiptGenerations.current.delete(id);
+        throw receiveInvalidationError();
+      }
+      for (const id of requestIds) receiptGenerations.current.delete(id);
       setProcessing(true);
       try {
         yield* processInvoiceEvents(request, (event) => {
-          if (generation === resetGeneration.current) handleProcessEvent(event);
+          if (generation.reset === resetGeneration.current && !clientSwitchInProgress.current) {
+            handleProcessEvent(event);
+          }
         });
       } finally {
         setProcessing(false);
-        if (generation === resetGeneration.current) await loadWorkspace(false);
+        if (generation.reset === resetGeneration.current && !clientSwitchInProgress.current) {
+          await loadWorkspace(false);
+        }
       }
     },
-  }), [handleProcessEvent, loadWorkspace, processing, shouldDiscardReceive]);
+  }), [handleProcessEvent, loadWorkspace, processing, receiveInvalidationError, shouldDiscardReceive]);
 
   const handleDropFiles = useCallback(async (files: File[]) => {
     if (files.length === 0 || actionBusy) return;
-    const generation = resetGeneration.current;
+    const generation = { reset: resetGeneration.current };
     setActionBusy(true);
     try {
       let firstId: string | null = null;
@@ -285,7 +361,7 @@ export default function App() {
   }, [actionBusy, loadWorkspace, shouldDiscardReceive, showToast]);
 
   const handleReset = useCallback(async () => {
-    if (actionBusy || processing || resetOutcome.current) return;
+    if (actionBusy || processing || clientSwitching || resetOutcome.current) return;
     let settleResetOutcome!: (succeeded: boolean) => void;
     const pendingReset = new Promise<boolean>((resolve) => { settleResetOutcome = resolve; });
     resetOutcome.current = pendingReset;
@@ -311,7 +387,7 @@ export default function App() {
       resetOutcome.current = null;
       setActionBusy(false);
     }
-  }, [actionBusy, loadWorkspace, processing, showToast]);
+  }, [actionBusy, clientSwitching, loadWorkspace, processing, showToast]);
 
   const withSelectedAction = useCallback(async (
     action: (id: string) => Promise<ExpedienteData>,
@@ -361,42 +437,52 @@ export default function App() {
             <a className="wordmark" href="#inbox" aria-label="Visto Bueno">visto.bueno</a>
             <span className="masthead-divider" aria-hidden="true" />
             <div className="company-line">
-              <h1>{displayedWorkspace?.company.name ?? 'Andina Labs Inc.'}</h1>
+              {clientDirectory ? (
+                <ClientSwitcher
+                  clients={clientDirectory.clients}
+                  activeId={clientDirectory.activeId}
+                  activeCompanyName={company?.name ?? displayedWorkspace?.company.name ?? 'Cargando cliente…'}
+                  disabled={clientSwitching || actionBusy || processing || loading}
+                  onSwitch={handleClientSwitch}
+                />
+              ) : (
+                <h1>{company?.name ?? displayedWorkspace?.company.name ?? 'Cargando cliente…'}</h1>
+              )}
               <span className="fictional-tag">Datos ficticios</span>
             </div>
           </div>
           <nav className="navigation" aria-label="Secciones">
             <a href="#inbox" aria-current={activeSection === 'inbox' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); setActiveSection('inbox'); void loadWorkspace(false);
+              event.preventDefault(); if (clientSwitching) return; setActiveSection('inbox'); void loadWorkspace(false);
             }}>Bandeja</a>
             <a href="#reglas" aria-current={activeSection === 'reglas' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); setActiveSection('reglas');
+              event.preventDefault(); if (clientSwitching) return; setActiveSection('reglas');
             }}>Reglas</a>
             <a href="#datos" aria-current={activeSection === 'datos' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); setActiveSection('datos'); void loadWorkspace(false);
+              event.preventDefault(); if (clientSwitching) return; setActiveSection('datos'); void loadWorkspace(false);
             }}>Preparar datos</a>
             <a href="#bitacora" aria-current={activeSection === 'bitacora' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); setActiveSection('bitacora'); void loadWorkspace(false);
+              event.preventDefault(); if (clientSwitching) return; setActiveSection('bitacora'); void loadWorkspace(false);
             }}>Bitácora</a>
             <a href="#evaluacion" aria-current={activeSection === 'evaluacion' ? 'page' : undefined} onClick={(event) => {
-              event.preventDefault(); openEvaluation();
+              event.preventDefault(); if (clientSwitching) return; openEvaluation();
             }}>Evaluación</a>
           </nav>
           <div className="header-actions">
-            <button className="button button-secondary" type="button" onClick={openHelp}>
+            <button className="button button-secondary" type="button" disabled={clientSwitching} onClick={openHelp}>
               Cómo decide
             </button>
-            <button className="button button-primary" type="button" disabled={actionBusy || processing} onClick={openReceive}>
+            <button className="button button-primary" type="button" disabled={actionBusy || processing || clientSwitching} onClick={openReceive}>
               + Recibir factura
             </button>
-            <button className="button button-secondary" type="button" disabled={actionBusy || processing} onClick={() => void handleReset()}>
+            <button className="button button-secondary" type="button" disabled={actionBusy || processing || clientSwitching} onClick={() => void handleReset()}>
               Reiniciar demo
             </button>
           </div>
         </header>
 
         <FirstRunHint
-          open={firstRunOpen}
+          open={firstRunOpen && !clientSwitching}
           onDismiss={dismissFirstRun}
           onOpenData={openData}
           onOpenRules={openRules}

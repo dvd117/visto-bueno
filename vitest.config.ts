@@ -8,7 +8,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['tests/**/*.test.ts', 'src/server/**/*.test.ts', 'src/shared/**/*.test.ts'],
+          include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx', 'src/server/**/*.test.ts', 'src/shared/**/*.test.ts'],
           exclude: ['tests/client/**'],
         },
       },
