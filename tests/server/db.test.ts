@@ -10,6 +10,7 @@ import {
   openDb,
   putContract,
   putRules,
+  putTreasury,
 } from '../../src/server/db/db';
 import { ensureWorkspace, resetWorkspace } from '../../src/server/db/workspace';
 import { approveInvoice, decideInvoice, resolveFlag } from '../../src/server/db/decide';
@@ -130,6 +131,26 @@ describe('database persistence', () => {
     });
     expect(approval.ok).toBe(true);
     expect(approval.record.decision.checks.find((check) => check.id === 'R10')).toMatchObject({ passed: false, effect: 'review' });
+  });
+
+  it('records the applied currency FX date instead of another currency’s newer rate date', () => {
+    const workspaceId = 'fx-date';
+    ensureWorkspace(db, workspaceId);
+    const data = getWorkspaceData(db, workspaceId);
+    putTreasury(db, workspaceId, {
+      ...data.treasury,
+      fx: [
+        { currency: 'USD', perUsd: '1', date: '2026-10-16' },
+        { currency: 'CLP', perUsd: '950', date: '2026-10-15' },
+      ],
+    });
+    createInvoice(db, workspaceId, { id: 'FX-DATE-001', sourceKind: 'text' });
+
+    const record = decideInvoice(db, workspaceId, 'FX-DATE-001', readyInput('FX-DATE-001', {
+      currency: 'CLP', amountRaw: 'CLP 950', amountsFound: ['CLP 950'], currenciesFound: ['CLP'],
+    }));
+
+    expect(record.dataVersions.fxDate).toBe('2026-10-15');
   });
 
   it('keeps image confirmation as an approval gate without source-text checks', () => {

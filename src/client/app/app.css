@@ -457,7 +457,7 @@ textarea {
   cursor: pointer;
 }
 
-.more-rows[data-total="3"][aria-expanded="false"] {
+.more-rows[data-hide-on-desktop="true"][aria-expanded="false"] {
   display: none;
 }
 
@@ -1322,7 +1322,7 @@ textarea {
   .list-guide span:last-child { display: none; }
   .state-group > summary { min-height: 40px; }
   .group-rows:not([data-expanded="true"]) .invoice-row:nth-child(n+3) { display: none; }
-  .more-rows[data-total="3"][aria-expanded="false"] { display: inline-block; }
+  .more-rows[data-hide-on-desktop="true"][aria-expanded="false"] { display: inline-block; }
   .invoice-row { grid-template-columns: 22px minmax(0, 1fr) minmax(48px, 60px) minmax(90px, 110px); gap: 6px; padding: 11px 4px; }
   .invoice-value { padding-top: 16px; font-size: 9px; }
   .invoice-value strong { font-size: 10px; }

@@ -143,7 +143,9 @@ function evaluate(db: Db, workspaceId: string, invoice: StoredInvoice, inputs: D
   const dataVersions = currentDataVersions(
     verified.vendor?.version,
     contract?.version,
-    latestFxDate(data.treasury.fx.map((rate) => rate.date)),
+    verified.money && verified.money.currency !== 'USD'
+      ? data.treasury.fx.find((rate) => rate.currency === verified.money?.currency)?.date ?? 'unknown'
+      : latestFxDate(data.treasury.fx.map((rate) => rate.date)),
   );
   const record = buildRecord({
     id: randomUUID(),

@@ -85,9 +85,9 @@ describe('export builders', () => {
     ]);
 
     const [header, ...rows] = csv.split('\n');
-    expect(header).toBe('vendor_tax_id,payout_account,payout_currency,amount_original,amount_usd,decision_id,authorized_by,seal');
+    expect(header).toBe('vendor_tax_id,payout_account,payout_currency,amount_original,amount_usd,fx_date,decision_id,authorized_by,seal');
     expect(rows).toHaveLength(2);
-    expect(csv).toContain('901.234.567-8,Cuenta demo 7788,COP,1234.56,29.60,ready-1,,seal-ready-1');
+    expect(csv).toContain('901.234.567-8,Cuenta demo 7788,COP,1234.56,29.60,2026-10-15,ready-1,,seal-ready-1');
     expect(csv).toContain('approved-1,"María, ""Finanzas""",seal-approved-1');
     expect(csv).not.toContain('stale');
     expect(csv).not.toContain('queued');
@@ -98,6 +98,16 @@ describe('export builders', () => {
     const csv = paymentsCsv([paymentItem('approved', 'quoted')]);
     expect(csv).toContain('"Cuenta, ""Norte""\nNueva"');
     expect(csv).toContain('"María, ""Finanzas"""');
+  });
+
+  it('exports zero-decimal CLP amounts with the decision rate date', () => {
+    const clpVendor = { ...simpleVendor, payoutCurrency: 'CLP' as const };
+    const item = {
+      ...paymentItem('ready', 'clp-ready', clpVendor),
+      amountOriginal: { currency: 'CLP' as const, minor: 1234 },
+    };
+
+    expect(paymentsCsv([item])).toContain('901.234.567-8,Cuenta demo 7788,CLP,1234,29.60,2026-10-15,clp-ready,,seal-clp-ready');
   });
 
   it.each(['=1+1', '+1+1', '-1+1', '@SUM(A1:A2)'])(

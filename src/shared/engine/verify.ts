@@ -1,8 +1,7 @@
 import { parseAmount } from '../domain/money';
+import { isCurrency } from '../domain/currencies';
 import type { CheckOutcome, CheckResult, Currency, ExtractionClaims, ExtractionResult, Money, Vendor } from '../domain/types';
 import { analyzeAccount, normalize, normalizeAccount } from './normalize';
-
-const CURRENCIES: readonly Currency[] = ['USD', 'COP', 'MXN'];
 
 const EXTRACTION_FAILURE_REASONS: Record<Extract<ExtractionResult, { ok: false }>['error'], string> = {
   rate_limited: 'No pude leer la factura (límite del servicio)',
@@ -27,10 +26,6 @@ function check(
   outcome: CheckOutcome = passed ? 'passed' : 'failed',
 ): CheckResult {
   return { id, kind: 'verify', label, passed, outcome, effect, reason };
-}
-
-function isCurrency(value: string | null | undefined): value is Currency {
-  return CURRENCIES.includes(value as Currency);
 }
 
 function uniqueNormalized(values: Array<string | null | undefined>): Set<string> {

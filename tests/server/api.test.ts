@@ -222,11 +222,13 @@ describe('T11 API', () => {
     expect(invoices.every((invoice) => invoice.status === 'queued')).toBe(true);
   });
 
-  it('accepts Chile as a vendor country through the data API', async () => {
+  it.each([
+    ['CL', 'CLP'], ['PE', 'PEN'], ['AR', 'ARS'],
+  ] as const)('accepts %s vendors paid in %s through the data API', async (country, payoutCurrency) => {
     const { app } = makeRuntime();
     const vendor = {
-      id: 'ladera-austral', name: 'Ladera Austral SpA', taxId: '99.876.543-9', country: 'CL',
-      payoutCurrency: 'USD', payoutAccount: 'Banco Niebla Azul ···· 6341', status: 'allowed', version: 1,
+      id: `proveedor-${country.toLowerCase()}`, name: `Proveedor ficticio ${country}`, taxId: `FICTICIO-${country}`, country,
+      payoutCurrency, payoutAccount: 'Banco Niebla Azul ···· 6341', status: 'allowed', version: 1,
     };
 
     const response = await app.request('/api/data/vendors', {
@@ -236,7 +238,7 @@ describe('T11 API', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ country: 'CL', payoutCurrency: 'USD' });
+    expect(await response.json()).toMatchObject({ country, payoutCurrency });
   });
 
   it('serves the real committed invoice file from the workspace-scoped files route', async () => {

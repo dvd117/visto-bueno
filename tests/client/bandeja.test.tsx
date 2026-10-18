@@ -151,12 +151,15 @@ afterEach(() => {
 });
 
 describe('Bandeja and Expediente', () => {
-  it('groups attention states before ready and keeps ready collapsed by default', () => {
+  it('opens invoice groups by default except for ready', () => {
     const rows = [
       makeRow('ready', 'AL-043'),
       makeRow('approval_required', 'AL-035'),
       makeRow('review_required', 'AL-044'),
       makeRow('stopped', 'AL-042'),
+      makeRow('stale', 'AL-045'),
+      makeRow('approved', 'AL-046'),
+      makeRow('rejected', 'AL-047'),
       { ...makeRow('queued', 'AL-050'), receivedAt: '2026-10-18T12:00:00.000Z' },
     ];
 
@@ -175,12 +178,36 @@ describe('Bandeja and Expediente', () => {
 
     const groups = Array.from(document.querySelectorAll<HTMLDetailsElement>('.state-group'));
     expect(groups.map((group) => group.dataset.state)).toEqual([
-      'stopped', 'review_required', 'approval_required', 'ready',
+      'stopped', 'review_required', 'approval_required', 'stale', 'ready', 'approved', 'rejected',
     ]);
-    expect(groups.find((group) => group.dataset.state === 'ready')?.open).toBe(false);
+    expect(groups.filter((group) => !group.open).map((group) => group.dataset.state)).toEqual(['ready']);
     expect(screen.getByRole('heading', { name: 'Antes de procesar' })).not.toBeNull();
     expect(document.querySelector('.arrival-section .invoice-id')?.textContent).toBe('AL-050');
     expect(screen.getAllByText('PDF').length).toBeGreaterThan(0);
+  });
+
+  it('marks a three-row expansion button to hide on desktop only', () => {
+    const rows = [
+      makeRow('stopped', 'AL-042'),
+      makeRow('stopped', 'AL-043'),
+      makeRow('stopped', 'AL-044'),
+    ];
+
+    render(
+      <Bandeja
+        rows={rows}
+        selectedId={null}
+        counters={makeWorkspace({ stopped: 3 }).counters}
+        processing={false}
+        rowRevisions={{}}
+        onSelect={vi.fn()}
+        onProcess={vi.fn()}
+        onDropFiles={vi.fn()}
+      />,
+    );
+
+    const moreButton = document.querySelector('.state-group[data-state="stopped"] .more-rows');
+    expect(moreButton?.getAttribute('data-hide-on-desktop')).toBe('true');
   });
 
   it('sorts rows inside each state group by receipt time, newest first', () => {
@@ -302,6 +329,19 @@ describe('Bandeja and Expediente', () => {
       expect(descriptionId).toBeTruthy();
       expect(document.getElementById(descriptionId!)?.textContent).toBe('Duda en los datos');
     }
+  });
+
+  it('shows an original CLP amount beside USD and the applied rate date', async () => {
+    const row: InvoiceRow = {
+      ...makeRow(), currency: 'CLP', amount: 'CLP 950', amountUsd: 'USD 1,00', fxDate: '2026-10-15',
+    };
+    installApi([row], makeExpediente(row));
+
+    render(<App />);
+
+    expect(await screen.findByText('CLP 950')).not.toBeNull();
+    expect(screen.getByText('USD 1,00')).not.toBeNull();
+    expect(screen.getByText('Tasa ilustrativa · 2026-10-15')).not.toBeNull();
   });
 
   it('does not show an approve control for a stopped invoice', async () => {

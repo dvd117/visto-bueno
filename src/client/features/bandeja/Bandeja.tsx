@@ -29,11 +29,11 @@ interface StateGroup {
 const stateGroups: StateGroup[] = [
   { status: 'stopped', plural: 'Frenadas', openByDefault: true },
   { status: 'review_required', plural: 'Requieren revisión', openByDefault: true },
-  { status: 'approval_required', plural: 'Requieren tu aprobación', openByDefault: false },
-  { status: 'stale', plural: 'Desactualizadas', openByDefault: false },
+  { status: 'approval_required', plural: 'Requieren tu aprobación', openByDefault: true },
+  { status: 'stale', plural: 'Desactualizadas', openByDefault: true },
   { status: 'ready', plural: 'Listas para pagar', openByDefault: false },
-  { status: 'approved', plural: 'Aprobadas', openByDefault: false },
-  { status: 'rejected', plural: 'Rechazadas', openByDefault: false },
+  { status: 'approved', plural: 'Aprobadas', openByDefault: true },
+  { status: 'rejected', plural: 'Rechazadas', openByDefault: true },
 ];
 
 const sourceLabels: Record<SourceKind, string> = {
@@ -107,6 +107,7 @@ export function Bandeja({
         <span className="invoice-value">
           <strong>{row.amount}</strong>
           {row.amountUsd && <span>{row.amountUsd}</span>}
+          {row.fxDate && <span className="invoice-fx-date">Tasa ilustrativa · {row.fxDate}</span>}
         </span>
         <span className="invoice-state">
           <StatusChip
@@ -180,7 +181,7 @@ export function Bandeja({
                 <button
                   type="button"
                   className="more-rows"
-                  data-total={queuedRows.length}
+                  data-hide-on-desktop={queuedRows.length === 3}
                   aria-expanded={expandedGroups.has('queued')}
                   onClick={() => toggleExpanded('queued')}
                 >
@@ -218,7 +219,7 @@ export function Bandeja({
                     <button
                       type="button"
                       className="more-rows"
-                      data-total={groupRows.length}
+                      data-hide-on-desktop={groupRows.length === 3}
                       aria-expanded={isExpanded}
                       onClick={() => toggleExpanded(group.status)}
                     >

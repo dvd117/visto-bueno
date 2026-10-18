@@ -18,6 +18,7 @@ import type {
   WorkspaceSummary,
 } from '../../shared/api';
 import { evaluationResultSchema } from '../../shared/api';
+import { CURRENCIES } from '../../shared/domain/currencies';
 import type { Budget, Contract, DecisionRecord, FxRate, Rules, Treasury, Vendor } from '../../shared/domain/types';
 import type {
   BitacoraApi, CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi, EvaluationResult, ReglasApi,
@@ -27,14 +28,15 @@ const invoiceStatusSchema = z.enum([
   'queued', 'ready', 'approval_required', 'review_required', 'stopped', 'approved', 'rejected', 'stale',
 ]);
 const sourceKindSchema = z.enum(['pdf', 'image', 'text']);
-const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'US']);
-const currencySchema = z.enum(['USD', 'COP', 'MXN']);
+const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US']);
+const currencySchema = z.enum(CURRENCIES);
 const invoiceRowSchema: z.ZodType<InvoiceRow> = z.object({
   id: z.string(),
   payee: z.string(),
   concept: z.string(),
   amount: z.string(),
   amountUsd: z.string().nullable(),
+  fxDate: z.string().nullable().optional(),
   due: z.string().nullable(),
   status: invoiceStatusSchema,
   reason: z.string(),
