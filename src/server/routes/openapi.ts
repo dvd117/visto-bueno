@@ -200,6 +200,11 @@ const companyRecordSchemaDocument: JsonSchema = {
     },
     limits: {
       type: 'object',
+      description: 'approvalThresholdUsdMinor debe ser menor que perPaymentUsdMinor.',
+      'x-runtime-constraints': [{
+        fields: ['approvalThresholdUsdMinor', 'perPaymentUsdMinor'],
+        relation: 'approvalThresholdUsdMinor < perPaymentUsdMinor',
+      }],
       additionalProperties: false,
       required: ['perPaymentUsdMinor', 'monthlyUsdMinor', 'approvalThresholdUsdMinor'],
       properties: {

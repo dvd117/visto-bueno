@@ -153,7 +153,14 @@ describe('OpenAPI document', () => {
         },
         operatingCountries: { type: 'array', uniqueItems: true, items: { enum: ['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US'] } },
         currencies: { type: 'array', contains: { const: 'USD' } },
-        limits: { properties: { perPaymentUsdMinor: { maximum: Number.MAX_SAFE_INTEGER } } },
+        limits: {
+          description: 'approvalThresholdUsdMinor debe ser menor que perPaymentUsdMinor.',
+          'x-runtime-constraints': [{
+            fields: ['approvalThresholdUsdMinor', 'perPaymentUsdMinor'],
+            relation: 'approvalThresholdUsdMinor < perPaymentUsdMinor',
+          }],
+          properties: { perPaymentUsdMinor: { maximum: Number.MAX_SAFE_INTEGER } },
+        },
       },
     });
     expect(schemas.CompanyRecord?.properties?.name?.maxLength).toBeUndefined();
