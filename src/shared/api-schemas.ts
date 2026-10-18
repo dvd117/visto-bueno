@@ -13,8 +13,8 @@ import type {
   SimulationResult,
   WorkspaceSummary,
 } from './api';
-import type { CheckResult, DecisionRecord, Rules } from './domain/types';
 import { CURRENCIES } from './domain/currencies';
+import type { CheckResult, DecisionRecord, Rules } from './domain/types';
 
 const invoiceStatusSchema = z.enum([
   'queued', 'ready', 'approval_required', 'review_required', 'stopped', 'approved', 'rejected', 'stale',

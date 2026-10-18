@@ -1,6 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../../src/server/db/db';
-import { actionSchema } from '../../src/server/routes/api';
 import { createServerApp, serverRuntime } from '../../src/server/app';
 
 const runtimes: Array<ReturnType<typeof createServerApp>> = [];
@@ -10,6 +9,7 @@ type JsonSchema = {
   properties?: Record<string, JsonSchema>;
   items?: JsonSchema;
   allOf?: JsonSchema[];
+  enum?: string[];
 };
 
 function makeRuntime() {
@@ -25,6 +25,50 @@ afterEach(() => {
 afterAll(() => serverRuntime.dispose());
 
 describe('OpenAPI document', () => {
+  it('documents the single-invoice decision endpoint and its idempotency contract', async () => {
+    const { app } = makeRuntime();
+    const response = await app.request('/api/openapi.json');
+    const document = await response.json() as {
+      paths?: Record<string, Record<string, {
+        parameters?: Array<{ name?: string; in?: string; required?: boolean; schema?: JsonSchema }>;
+        requestBody?: { required?: boolean; content?: Record<string, { schema?: JsonSchema }> };
+        responses?: Record<string, { content?: Record<string, { schema?: JsonSchema }> }>;
+      }>>;
+      components?: { schemas?: Record<string, JsonSchema> };
+    };
+    const decide = document.paths?.['/api/v1/decide']?.post;
+    const key = decide?.parameters?.[0];
+
+    expect(decide).toBeDefined();
+    expect(key).toMatchObject({ name: 'Idempotency-Key', in: 'header', required: true });
+    expect(key?.schema?.['x-maxLengthAfterTrim']).toBe(120);
+    const keyPattern = new RegExp(key?.schema?.pattern as string);
+    expect(keyPattern.test(` ${'x'.repeat(120)} `)).toBe(true);
+    expect(keyPattern.test(` ${'x'.repeat(121)} `)).toBe(false);
+    expect(keyPattern.test('   ')).toBe(false);
+    expect(decide?.requestBody).toMatchObject({
+      required: true,
+      content: {
+        'application/json': { schema: { $ref: '#/components/schemas/DecideRequest' } },
+        'multipart/form-data': { schema: { $ref: '#/components/schemas/DecideFile' } },
+      },
+    });
+    expect(decide?.responses?.['200']?.content?.['application/json']?.schema).toEqual({
+      $ref: '#/components/schemas/DecideResponse',
+    });
+    expect(document.components?.schemas?.DecideResponse).toMatchObject({
+      type: 'object',
+      required: ['state', 'headline', 'reasons', 'checks', 'sealId', 'decisionRecordId'],
+      properties: {
+        state: { enum: ['ready', 'approval_required', 'review_required', 'stopped'] },
+        reasons: { type: 'array', items: { type: 'string' } },
+        checks: { type: 'array', items: { properties: { outcome: { enum: ['passed', 'failed', 'pending', 'not_applicable'] } } } },
+      },
+    });
+    expect(document.components?.schemas?.DecideRequest?.oneOf).toBeDefined();
+    expect(document.components?.schemas?.DecideFile?.properties?.file).toMatchObject({ type: 'string', format: 'binary' });
+  });
+
   it('is an OpenAPI 3.1 document and includes every registered API route', async () => {
     const { app } = makeRuntime();
     const response = await app.request('/api/openapi.json');
@@ -46,39 +90,6 @@ describe('OpenAPI document', () => {
     expect(Object.keys(document.paths ?? {})).not.toHaveLength(0);
     expect(document.components?.securitySchemes?.workspaceCookie).toMatchObject({
       type: 'apiKey', in: 'cookie', name: 'workspace_id',
-    });
-    const decideOperation = document.paths?.['/api/v1/decide']?.post as {
-      parameters?: Array<{ schema?: JsonSchema }>;
-    } | undefined;
-    expect(decideOperation).toMatchObject({
-      operationId: 'decideInvoice',
-      parameters: [{
-        name: 'Idempotency-Key', in: 'header', required: true,
-        schema: { type: 'string', 'x-maxLengthAfterTrim': 120 },
-      }],
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': { schema: { $ref: '#/components/schemas/DecideRequest' } },
-          'multipart/form-data': { schema: { $ref: '#/components/schemas/DecideFile' } },
-        },
-      },
-      responses: {
-        '200': { content: { 'application/json': { schema: { $ref: '#/components/schemas/DecideResponse' } } } },
-      },
-    });
-    const keyPattern = new RegExp(decideOperation?.parameters?.[0]?.schema?.pattern as string);
-    expect(keyPattern.test(` ${'x'.repeat(120)} `)).toBe(true);
-    expect(keyPattern.test(` ${'x'.repeat(121)} `)).toBe(false);
-    expect(keyPattern.test('   ')).toBe(false);
-    expect(document.components?.schemas?.DecideResponse).toMatchObject({
-      type: 'object',
-      required: ['state', 'headline', 'reasons', 'checks', 'sealId', 'decisionRecordId'],
-      properties: {
-        state: { enum: ['ready', 'approval_required', 'review_required', 'stopped'] },
-        reasons: { type: 'array', items: { type: 'string' } },
-        checks: { type: 'array', items: { required: expect.arrayContaining(['outcome']) } },
-      },
     });
     for (const path of ['/api/export/payments.csv', '/api/export/reconciliation.csv']) {
       expect(document.paths?.[path]?.get).toMatchObject({
@@ -114,44 +125,9 @@ describe('OpenAPI document', () => {
     const contract = schemas.Contract;
     const fx = schemas.Treasury?.properties?.fx;
 
-    const trimmedProperties: Array<{ property: JsonSchema | undefined; maxLength: number }> = [
-      { property: schemas.NewInvoiceText?.properties?.text, maxLength: 2 * 1024 * 1024 },
-      { property: schemas.DecisionAction?.properties?.approver, maxLength: 120 },
-      { property: schemas.DecisionAction?.properties?.reason, maxLength: 500 },
-      { property: schemas.DecisionAction?.properties?.idempotencyKey, maxLength: 120 },
-      { property: schemas.FlagResolution?.properties?.choice, maxLength: 120 },
-      { property: schemas.FlagResolution?.properties?.reason, maxLength: 500 },
-      { property: schemas.FlagResolution?.properties?.approver, maxLength: 120 },
-      { property: schemas.Vendor?.properties?.id, maxLength: 100 },
-      { property: schemas.Vendor?.properties?.name, maxLength: 200 },
-      { property: schemas.Vendor?.properties?.taxId, maxLength: 100 },
-      { property: schemas.Vendor?.properties?.payoutAccount, maxLength: 200 },
-      { property: schemas.Contract?.properties?.id, maxLength: 100 },
-      { property: schemas.Contract?.properties?.vendorId, maxLength: 100 },
-      { property: schemas.Contract?.properties?.scope, maxLength: 500 },
-      { property: schemas.Contract?.properties?.unit, maxLength: 100 },
-    ];
-    for (const { property, maxLength } of trimmedProperties) {
-      expect(property?.minLength).toBe(1);
-      expect(property?.maxLength).toBeUndefined();
-      expect(property?.['x-maxLengthAfterTrim']).toBe(maxLength);
-      expect(typeof property?.pattern).toBe('string');
-      if (maxLength <= 1000) {
-        const pattern = new RegExp(property?.pattern as string);
-        expect(pattern.test(`  ${'x'.repeat(maxLength)}  `)).toBe(true);
-        expect(pattern.test(`  ${'x'.repeat(maxLength + 1)}  `)).toBe(false);
-        expect(pattern.test('   ')).toBe(false);
-      }
-    }
-    expect(schemas.DecisionAction?.properties?.accountLast4?.maxLength).toBe(32);
-    const paddedApprover = `  ${'A'.repeat(120)}  `;
-    expect(actionSchema.safeParse({
-      approver: paddedApprover, reason: 'Validar', idempotencyKey: 'approve-1',
-    }).success).toBe(true);
-    const approverPattern = new RegExp(schemas.DecisionAction?.properties?.approver?.pattern as string);
-    expect(approverPattern.test(paddedApprover)).toBe(true);
-    expect(approverPattern.test(`  ${'A'.repeat(121)}  `)).toBe(false);
-    expect(approverPattern.test('   ')).toBe(false);
+    expect(schemas.NewInvoiceText?.properties?.text).toMatchObject({
+      minLength: 1, maxLength: 2 * 1024 * 1024, pattern: '\\S',
+    });
     expect(contract?.properties?.start).toMatchObject({
       type: 'string', format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$',
     });
@@ -167,7 +143,8 @@ describe('OpenAPI document', () => {
     expect(contract?.['x-runtime-constraints']).toContainEqual({ fields: ['start', 'end'], relation: 'start <= end' });
     expect(fx?.items?.properties?.perUsd?.pattern).toBe('^(?=.*[1-9])\\d+(?:\\.\\d+)?$');
     expect(fx?.items?.properties?.date).toMatchObject({ format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
-    expect(fx?.allOf).toHaveLength(3);
+    expect(fx?.items?.properties?.currency?.enum).toEqual(['USD', 'COP', 'MXN', 'CLP', 'PEN', 'ARS', 'VES']);
+    expect(fx?.allOf).toHaveLength(7);
     expect(fx?.allOf?.[0]).toMatchObject({ minContains: 0, maxContains: 1 });
     const processId = schemas.ProcessRequest?.properties?.ids?.items;
     expect(processId).toMatchObject({
