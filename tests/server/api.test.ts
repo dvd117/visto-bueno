@@ -36,6 +36,26 @@ function assertLabeledReplayEvidenceAvailable(complete: boolean, required: boole
 }
 
 describe('T11 API', () => {
+  it('exposes the immutable invoice receipt timestamp on create and list responses', async () => {
+    const runtime = makeRuntime({ seedExamples: false });
+    const { app } = runtime;
+    const createdResponse = await app.request('/api/invoices', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'RECIBO-001\nFactura de prueba' }),
+    });
+    const cookie = createdResponse.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const workspaceId = cookie.slice('workspace_id='.length);
+    const created = await createdResponse.json() as { id: string; receivedAt?: string };
+
+    expect(createdResponse.status).toBe(201);
+    expect(created.receivedAt).toBe(getInvoice(runtime.db, workspaceId, created.id)?.createdAt);
+
+    const listedResponse = await app.request('/api/invoices', { headers: { cookie } });
+    const listed = await listedResponse.json() as Array<{ id: string; receivedAt?: string }>;
+    expect(listed.find((row) => row.id === created.id)?.receivedAt).toBe(created.receivedAt);
+  });
+
   it('purges uploaded invoices and their history on reset without touching another workspace', async () => {
     const uploadDirectory = resolve('.w', 'api-reset');
     const sources = new Map<string, { vendorId: string; reference: string; amount: string; description: string }>();

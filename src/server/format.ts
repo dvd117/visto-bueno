@@ -39,6 +39,7 @@ export function toInvoiceRow(invoice: StoredInvoice, vendors: readonly Vendor[] 
     reason: decision?.headline ?? (invoice.status === 'queued' ? 'Pendiente de evaluación' : 'Revisa el expediente'),
     ...(subtitle ? { subtitle } : {}),
     sourceKind: invoice.sourceKind,
+    receivedAt: invoice.createdAt,
   };
 }
 
