@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Decimal from 'decimal.js';
+import { CURRENCIES, CURRENCY_DEFINITIONS } from '../../../shared/domain/currencies';
 import type { Budget, Contract, CostCenter, Currency, FxRate, Treasury, Vendor } from '../../../shared/domain/types';
 import type {
   CsvTable, DataTable, DataTableValues, DatosApi,
@@ -24,26 +25,30 @@ type TreasuryEditorRow =
 const countryOptions = [
   { value: 'CO', label: 'Colombia (CO)' }, { value: 'MX', label: 'México (MX)' },
   { value: 'VE', label: 'Venezuela (VE)' }, { value: 'CL', label: 'Chile (CL)' },
+  { value: 'PE', label: 'Perú (PE)' }, { value: 'AR', label: 'Argentina (AR)' },
   { value: 'US', label: 'Estados Unidos (US)' },
 ];
-const currencyOptions = [
-  { value: 'USD', label: 'Dólar estadounidense (USD)' },
-  { value: 'COP', label: 'Peso colombiano (COP)' },
-  { value: 'MXN', label: 'Peso mexicano (MXN)' },
-];
+const currencyLabels: Record<Currency, string> = {
+  USD: 'Dólar estadounidense (USD)', COP: 'Peso colombiano (COP)', MXN: 'Peso mexicano (MXN)',
+  CLP: 'Peso chileno (CLP)', PEN: 'Sol peruano (PEN)', ARS: 'Peso argentino (ARS)', VES: 'Bolívar venezolano (VES)',
+};
+const currencyOptions = CURRENCIES.map((value) => ({ value, label: currencyLabels[value] }));
 const costCenterOptions = [
   { value: 'ingenieria', label: 'Ingeniería' }, { value: 'diseno', label: 'Diseño' },
   { value: 'operaciones', label: 'Operaciones' }, { value: 'legal', label: 'Legal' },
 ];
 
-function minorToDecimal(minor: number) {
-  return new Decimal(minor).div(100).toFixed(2);
+function minorToDecimal(minor: number, currency: Currency) {
+  const exponent = CURRENCY_DEFINITIONS[currency].exponent;
+  return new Decimal(minor).div(new Decimal(10).pow(exponent)).toFixed(exponent);
 }
 
-function decimalToMinor(value: string) {
+function decimalToMinor(value: string, currency: Currency) {
   const normalized = value.trim();
-  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) throw new Error('Usa un monto con hasta dos decimales, por ejemplo 850.00.');
-  const minor = new Decimal(normalized).mul(100);
+  const exponent = CURRENCY_DEFINITIONS[currency].exponent;
+  const pattern = exponent === 0 ? /^\d+$/ : new RegExp(`^\\d+(?:\\.\\d{1,${exponent}})?$`);
+  if (!pattern.test(normalized)) throw new Error(`Usa un monto con hasta ${exponent} decimales para ${currency}.`);
+  const minor = new Decimal(normalized).mul(new Decimal(10).pow(exponent));
   if (!minor.isInteger() || minor.isNegative() || minor.greaterThan(Number.MAX_SAFE_INTEGER)) {
     throw new Error('El monto debe ser positivo y estar dentro del rango permitido.');
   }
@@ -229,12 +234,12 @@ const contractColumns: Column<Contract>[] = [
   textColumn('scope', 'Alcance', (row) => row.scope, (row, scope) => ({ ...row, scope })),
   textColumn('type', 'Tipo', (row) => row.type, (row, type) => ({ ...row, type: type as Contract['type'] }), { options: [{ value: 'fixed', label: 'Fijo' }, { value: 'variable', label: 'Variable' }] }),
   textColumn('currency', 'Moneda', (row) => row.currency, (row, currency) => ({ ...row, currency: currency as Currency }), { options: currencyOptions }),
-  textColumn('amount', 'Monto fijo', (row) => row.amountMinor === undefined ? '' : minorToDecimal(row.amountMinor), (row, value) => {
-    const amountMinor = value.trim() === '' ? undefined : decimalToMinor(value);
+  textColumn('amount', 'Monto fijo', (row) => row.amountMinor === undefined ? '' : minorToDecimal(row.amountMinor, row.currency), (row, value) => {
+    const amountMinor = value.trim() === '' ? undefined : decimalToMinor(value, row.currency);
     return { ...row, amountMinor, ...(amountMinor === undefined ? {} : { rateMinor: undefined, unit: undefined, maxUnitsPerPeriod: undefined }) };
   }),
-  textColumn('rate', 'Tarifa por unidad', (row) => row.rateMinor === undefined ? '' : minorToDecimal(row.rateMinor), (row, value) => {
-    const rateMinor = value.trim() === '' ? undefined : decimalToMinor(value);
+  textColumn('rate', 'Tarifa por unidad', (row) => row.rateMinor === undefined ? '' : minorToDecimal(row.rateMinor, row.currency), (row, value) => {
+    const rateMinor = value.trim() === '' ? undefined : decimalToMinor(value, row.currency);
     return { ...row, rateMinor, ...(rateMinor === undefined ? {} : { amountMinor: undefined }) };
   }),
   textColumn('unit', 'Unidad', (row) => row.unit ?? '', (row, unit) => ({ ...row, unit: unit.trim() || undefined })),
@@ -249,7 +254,7 @@ const contractColumns: Column<Contract>[] = [
 const budgetColumns: Column<Budget>[] = [
   textColumn('costCenter', 'Centro de costo', (row) => row.costCenter, (row, costCenter) => ({ ...row, costCenter: costCenter as CostCenter }), { options: costCenterOptions }),
   textColumn('month', 'Mes', (row) => row.month, (row, month) => ({ ...row, month })),
-  textColumn('approvedUsdMinor', 'Presupuesto aprobado (USD)', (row) => minorToDecimal(row.approvedUsdMinor), (row, amount) => ({ ...row, approvedUsdMinor: decimalToMinor(amount) })),
+  textColumn('approvedUsdMinor', 'Presupuesto aprobado (USD)', (row) => minorToDecimal(row.approvedUsdMinor, 'USD'), (row, amount) => ({ ...row, approvedUsdMinor: decimalToMinor(amount, 'USD') })),
 ];
 
 const treasuryColumns: Column<TreasuryEditorRow>[] = [
@@ -257,8 +262,8 @@ const treasuryColumns: Column<TreasuryEditorRow>[] = [
   textColumn('currency', 'Moneda', (row) => row.kind === 'balance' ? 'USD' : row.currency, (row, currency) => row.kind === 'fx' ? { ...row, currency: currency as Currency } : row, {
     options: currencyOptions, editable: (row) => row.kind === 'fx',
   }),
-  textColumn('value', 'Valor', (row) => row.kind === 'balance' ? minorToDecimal(row.balanceUsdMinor) : row.perUsd, (row, value) => {
-    if (row.kind === 'balance') return { ...row, balanceUsdMinor: decimalToMinor(value) };
+  textColumn('value', 'Valor', (row) => row.kind === 'balance' ? minorToDecimal(row.balanceUsdMinor, 'USD') : row.perUsd, (row, value) => {
+    if (row.kind === 'balance') return { ...row, balanceUsdMinor: decimalToMinor(value, 'USD') };
     if (!/^\d+(?:\.\d+)?$/.test(value.trim()) || new Decimal(value).lessThanOrEqualTo(0)) {
       throw new Error('Usa una tasa decimal mayor que cero.');
     }
@@ -372,7 +377,7 @@ export default function Datos({ api }: { api: DatosApi }) {
       <header className="mb-8 border-b border-line pb-5">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-soft">03 / CONFIGURACIÓN DE DATOS</p>
         <h1 className="text-3xl font-extrabold tracking-tight">Preparar datos</h1>
-        <p className="mt-2 max-w-2xl text-sm text-soft">Edita los registros que usa la evaluación. Los importes se guardan en centavos.</p>
+        <p className="mt-2 max-w-2xl text-sm text-soft">Edita los registros que usa la evaluación. Los importes respetan los decimales propios de cada moneda; CLP usa pesos enteros.</p>
       </header>
 
       {loadError ? <p role="alert" className="border-l-4 border-stopped py-2 pl-3 text-stopped">{loadError}</p>
@@ -404,7 +409,11 @@ export default function Datos({ api }: { api: DatosApi }) {
 
             <section aria-labelledby="treasury-heading" className="space-y-4 border-t-[3px] border-line-bold pt-4">
               <div className="flex flex-wrap items-end justify-between gap-3">
-                <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-soft">04 / DISPONIBILIDAD</p><h2 id="treasury-heading" className="text-xl font-bold tracking-tight">Saldo y tipos de cambio</h2></div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-soft">04 / DISPONIBILIDAD</p>
+                  <h2 id="treasury-heading" className="text-xl font-bold tracking-tight">Saldo y tipos de cambio</h2>
+                  <p className="mt-1 text-xs text-soft">Tasas ilustrativas del demo, fijas y editables; no se consulta el mercado.</p>
+                </div>
                 {renderUpload('fx', 'treasury', 'tipos de cambio')}
               </div>
               <EditableTable

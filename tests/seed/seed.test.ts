@@ -109,9 +109,13 @@ describe('Andina seed', () => {
     expect(operationsBudget!.approvedUsdMinor - priorPayments.reduce((sum, payment) => sum + payment.amountUsdMinor, 0)).toBe(415_000);
     expect(data.treasury.balanceUsdMinor).toBe(4_800_000);
     expect(data.treasury.fx).toEqual([
+      { currency: 'USD', perUsd: '1', date: '2026-10-15' },
       { currency: 'COP', perUsd: '4171.30', date: '2026-10-15' },
       { currency: 'MXN', perUsd: '18.8656', date: '2026-10-15' },
-      { currency: 'USD', perUsd: '1', date: '2026-10-15' },
+      { currency: 'CLP', perUsd: '950', date: '2026-10-15' },
+      { currency: 'PEN', perUsd: '3.75', date: '2026-10-15' },
+      { currency: 'ARS', perUsd: '1250', date: '2026-10-15' },
+      { currency: 'VES', perUsd: '36.50', date: '2026-10-15' },
     ]);
     expect(data.rules).toEqual({
       version: 1,

@@ -43,6 +43,8 @@ const vendorCountryLabels: Record<VendorCountry, string> = {
   MX: 'México',
   VE: 'Venezuela',
   CL: 'Chile',
+  PE: 'Perú',
+  AR: 'Argentina',
   US: 'Estados Unidos',
 };
 

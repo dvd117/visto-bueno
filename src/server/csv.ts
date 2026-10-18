@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
 import { z } from 'zod';
+import { CURRENCIES, CURRENCY_DEFINITIONS } from '../shared/domain/currencies';
 import type { Budget, Contract, CostCenter, Currency, FxRate, Vendor } from '../shared/domain/types';
 
 export const CSV_TABLES = ['vendors', 'contracts', 'budgets', 'fx'] as const;
@@ -22,8 +23,7 @@ export type CsvParseResult<T> =
   | { ok: true; rows: T[] }
   | { ok: false; summary: string; errors: CsvRowError[] };
 
-const countries = ['CO', 'MX', 'VE', 'CL', 'US'] as const;
-const currencies = ['USD', 'COP', 'MXN'] as const;
+const countries = ['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US'] as const;
 const costCenters = ['ingenieria', 'diseno', 'operaciones', 'legal'] as const;
 const decimalPattern = /^\d+(?:\.\d+)?$/;
 
@@ -42,19 +42,19 @@ function enumValue<const T extends readonly [string, ...string[]]>(values: T, la
   return z.enum(values, { error: `${label} debe ser uno de estos valores: ${values.join(', ')}.` });
 }
 
-function toMinorUnits(value: string) {
-  return new Decimal(value).mul(100).toNumber();
+function toMinorUnits(value: string, currency: Currency) {
+  return new Decimal(value).mul(new Decimal(10).pow(CURRENCY_DEFINITIONS[currency].exponent)).toNumber();
 }
 
 const money = z.string()
   .trim()
   .regex(/^\d+(?:\.\d{1,2})?$/, 'Usa un monto con hasta dos decimales, por ejemplo 850.00.')
-  .transform(toMinorUnits)
+  .transform((value) => toMinorUnits(value, 'USD'))
   .refine(Number.isSafeInteger, 'El monto excede el rango permitido.');
 
 const optionalMoney = z.preprocess(
   (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
-  money.optional(),
+  z.string().trim().regex(decimalPattern, 'Usa un monto decimal válido, por ejemplo 850.00.').optional(),
 );
 
 const integer = z.string()
@@ -85,7 +85,7 @@ const vendorSchema = z.object({
   name: text('El nombre'),
   taxId: text('El identificador fiscal'),
   country: enumValue(countries, 'El país'),
-  payoutCurrency: enumValue(currencies, 'La moneda de pago'),
+  payoutCurrency: enumValue(CURRENCIES, 'La moneda de pago'),
   payoutAccount: text('La cuenta de pago'),
   status: enumValue(['allowed', 'blocked'], 'El estado'),
   version: integer.refine((value) => value > 0, 'La versión debe ser mayor que cero.'),
@@ -96,7 +96,7 @@ const contractSchema = z.object({
   vendorId: text('El ID del proveedor'),
   scope: text('El alcance'),
   type: enumValue(['fixed', 'variable'], 'El tipo'),
-  currency: enumValue(currencies, 'La moneda'),
+  currency: enumValue(CURRENCIES, 'La moneda'),
   amount: optionalMoney,
   rate: optionalMoney,
   unit: optionalText(),
@@ -110,7 +110,7 @@ const contractSchema = z.object({
   if (row.type === 'fixed') {
     if (row.amount === undefined) {
       context.addIssue({ code: 'custom', path: ['amount'], message: 'El monto es obligatorio para un contrato fijo.' });
-    } else if (row.amount <= 0) {
+    } else if (decimalPattern.test(row.amount) && new Decimal(row.amount).lessThanOrEqualTo(0)) {
       context.addIssue({ code: 'custom', path: ['amount'], message: 'El monto debe ser mayor que cero.' });
     }
     if (row.rate !== undefined || row.unit !== undefined || row.maxUnitsPerPeriod !== undefined) {
@@ -119,7 +119,7 @@ const contractSchema = z.object({
   } else {
     if (row.rate === undefined) {
       context.addIssue({ code: 'custom', path: ['rate'], message: 'La tarifa es obligatoria para un contrato variable.' });
-    } else if (row.rate <= 0) {
+    } else if (decimalPattern.test(row.rate) && new Decimal(row.rate).lessThanOrEqualTo(0)) {
       context.addIssue({ code: 'custom', path: ['rate'], message: 'La tarifa debe ser mayor que cero.' });
     }
     if (!row.unit) {
@@ -132,12 +132,21 @@ const contractSchema = z.object({
       context.addIssue({ code: 'custom', path: ['amount'], message: 'Un contrato variable no puede incluir un monto fijo.' });
     }
   }
+  for (const field of ['amount', 'rate'] as const) {
+    const value = row[field];
+    if (value === undefined || !decimalPattern.test(value)) continue;
+    const decimals = value.split('.')[1]?.length ?? 0;
+    const minor = toMinorUnits(value, row.currency);
+    if (decimals > CURRENCY_DEFINITIONS[row.currency].exponent || !Number.isSafeInteger(minor)) {
+      context.addIssue({ code: 'custom', path: [field], message: `Usa hasta ${CURRENCY_DEFINITIONS[row.currency].exponent} decimales para ${row.currency}.` });
+    }
+  }
 }).transform((row): Contract => {
   const { amount, rate, ...contract } = row;
   return {
     ...contract,
-    ...(amount === undefined ? {} : { amountMinor: amount }),
-    ...(rate === undefined ? {} : { rateMinor: rate }),
+    ...(amount === undefined ? {} : { amountMinor: toMinorUnits(amount, row.currency) }),
+    ...(rate === undefined ? {} : { rateMinor: toMinorUnits(rate, row.currency) }),
   };
 });
 
@@ -152,11 +161,11 @@ const budgetSchema = z.object({
 }));
 
 const fxRateSchema = z.object({
-  currency: enumValue(currencies, 'La moneda'),
+  currency: enumValue(CURRENCIES, 'La moneda'),
   perUsd: z.string()
     .trim()
     .regex(decimalPattern, 'Usa una tasa decimal, por ejemplo 4171.30.')
-    .refine((value) => new Decimal(value).greaterThan(0), 'La tasa debe ser mayor que cero.'),
+    .refine((value) => !decimalPattern.test(value) || new Decimal(value).greaterThan(0), 'La tasa debe ser mayor que cero.'),
   date,
 }).transform((row): FxRate => ({
   currency: row.currency as Currency,

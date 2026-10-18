@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { isCurrency } from '../domain/currencies';
 import { parseAmount, toUsdMinor } from '../domain/money';
 import type {
   Budget, CheckOutcome, CheckResult, Contract, CostCenter, Currency, ExtractionClaims, Money, Rules, SourceKind, Treasury, Vendor,
@@ -29,15 +30,10 @@ export interface RuleContext {
   today: string;
 }
 
-const CURRENCIES: readonly Currency[] = ['USD', 'COP', 'MXN'];
 const MONTHS = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ];
-
-function isCurrency(value: string | null | undefined): value is Currency {
-  return CURRENCIES.includes(value as Currency);
-}
 
 function isIsoDate(value: string | null | undefined): value is string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

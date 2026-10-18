@@ -1,11 +1,12 @@
 // Domain contract (plan Task 2). Every unit depends on these names; change them only by
 // agreement with the coordinator.
+import type { Currency } from './currencies';
 
-export type Currency = 'USD' | 'COP' | 'MXN';
-export type VendorCountry = 'CO' | 'MX' | 'VE' | 'CL' | 'US';
+export type { Currency } from './currencies';
+export type VendorCountry = 'CO' | 'MX' | 'VE' | 'CL' | 'PE' | 'AR' | 'US';
 /** Integer minor units plus an ISO currency. Never a float. */
 export interface Money { currency: Currency; minor: number }
-/** `perUsd` is a decimal string, e.g. '4171.30'. */
+/** `perUsd` is illustrative local major units per USD, e.g. '4171.30'. */
 export interface FxRate { currency: Currency; perUsd: string; date: string }
 
 export interface Vendor {
