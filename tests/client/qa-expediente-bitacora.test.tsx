@@ -211,6 +211,26 @@ describe('QA: Expediente document tabs', () => {
     expect(screen.getByText('—', { selector: '.trail-glyph' })).toBeTruthy();
   });
 
+  it('shows the original amount, USD equivalent, and applied FX date in R15', () => {
+    const reason = 'El monto supera el umbral y requiere aprobación humana. Importe original: CLP 3.800.000 · Equivalente USD: USD 4.000,00 · Tasa ilustrativa aplicada (tabla interna): 2026-10-15.';
+    const expediente = makeExpedienteWithChecks('REVIEW-CLP-THRESHOLD', [{
+      id: 'R15', kind: 'rule', label: 'Umbral de aprobación humana', passed: true,
+      outcome: 'passed', effect: 'approval', reason,
+    }]);
+    expediente.row.status = 'approval_required';
+    expediente.row.currency = 'CLP';
+    expediente.row.amount = 'CLP 3.800.000';
+    expediente.row.amountUsd = 'USD 4.000,00';
+    expediente.row.fxDate = '2026-10-15';
+    if (!expediente.record) throw new Error('Expected an R15 decision record.');
+    expediente.record.decision.status = 'approval_required';
+    expediente.record.decision.amountUsdMinor = 400_000;
+
+    renderExpediente(expediente);
+
+    expect(screen.getByText(reason)).toBeTruthy();
+  });
+
   it('associates both tabs with their panels and preserves the original and marked text views', () => {
     renderExpediente(makeExpediente());
 
