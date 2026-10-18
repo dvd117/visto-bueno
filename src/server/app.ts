@@ -9,6 +9,7 @@ import {
 import { validateProductionAssets } from './fixtures';
 import { createApiRoutes } from './routes/api';
 import { createRulesRoutes } from './routes/rules';
+import { createCompanyRoutes } from './routes/company';
 import type { PipelineOptions } from './pipeline';
 
 export interface CreateServerAppOptions extends Partial<Omit<PipelineOptions, 'db'>>,
@@ -57,6 +58,7 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
     ...(options.now ? { now: options.now } : {}),
   }));
   app.route('/api', createRulesRoutes({ db }));
+  app.route('/api', createCompanyRoutes({ db }));
   app.notFound((c) => c.req.path.startsWith('/api/')
     ? c.json({ error: 'not_found', message: 'No encontré esta ruta.' }, 404)
     : c.text('Not Found', 404));

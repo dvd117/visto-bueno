@@ -2,6 +2,8 @@ import Decimal from 'decimal.js';
 import { z } from 'zod';
 import type {
   ApiError,
+  CompanyPreview,
+  CompanyRecord,
   Comparison,
   ConflictResponse,
   Counters,
@@ -249,6 +251,28 @@ const simulationResultSchema: z.ZodType<SimulationResult> = z.object({
     stopped: safeInteger,
   }).strict(),
   unsafeApprovals: z.literal(0),
+}).strict();
+const companyRecordSchema: z.ZodType<CompanyRecord> = z.object({
+  name: z.string().min(1),
+  operatingCountries: z.array(countrySchema).min(1),
+  vendorCountries: z.array(countrySchema).min(1),
+  currencies: z.array(currencySchema).min(1),
+  limits: z.object({
+    perPaymentUsdMinor: nonNegativeInteger,
+    monthlyUsdMinor: nonNegativeInteger,
+    approvalThresholdUsdMinor: nonNegativeInteger,
+  }).strict(),
+}).strict();
+const companyPreviewSchema: z.ZodType<CompanyPreview> = z.object({
+  counts: simulationCountsSchema,
+  deltas: z.object({
+    ready: safeInteger,
+    approval_required: safeInteger,
+    review_required: safeInteger,
+    stopped: safeInteger,
+  }).strict(),
+  unsafeApprovals: z.literal(0),
+  staleCount: nonNegativeInteger,
 }).strict();
 const logEntrySchema: z.ZodType<LogEntry> = z.object({
   at: z.string(), invoiceId: z.string(), status: invoiceStatusSchema,
@@ -523,7 +547,15 @@ export function exportReportMd(): Promise<string> {
   return getExportText('/api/export/report.md');
 }
 
-export const datosApi: DatosApi = { getTable, putRow, uploadCsv, templateUrl };
+export const datosApi: DatosApi = {
+  getTable,
+  putRow,
+  uploadCsv,
+  templateUrl,
+  getCompany: () => requestJson('/api/company', companyRecordSchema),
+  saveCompany: (company) => requestJson('/api/company', companyRecordSchema, jsonInit('PUT', company)),
+  previewCompany: (company) => requestJson('/api/company/preview', companyPreviewSchema, jsonInit('POST', company)),
+};
 export const reglasApi: ReglasApi = {
   getRules: () => requestJson('/api/rules', rulesSchema),
   saveRules: (rules) => requestJson('/api/rules', rulesSchema, jsonInit('PUT', rules)),
