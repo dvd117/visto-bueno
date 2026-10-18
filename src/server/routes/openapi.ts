@@ -12,7 +12,7 @@ import {
   processEventSchema,
   simulationResultSchema,
   workspaceSummarySchema,
-} from '../../client/lib/api';
+} from '../../shared/api-schemas';
 import {
   actionSchema,
   budgetSchema,
