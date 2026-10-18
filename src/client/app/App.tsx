@@ -7,6 +7,7 @@ import type {
 import type { InvoiceStatus } from '../../shared/domain/types';
 import {
   ApiRequestError,
+  beginClientContextSwitch,
   bitacoraApi,
   approveInvoice,
   createInvoice,
@@ -111,8 +112,12 @@ export default function App() {
     const generation = clientContextGeneration.current;
     if (showLoading) setLoading(true);
     try {
-      const [summary, invoices, profile, directory] = await Promise.all([
-        getWorkspace(), getInvoices(), getCompany().catch(() => null), getClients().catch(() => null),
+      // Discover the active client before loading client-scoped data so the
+      // API wrapper can pin every subsequent request to this tab's context.
+      const directory = await getClients();
+      if (generation !== clientContextGeneration.current) return;
+      const [summary, invoices, profile] = await Promise.all([
+        getWorkspace(), getInvoices(), getCompany().catch(() => null),
       ]);
       if (generation !== clientContextGeneration.current) return;
       setConnectionError(null);
@@ -140,6 +145,7 @@ export default function App() {
   const handleClientSwitch = useCallback(async (clientId: string) => {
     if (clientSwitching || actionBusy || processing) return;
     clientSwitchInProgress.current = true;
+    beginClientContextSwitch();
     const generation = ++clientContextGeneration.current;
     setClientSwitching(true);
     setLoading(true);

@@ -124,6 +124,10 @@ function installApi(rows: InvoiceRow[], expediente = makeExpediente(rows[0])) {
   });
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (new URL(url, window.location.href).pathname === '/api/clients') return jsonResponse({
+      activeId: 'client-andina',
+      clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: rows.length, readyCount: rows.filter((row) => row.status === 'ready').length }],
+    });
     if (url === '/api/workspace') return jsonResponse(workspace);
     if (url === '/api/invoices' && (!init?.method || init.method === 'GET')) return jsonResponse(rows);
     if (url === `/api/invoices/${rows[0]?.id}`) return jsonResponse(expediente);

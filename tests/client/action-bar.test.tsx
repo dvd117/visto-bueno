@@ -36,11 +36,11 @@ describe('payment action bar', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Exportar lote de pago (2)' }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/export/payments.csv?batch=1&ready=AL-READY-IN'));
+    await waitFor(() => expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/export/payments.csv?batch=1&ready=AL-READY-IN'));
     expect(click).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole('button', { name: 'Exportar conciliación (CSV)' }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/export/reconciliation.csv?batch=1&ready=AL-READY-IN'));
+    await waitFor(() => expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/export/reconciliation.csv?batch=1&ready=AL-READY-IN'));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(createObjectURL).toHaveBeenCalledTimes(2);
     expect(revokeObjectURL).not.toHaveBeenCalled();

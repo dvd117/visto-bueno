@@ -4,6 +4,7 @@ import { createInvoice, getInvoice, getWorkspaceData, openDb } from '../../src/s
 import { decideInvoice, resolveFlag } from '../../src/server/db/decide';
 import { ensureWorkspace } from '../../src/server/db/workspace';
 import { createServerApp, serverRuntime } from '../../src/server/app';
+import { installClientContextForMutations } from './request-context';
 
 const workspaceId = 't11-stale-revalidation';
 const cookie = `workspace_id=${workspaceId}`;
@@ -67,6 +68,7 @@ describe('T11 stale decision revalidation', () => {
     db = openDb(':memory:');
     ensureWorkspace(db, workspaceId);
     runtime = createServerApp({ db, autoCleanup: false, closeDbOnDispose: false, seedExamples: false });
+    installClientContextForMutations(runtime);
   });
 
   afterEach(() => {

@@ -3,6 +3,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getInvoice, openDb } from '../../src/server/db/db';
 import { createServerApp } from '../../src/server/app';
+import { installClientContextForMutations } from './request-context';
 
 const runtimes: Array<ReturnType<typeof createServerApp>> = [];
 const uploadDirectory = resolve('.w', 'clients-reset');
@@ -14,6 +15,7 @@ function makeRuntime() {
     autoCleanup: false,
     remoteAddress: () => '192.0.2.10',
   });
+  installClientContextForMutations(runtime);
   runtimes.push(runtime);
   return runtime;
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { InvoiceRow } from '../../../shared/api';
+import { exportPaymentBatchCsv, getClientContextGeneration, isClientContextCurrent } from '../../lib/api';
 
 interface ActionBarProps {
   invoices: InvoiceRow[];
@@ -8,12 +9,6 @@ interface ActionBarProps {
 }
 
 type ExportKind = 'payments' | 'reconciliation';
-
-function exportUrl(kind: ExportKind, readyIds: string[]): string {
-  const query = new URLSearchParams({ batch: '1' });
-  readyIds.forEach((id) => query.append('ready', id));
-  return `/api/export/${kind}.csv?${query.toString()}`;
-}
 
 function downloadText(filename: string, content: string): void {
   const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
@@ -34,12 +29,13 @@ export function ActionBar({ invoices, heldReadyIds, busy }: ActionBarProps) {
   const batchCount = readyIds.length + approvedCount;
 
   async function exportCsv(kind: ExportKind, filename: string): Promise<void> {
+    const generation = getClientContextGeneration();
     setError(null);
     setExporting(kind);
     try {
-      const response = await fetch(exportUrl(kind, readyIds));
-      if (!response.ok) throw new Error('Export failed.');
-      downloadText(filename, await response.text());
+      const content = await exportPaymentBatchCsv(kind, readyIds);
+      if (!isClientContextCurrent(generation)) return;
+      downloadText(filename, content);
     } catch {
       setError('No pude descargar el archivo. Inténtalo de nuevo.');
     } finally {

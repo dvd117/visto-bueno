@@ -253,7 +253,20 @@ const paymentBatchQueryParameters: Array<Record<string, unknown>> = [
     schema: { type: 'array', items: { type: 'string' } },
   },
 ];
-
+const clientIdHeaderParameter: Record<string, unknown> = {
+  name: 'X-Client-Id',
+  in: 'header',
+  required: false,
+  description: 'Opcional. Si se envía, debe pertenecer al owner y selecciona el workspace de esta pestaña, aunque difiera de active_client_id. Si se omite, se usa active_client_id.',
+  schema: { type: 'string', minLength: 1, maxLength: 80, pattern: '^[A-Za-z0-9_-]+$' },
+};
+const clientIdQueryParameter: Record<string, unknown> = {
+  name: 'client_id',
+  in: 'query',
+  required: false,
+  description: 'Contexto del cliente para enlaces directos de archivo/descarga que no pueden enviar cabeceras; debe pertenecer al owner. Si también se envía X-Client-Id, prevalece la cabecera.',
+  schema: { type: 'string', minLength: 1, maxLength: 80, pattern: '^[A-Za-z0-9_-]+$' },
+};
 function operation(
   operationId: string,
   summary: string,
@@ -268,7 +281,7 @@ function operation(
     operationId,
     summary,
     ...(options.description ? { description: options.description } : {}),
-    ...(options.parameters ? { parameters: options.parameters } : {}),
+    parameters: [clientIdHeaderParameter, ...(options.parameters ?? [])],
     ...(options.requestBody ? { requestBody: options.requestBody } : {}),
     responses: { default: errorResponse, ...responses },
   };
@@ -560,7 +573,7 @@ export const openApiDocument = {
           content: { 'text/csv': { schema: { type: 'string' } } },
         },
       }, {
-        parameters: [pathParameter('table', 'Plantilla disponible.', ['vendors', 'contracts', 'budgets', 'fx'])],
+        parameters: [pathParameter('table', 'Plantilla disponible.', ['vendors', 'contracts', 'budgets', 'fx']), clientIdQueryParameter],
       }),
     },
     '/api/log': {
@@ -571,22 +584,22 @@ export const openApiDocument = {
     '/api/export/payments.csv': {
       get: operation('exportPaymentsCsv', 'Exportar el lote de pagos', {
         '200': { description: 'CSV de exportación.', content: { 'text/csv': { schema: { type: 'string' } } } },
-      }, { parameters: paymentBatchQueryParameters }),
+      }, { parameters: [...paymentBatchQueryParameters, clientIdQueryParameter] }),
     },
     '/api/export/reconciliation.csv': {
       get: operation('exportReconciliationCsv', 'Exportar la conciliación del lote', {
         '200': { description: 'CSV con resultados, versiones y sello para conciliar el lote.', content: { 'text/csv': { schema: { type: 'string' } } } },
-      }, { parameters: paymentBatchQueryParameters }),
+      }, { parameters: [...paymentBatchQueryParameters, clientIdQueryParameter] }),
     },
     '/api/export/log.csv': {
       get: operation('exportLogCsv', 'Exportar la bitácora CSV', {
         '200': { description: 'CSV de bitácora.', content: { 'text/csv': { schema: { type: 'string' } } } },
-      }),
+      }, { parameters: [clientIdQueryParameter] }),
     },
     '/api/export/report.md': {
       get: operation('exportReportMarkdown', 'Exportar la bitácora Markdown', {
         '200': { description: 'Informe Markdown.', content: { 'text/markdown': { schema: { type: 'string' } } } },
-      }),
+      }, { parameters: [clientIdQueryParameter] }),
     },
     '/api/files/{invoiceId}': {
       get: operation('getInvoiceFile', 'Consultar el archivo de una factura', {
@@ -596,7 +609,7 @@ export const openApiDocument = {
             type, { schema: { type: 'string', format: 'binary' } },
           ])),
         },
-      }, { parameters: [pathParameter('invoiceId', 'Identificador de la factura.')] }),
+      }, { parameters: [pathParameter('invoiceId', 'Identificador de la factura.'), clientIdQueryParameter] }),
     },
     '/api/eval': {
       get: operation('getEvaluation', 'Consultar el informe de evaluación', {

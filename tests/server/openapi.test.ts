@@ -50,11 +50,16 @@ describe('OpenAPI document', () => {
     for (const path of ['/api/export/payments.csv', '/api/export/reconciliation.csv']) {
       expect(document.paths?.[path]?.get).toMatchObject({
         parameters: [
+          {
+            name: 'X-Client-Id', in: 'header', required: false,
+            schema: { type: 'string', minLength: 1, maxLength: 80, pattern: '^[A-Za-z0-9_-]+$' },
+          },
           { name: 'batch', in: 'query', required: false, schema: { type: 'string' } },
           {
             name: 'ready', in: 'query', required: false, style: 'form', explode: true,
             schema: { type: 'array', items: { type: 'string' } },
           },
+          { name: 'client_id', in: 'query', required: false, schema: { type: 'string', minLength: 1, maxLength: 80, pattern: '^[A-Za-z0-9_-]+$' } },
         ],
         responses: { '200': { content: { 'text/csv': { schema: { type: 'string' } } } } },
       });
@@ -69,6 +74,27 @@ describe('OpenAPI document', () => {
         `${route.method} ${route.path} must be documented`,
       ).toBeDefined();
     }
+  });
+
+  it('documents the optional client header and direct-download client query', async () => {
+    const { app } = makeRuntime();
+    const response = await app.request('/api/openapi.json');
+    const document = await response.json() as { paths?: Record<string, Record<string, Record<string, unknown>>> };
+    const mutation = document.paths?.['/api/data/{table}']?.put;
+    const file = document.paths?.['/api/files/{invoiceId}']?.get;
+    const exportPayment = document.paths?.['/api/export/payments.csv']?.get;
+    const parameters = mutation?.parameters as Array<Record<string, unknown>> | undefined;
+
+    expect(parameters).toContainEqual(expect.objectContaining({
+      name: 'X-Client-Id', in: 'header', required: false,
+      description: expect.stringContaining('Si se omite, se usa active_client_id'),
+    }));
+    expect(mutation?.responses).not.toHaveProperty('409');
+    expect(file?.parameters).toContainEqual(expect.objectContaining({
+      name: 'client_id', in: 'query', required: false,
+      description: expect.stringContaining('debe pertenecer al owner'),
+    }));
+    expect(exportPayment?.parameters).toContainEqual(expect.objectContaining({ name: 'client_id', in: 'query' }));
   });
 
   it('documents runtime input refinements and cross-field constraints', async () => {

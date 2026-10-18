@@ -6,6 +6,7 @@ import { getInvoice, getWorkspaceData, openDb, putRules } from '../../src/server
 import { createServerApp, serverRuntime } from '../../src/server/app';
 import { readExampleFixtures } from '../../src/server/fixtures';
 import { createLiveCallLimiter } from '../../src/server/middleware/limits';
+import { installClientContextForMutations } from './request-context';
 import type { Contract, ExtractionClaims, ExtractionResult, JevAnswers, Rules, SourceKind } from '../../src/shared/domain/types';
 
 const runtimes: Array<ReturnType<typeof createServerApp>> = [];
@@ -17,6 +18,7 @@ function makeRuntime(options: Partial<Parameters<typeof createServerApp>[0]> = {
     remoteAddress: () => '192.0.2.10',
     ...options,
   });
+  installClientContextForMutations(runtime);
   runtimes.push(runtime);
   return runtime;
 }

@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import type { Db } from '../db/db';
 import {
   ensureClientWorkspaces, ensureWorkspace, getOwnedWorkspaceClient, primaryWorkspaceForOwner,
@@ -32,6 +32,14 @@ function cookie(name: string, value: string): string {
   return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`;
 }
 
+function clientContextValue(value: string | undefined): string | null {
+  return value && /^[A-Za-z0-9_-]{1,80}$/.test(value) ? value : null;
+}
+
+function unknownClient(c: Context<ServerEnv>) {
+  return c.json({ error: 'not_found', message: 'No encontré el cliente de esta sesión.' }, 404);
+}
+
 export function activeClientCookie(clientId: string): string {
   return cookie('active_client_id', clientId);
 }
@@ -57,27 +65,47 @@ export function createWorkspaceMiddleware(db: Db, options: WorkspaceMiddlewareOp
     const ownerId = cookieValue(cookieHeader, 'workspace_id') ?? randomUUID();
     const requestedClientId = cookieValue(cookieHeader, 'active_client_id');
     ensureClientWorkspaces(db, ownerId, ownerId);
-    const activeClient = (requestedClientId ? getOwnedWorkspaceClient(db, ownerId, requestedClientId) : null)
+    const cookieClient = (requestedClientId ? getOwnedWorkspaceClient(db, ownerId, requestedClientId) : null)
       ?? primaryWorkspaceForOwner(db, ownerId);
-    if (!activeClient) throw new Error('Workspace owner has no client workspace.');
-    const workspaceId = activeClient.id;
+    if (!cookieClient) throw new Error('Workspace owner has no client workspace.');
+
+    // A present header wins after ownership validation. Direct file/download
+    // links may use the query context; otherwise legacy clients fall back to the cookie.
+    const headerContext = c.req.header('x-client-id');
+    const queryContextPath = c.req.method === 'GET' && (
+      c.req.path.startsWith('/api/files/')
+      || c.req.path.startsWith('/api/export/')
+      || c.req.path.endsWith('/template.csv')
+    );
+    const queryContext = queryContextPath ? new URL(c.req.url).searchParams.get('client_id') ?? undefined : undefined;
+    const requestedContext = headerContext ?? queryContext;
+    let requestClient = cookieClient;
+    if (requestedContext !== undefined) {
+      const clientId = clientContextValue(requestedContext);
+      if (!clientId) return unknownClient(c);
+      const ownedClient = getOwnedWorkspaceClient(db, ownerId, clientId);
+      if (!ownedClient) return unknownClient(c);
+      requestClient = ownedClient;
+    }
+
+    const workspaceId = requestClient.id;
     ensureWorkspace(db, workspaceId);
-    if (activeClient.isPrimary && options.seedExamples !== false) ensureExampleInvoices(db, workspaceId);
+    if (requestClient.isPrimary && options.seedExamples !== false) ensureExampleInvoices(db, workspaceId);
 
     const remoteAddress = options.remoteAddress
       ? options.remoteAddress(c.env?.incoming)
       : c.env?.incoming?.socket.remoteAddress;
     c.set('workspaceId', workspaceId);
     c.set('ownerId', ownerId);
-    c.set('clientId', activeClient.clientId);
+    c.set('clientId', requestClient.clientId);
     c.set('clientIp', getClientIp({
       forwardedFor: c.req.header('x-forwarded-for'),
       remoteAddress,
     }, { trustProxy: options.trustProxy }));
 
     if (!cookieValue(cookieHeader, 'workspace_id')) c.header('Set-Cookie', cookie('workspace_id', ownerId), { append: true });
-    if (requestedClientId && requestedClientId !== activeClient.clientId) {
-      c.header('Set-Cookie', activeClientCookie(activeClient.clientId), { append: true });
+    if (requestedClientId && requestedClientId !== cookieClient.clientId) {
+      c.header('Set-Cookie', activeClientCookie(cookieClient.clientId), { append: true });
     }
     await next();
   };
