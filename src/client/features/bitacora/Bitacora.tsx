@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { LogEntry } from '../../../shared/api';
 import type { InvoiceStatus } from '../../../shared/domain/types';
 import type { BitacoraApi } from '../../lib/api-types';
-import { getClientContextGeneration, isClientContextCurrent } from '../../lib/api';
+import { getExportGeneration, isExportGenerationCurrent } from '../../lib/api';
 export type { BitacoraApi } from '../../lib/api-types';
 
 interface BitacoraProps {
@@ -96,12 +96,12 @@ export function Bitacora({ api }: BitacoraProps) {
   }, [api]);
 
   async function exportFile(key: ExportKey, filename: string, contentType: string): Promise<void> {
-    const generation = getClientContextGeneration();
+    const generation = getExportGeneration();
     setError(null);
     setExporting(key);
     try {
       const content = await api[key]();
-      if (!isClientContextCurrent(generation)) return;
+      if (!isExportGenerationCurrent(generation)) return;
       downloadText(filename, contentType, content);
     } catch {
       setError('No pude descargar el archivo. Inténtalo de nuevo.');

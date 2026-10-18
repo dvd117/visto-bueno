@@ -18,12 +18,14 @@ function row(id: string, status: InvoiceRow['status']): InvoiceRow {
 
 describe('payment action bar', () => {
   it('counts selected ready and approved invoices, then exports that safe subset', async () => {
+    sessionStorage.setItem('visto-bueno:client-id', 'client-andina');
     const fetchMock = vi.fn(async () => new Response('header\nrow', { status: 200 }));
     const createObjectURL = vi.fn(() => 'blob:export');
     const revokeObjectURL = vi.fn();
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
     render(
       <ActionBar
         invoices={[
@@ -36,11 +38,11 @@ describe('payment action bar', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Exportar lote de pago (2)' }));
-    await waitFor(() => expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/export/payments.csv?batch=1&ready=AL-READY-IN'));
+    await waitFor(() => expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/export/payments.csv?batch=1&ready=AL-READY-IN&client_id=client-andina'));
     expect(click).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole('button', { name: 'Exportar conciliación (CSV)' }));
-    await waitFor(() => expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/export/reconciliation.csv?batch=1&ready=AL-READY-IN'));
+    await waitFor(() => expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/export/reconciliation.csv?batch=1&ready=AL-READY-IN&client_id=client-andina'));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(createObjectURL).toHaveBeenCalledTimes(2);
     expect(revokeObjectURL).not.toHaveBeenCalled();

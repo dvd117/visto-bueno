@@ -20,11 +20,13 @@ const clients = [
   { id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 1, readyCount: 1 },
   { id: 'client-marea', name: 'Marea Norte SpA', invoiceCount: 0, readyCount: 0 },
 ];
+let finishSwitchReload: (() => Promise<void>) | null = null;
 
 function setup(
   override: (path: string, init?: RequestInit) => Promise<Response> | undefined,
   context: { activeId: string } = { activeId: 'client-andina' },
 ) {
+  sessionStorage.setItem('visto-bueno:client-id', 'client-andina');
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = new URL(String(input), window.location.href).pathname;
     const custom = override(path, init);
@@ -55,14 +57,21 @@ function setup(
   });
   vi.stubGlobal('fetch', fetchMock);
   localStorage.setItem('visto-bueno:first-run-dismissed', 'true');
-  render(<App />);
+  const reloadPage = vi.fn();
+  render(<App reloadPage={reloadPage} />);
+  finishSwitchReload = async () => {
+    await waitFor(() => expect(reloadPage).toHaveBeenCalled());
+    cleanup();
+    render(<App reloadPage={reloadPage} />);
+    await screen.findByRole('button', { name: 'Marea Norte SpA' });
+  };
   return fetchMock;
 }
 
 async function switchToMarea() {
   fireEvent.click(await screen.findByRole('button', { name: 'Andina Labs Inc.' }));
   fireEvent.click(screen.getByRole('option', { name: /Marea Norte SpA/ }));
-  await screen.findByRole('button', { name: 'Marea Norte SpA' });
+  await finishSwitchReload?.();
 }
 
 afterEach(() => {
@@ -148,6 +157,7 @@ it('pins client-scoped fetches to the tab’s selected client', async () => {
 });
 
 it('scopes file and template URLs to the active client', async () => {
+  sessionStorage.setItem('visto-bueno:client-id', 'client-andina');
   const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const path = new URL(String(input), window.location.href).pathname;
     if (path === '/api/clients') return json({ activeId: 'client-andina', clients });

@@ -51,8 +51,12 @@ describe('App client switcher', () => {
   });
 
   it('uses the active C1 company profile in the header and atomically switches workspaces', async () => {
+    sessionStorage.removeItem('visto-bueno:client-id');
     let activeId = 'client-andina';
     let switchBody: { clientId?: string } | null = null;
+    const reloadPage = vi.fn(() => {
+      expect(sessionStorage.getItem('visto-bueno:client-id')).toBe('client-marea');
+    });
     const invoice = {
       id: 'AL-CLIENT-001', payee: 'Proveedor Andina', concept: 'Servicio mensual', amount: 'USD 100.00', amountUsd: 'USD 100.00',
       fxDate: null, due: '31 oct 2026', status: 'ready', reason: 'Cumple las reglas', sourceKind: 'text', country: 'US', currency: 'USD',
@@ -91,7 +95,7 @@ describe('App client switcher', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<App />);
+    render(<App reloadPage={reloadPage} />);
 
     expect(await screen.findByText('Proveedor Andina')).toBeTruthy();
     const switcher = await screen.findByRole('button', { name: 'Andina Labs Inc.' });
@@ -100,13 +104,21 @@ describe('App client switcher', () => {
     const marea = await screen.findByRole('option', { name: /Marea Norte SpA/ });
     fireEvent.click(marea);
 
-    expect(await screen.findByRole('button', { name: 'Marea Norte SpA' })).toBeTruthy();
+    await vi.waitFor(() => expect(reloadPage).toHaveBeenCalledTimes(1));
     expect(switchBody).toEqual({ clientId: 'client-marea' });
+    const switchCall = fetchMock.mock.calls.find(([input]) =>
+      new URL(String(input), window.location.href).pathname === '/api/clients/switch');
+    expect(new Headers(switchCall?.[1]?.headers).get('X-Client-Id')).toBe('client-marea');
     expect(screen.queryByText('Proveedor Andina')).toBeNull();
     expect(fetchMock.mock.calls.some(([input]) => new URL(String(input), window.location.href).pathname === '/api/company')).toBe(true);
+
+    cleanup();
+    render(<App reloadPage={reloadPage} />);
+    expect(await screen.findByRole('button', { name: 'Marea Norte SpA' })).toBeTruthy();
   });
 
   it('discards a pending Andina receipt and skips processing after switching to Marea', async () => {
+    sessionStorage.setItem('visto-bueno:client-id', 'client-andina');
     localStorage.setItem('visto-bueno:first-run-dismissed', 'true');
     let activeId = 'client-andina';
     let releaseUpload!: (response: Response) => void;
@@ -159,7 +171,8 @@ describe('App client switcher', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<App />);
+    const reloadPage = vi.fn();
+    render(<App reloadPage={reloadPage} />);
     await screen.findByRole('button', { name: 'Andina Labs Inc.' });
     fireEvent.click(screen.getByRole('button', { name: /\+ Recibir factura/ }));
     fireEvent.change(await screen.findByLabelText('Texto de la factura'), { target: { value: 'Private Andina receipt' } });
@@ -168,6 +181,9 @@ describe('App client switcher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar panel' }));
     fireEvent.click(screen.getByRole('button', { name: 'Andina Labs Inc.' }));
     fireEvent.click(await screen.findByRole('option', { name: /Marea Norte SpA/ }));
+    await vi.waitFor(() => expect(reloadPage).toHaveBeenCalledTimes(1));
+    cleanup();
+    render(<App reloadPage={reloadPage} />);
     await screen.findByRole('button', { name: 'Marea Norte SpA' });
 
     await act(async () => {

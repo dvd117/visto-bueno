@@ -55,12 +55,19 @@ import type {
 } from './api-types';
 
 const CLIENT_CONTEXT_STORAGE_KEY = 'visto-bueno:client-context-switch';
-let activeClientId: string | null = null;
-let clientContextGeneration = 0;
+const TAB_CLIENT_ID_STORAGE_KEY = 'visto-bueno:client-id';
+let exportGeneration = 0;
+let clientContextReady = false;
+let clientDirectoryInitialization: Promise<ClientDirectory> | null = null;
 
 interface BrowserEventHost {
   addEventListener(type: string, listener: (event: { key?: string | null }) => void): void;
   localStorage?: { setItem(key: string, value: string): void };
+  sessionStorage?: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+    removeItem(key: string): void;
+  };
 }
 
 function browserEventHost(): BrowserEventHost | null {
@@ -72,26 +79,41 @@ if (browserEventHost()) {
     if (event.key !== CLIENT_CONTEXT_STORAGE_KEY) return;
     // Another tab changed the shared cookie. Keep this tab's selected client,
     // but discard downloads that began before that switch.
-    clientContextGeneration += 1;
+    exportGeneration += 1;
   });
 }
 
-export function getClientContextGeneration(): number {
-  return clientContextGeneration;
+export function getExportGeneration(): number {
+  return exportGeneration;
 }
 
-export function isClientContextCurrent(generation: number): boolean {
-  return generation === clientContextGeneration;
+export function isExportGenerationCurrent(generation: number): boolean {
+  return generation === exportGeneration;
 }
 
-export function beginClientContextSwitch(): void {
-  clientContextGeneration += 1;
+function invalidateClientExports(): void {
+  exportGeneration += 1;
 }
 
-function setActiveClientId(clientId: string): void {
-  if (clientId === activeClientId) return;
-  activeClientId = clientId;
-  clientContextGeneration += 1;
+function readTabClientId(): string | null {
+  try {
+    return browserEventHost()?.sessionStorage?.getItem(TAB_CLIENT_ID_STORAGE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeTabClientId(clientId: string): void {
+  const storage = browserEventHost()?.sessionStorage;
+  if (!storage) throw new Error('Session storage is unavailable.');
+  storage.setItem(TAB_CLIENT_ID_STORAGE_KEY, clientId);
+}
+
+function restoreTabClientId(clientId: string | null): void {
+  const storage = browserEventHost()?.sessionStorage;
+  if (!storage) return;
+  if (clientId) storage.setItem(TAB_CLIENT_ID_STORAGE_KEY, clientId);
+  else storage.removeItem(TAB_CLIENT_ID_STORAGE_KEY);
 }
 
 function broadcastClientContextSwitch(): void {
@@ -105,6 +127,7 @@ function broadcastClientContextSwitch(): void {
 }
 
 function withClientContextQuery(path: string): string {
+  const activeClientId = readTabClientId();
   if (!activeClientId) return path;
   const url = new URL(path, 'http://localhost');
   url.searchParams.set('client_id', activeClientId);
@@ -114,10 +137,15 @@ function withClientContextQuery(path: string): string {
 async function apiFetch(
   path: string,
   init?: RequestInit,
-  options: { includeClientContext?: boolean } = {},
+  options: { omitClientContext?: boolean } = {},
 ): Promise<Response> {
   const headers = new Headers(init?.headers);
-  if (options.includeClientContext !== false && activeClientId) headers.set('X-Client-Id', activeClientId);
+  const browser = browserEventHost();
+  const activeClientId = readTabClientId();
+  if (!options.omitClientContext && browser && !activeClientId) {
+    throw new Error('This tab has no selected client. Initialize its client context first.');
+  }
+  if (!options.omitClientContext && activeClientId) headers.set('X-Client-Id', activeClientId);
   return fetch(path, { ...init, headers });
 }
 
@@ -210,7 +238,7 @@ async function requestJson<T>(
   url: string,
   schema: z.ZodType<T>,
   init?: RequestInit,
-  options: { includeClientContext?: boolean } = {},
+  options: { omitClientContext?: boolean } = {},
 ): Promise<T> {
   const response = await apiFetch(url, init, options);
   if (!response.ok) throw await readError(response);
@@ -242,18 +270,49 @@ export function getCompany(): Promise<CompanyRecord> {
 }
 
 export function getClients(): Promise<ClientDirectory> {
-  return requestJson('/api/clients', clientDirectorySchema, undefined, { includeClientContext: false })
-    .then((directory) => {
-      setActiveClientId(directory.activeId);
+  if (clientContextReady) return requestJson('/api/clients', clientDirectorySchema);
+  if (!clientDirectoryInitialization) {
+    const initialClientId = readTabClientId();
+    clientDirectoryInitialization = (async () => {
+      if (initialClientId) {
+        try {
+          // Validate a tab's saved selection without ever replacing it from a response.
+          return await requestJson('/api/clients', clientDirectorySchema);
+        } catch (error) {
+          if (!(error instanceof ApiRequestError) || (error.status !== 403 && error.status !== 404)) throw error;
+        }
+      }
+
+      // This one-time bootstrap is the only headerless directory request: no tab
+      // selection exists yet, so the server supplies the owner's default/cookie client.
+      const directory = await requestJson(
+        '/api/clients', clientDirectorySchema, undefined, { omitClientContext: true },
+      );
+      if (readTabClientId() === initialClientId) writeTabClientId(directory.activeId);
       return directory;
+    })().then((directory) => {
+      clientContextReady = true;
+      return directory;
+    }, (error: unknown) => {
+      clientDirectoryInitialization = null;
+      throw error;
     });
+  }
+  return clientDirectoryInitialization;
 }
 
 export async function switchClient(clientId: string): Promise<ClientSwitchResponse> {
-  const response = await requestJson('/api/clients/switch', clientSwitchResponseSchema, jsonInit('POST', { clientId }));
-  setActiveClientId(response.activeId);
-  broadcastClientContextSwitch();
-  return response;
+  const previousClientId = readTabClientId();
+  writeTabClientId(clientId);
+  invalidateClientExports();
+  try {
+    const response = await requestJson('/api/clients/switch', clientSwitchResponseSchema, jsonInit('POST', { clientId }));
+    broadcastClientContextSwitch();
+    return response;
+  } catch (error) {
+    if (readTabClientId() === clientId) restoreTabClientId(previousClientId);
+    throw error;
+  }
 }
 
 export function getInvoices(): Promise<InvoiceRow[]> {
@@ -454,11 +513,11 @@ export function getLog(): Promise<LogEntry[]> {
 }
 
 async function getExportText(path: string): Promise<string> {
-  const generation = getClientContextGeneration();
+  const generation = getExportGeneration();
   const response = await apiFetch(withClientContextQuery(path));
   if (!response.ok) throw await readError(response);
   const content = await response.text();
-  if (!isClientContextCurrent(generation)) {
+  if (!isExportGenerationCurrent(generation)) {
     throw new ApiRequestError('El cliente cambió mientras se preparaba el archivo.', 409);
   }
   return content;

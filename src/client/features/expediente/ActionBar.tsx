@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { InvoiceRow } from '../../../shared/api';
-import { exportPaymentBatchCsv, getClientContextGeneration, isClientContextCurrent } from '../../lib/api';
+import { exportPaymentBatchCsv, getExportGeneration, isExportGenerationCurrent } from '../../lib/api';
 
 interface ActionBarProps {
   invoices: InvoiceRow[];
@@ -29,12 +29,12 @@ export function ActionBar({ invoices, heldReadyIds, busy }: ActionBarProps) {
   const batchCount = readyIds.length + approvedCount;
 
   async function exportCsv(kind: ExportKind, filename: string): Promise<void> {
-    const generation = getClientContextGeneration();
+    const generation = getExportGeneration();
     setError(null);
     setExporting(kind);
     try {
       const content = await exportPaymentBatchCsv(kind, readyIds);
-      if (!isClientContextCurrent(generation)) return;
+      if (!isExportGenerationCurrent(generation)) return;
       downloadText(filename, content);
     } catch {
       setError('No pude descargar el archivo. Inténtalo de nuevo.');

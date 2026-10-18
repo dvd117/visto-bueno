@@ -7,7 +7,6 @@ import type {
 import type { InvoiceStatus } from '../../shared/domain/types';
 import {
   ApiRequestError,
-  beginClientContextSwitch,
   bitacoraApi,
   approveInvoice,
   createInvoice,
@@ -39,7 +38,8 @@ import './app.css';
 
 type AppSection = 'inbox' | 'reglas' | 'datos' | 'bitacora' | 'evaluacion';
 type ActionableStatus = Extract<InvoiceStatus, 'ready' | 'approval_required' | 'review_required' | 'stopped'>;
-interface ReceiveGeneration { reset: number; client: number }
+interface ReceiveGeneration { reset: number }
+interface AppProps { reloadPage?: () => void }
 
 const FIRST_RUN_DISMISSED_KEY = 'visto-bueno:first-run-dismissed';
 
@@ -69,7 +69,7 @@ function replaceRow(rows: InvoiceRow[], nextRow: InvoiceRow): InvoiceRow[] {
   return rows.map((row) => row.id === nextRow.id ? nextRow : row);
 }
 
-export default function App() {
+export default function App({ reloadPage = () => window.location.reload() }: AppProps = {}) {
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
   const [company, setCompany] = useState<CompanyRecord | null>(null);
   const [clientDirectory, setClientDirectory] = useState<ClientDirectory | null>(null);
@@ -97,7 +97,6 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined);
   const resetOutcome = useRef<Promise<boolean> | null>(null);
   const resetGeneration = useRef(0);
-  const clientContextGeneration = useRef(0);
   const receiptGenerations = useRef(new Map<string, ReceiveGeneration>());
   const clientSwitchInProgress = useRef(false);
   const selectedStatus = rows.find((row) => row.id === selectedId)?.status;
@@ -110,17 +109,16 @@ export default function App() {
 
   const loadWorkspace = useCallback(async (showLoading: boolean) => {
     if (clientSwitchInProgress.current) return;
-    const generation = clientContextGeneration.current;
     if (showLoading) setLoading(true);
     try {
-      // Discover the active client before loading client-scoped data so the
-      // API wrapper can pin every subsequent request to this tab's context.
+      // The first directory request initializes this tab's sessionStorage id;
+      // later refreshes send it and never adopt a cookie/response selection.
       const directory = await getClients();
-      if (generation !== clientContextGeneration.current) return;
+      if (clientSwitchInProgress.current) return;
       const [summary, invoices, profile] = await Promise.all([
         getWorkspace(), getInvoices(), getCompany().catch(() => null),
       ]);
-      if (generation !== clientContextGeneration.current) return;
+      if (clientSwitchInProgress.current) return;
       setConnectionError(null);
       setWorkspace(summary);
       setCompany(profile);
@@ -130,7 +128,7 @@ export default function App() {
         ? current
         : invoices[0]?.id ?? null);
     } catch (error) {
-      if (generation !== clientContextGeneration.current) return;
+      if (clientSwitchInProgress.current) return;
       setWorkspace(null);
       setCompany(null);
       setClientDirectory(null);
@@ -139,51 +137,27 @@ export default function App() {
       setExpediente(null);
       setConnectionError(errorMessage(error));
     } finally {
-      if (generation === clientContextGeneration.current) setLoading(false);
+      if (!clientSwitchInProgress.current) setLoading(false);
     }
   }, []);
 
   const handleClientSwitch = useCallback(async (clientId: string) => {
     if (clientSwitching || actionBusy || processing) return;
     clientSwitchInProgress.current = true;
-    beginClientContextSwitch();
-    const generation = ++clientContextGeneration.current;
     setClientSwitching(true);
     setLoading(true);
     setConnectionError(null);
-    setWorkspace(null);
-    setCompany(null);
-    setClientDirectory(null);
-    setRows([]);
-    setHeldReadyIds(new Set());
-    setSelectedId(null);
-    setExpediente(null);
-    setDetailFailure(null);
-    setDetailRevision((current) => current + 1);
-    setEvaluationResult(null);
-    setEvaluationLoading(false);
-    setEvaluationError(null);
-    setRowRevisions({});
-    setActiveSection('inbox');
-    setFirstRunOpen(false);
-    setReceiveOpen(false);
-    setHelpOpen(false);
-    setToast('');
     try {
       await switchClient(clientId);
-      if (generation !== clientContextGeneration.current) return;
-      clientSwitchInProgress.current = false;
-      await loadWorkspace(true);
+      // A fresh document is the boundary for all client-scoped UI and drafts.
+      reloadPage();
     } catch (error) {
-      if (generation === clientContextGeneration.current) setConnectionError(errorMessage(error));
-    } finally {
-      if (generation === clientContextGeneration.current) {
-        clientSwitchInProgress.current = false;
-        setClientSwitching(false);
-        setLoading(false);
-      }
+      clientSwitchInProgress.current = false;
+      setConnectionError(errorMessage(error));
+      setClientSwitching(false);
+      setLoading(false);
     }
-  }, [actionBusy, clientSwitching, loadWorkspace, processing]);
+  }, [actionBusy, clientSwitching, processing, reloadPage]);
 
   const openEvaluation = useCallback(() => {
     if (clientSwitching) return;
@@ -252,11 +226,11 @@ export default function App() {
       if (await outcome) return true;
       if (resetOutcome.current === outcome) break;
     }
-    return generation.reset !== resetGeneration.current || generation.client !== clientContextGeneration.current;
+    return generation.reset !== resetGeneration.current || clientSwitchInProgress.current;
   }, []);
 
-  const receiveInvalidationError = useCallback((generation: ReceiveGeneration) => new ApiRequestError(
-    generation.client !== clientContextGeneration.current
+  const receiveInvalidationError = useCallback(() => new ApiRequestError(
+    clientSwitchInProgress.current
       ? 'Cambiaste de cliente durante la carga; vuelve a enviarla si aún la necesitas.'
       : 'La demo se reinició durante la carga; vuelve a enviarla si aún la necesitas.',
     409,
@@ -309,10 +283,10 @@ export default function App() {
 
   const receivingApi = useMemo<RecibirApi>(() => ({
     async createInvoiceText(text) {
-      const generation = { reset: resetGeneration.current, client: clientContextGeneration.current };
+      const generation = { reset: resetGeneration.current };
       const row = await createInvoice({ text });
       if (await shouldDiscardReceive(generation)) {
-        throw receiveInvalidationError(generation);
+        throw receiveInvalidationError();
       }
       receiptGenerations.current.set(row.id, generation);
       setRows((current) => replaceRow(current, row));
@@ -322,10 +296,10 @@ export default function App() {
       return row;
     },
     async createInvoiceFile(file) {
-      const generation = { reset: resetGeneration.current, client: clientContextGeneration.current };
+      const generation = { reset: resetGeneration.current };
       const row = await createInvoice(file);
       if (await shouldDiscardReceive(generation)) {
-        throw receiveInvalidationError(generation);
+        throw receiveInvalidationError();
       }
       receiptGenerations.current.set(row.id, generation);
       setRows((current) => replaceRow(current, row));
@@ -340,23 +314,23 @@ export default function App() {
       const generations = requestIds
         .map((id) => receiptGenerations.current.get(id))
         .filter((generation): generation is ReceiveGeneration => generation !== undefined);
-      const generation = generations[0] ?? { reset: resetGeneration.current, client: clientContextGeneration.current };
-      const mixedGenerations = generations.some((item) => item.reset !== generation.reset || item.client !== generation.client);
+      const generation = generations[0] ?? { reset: resetGeneration.current };
+      const mixedGenerations = generations.some((item) => item.reset !== generation.reset);
       if (mixedGenerations || await shouldDiscardReceive(generation)) {
         for (const id of requestIds) receiptGenerations.current.delete(id);
-        throw receiveInvalidationError(generation);
+        throw receiveInvalidationError();
       }
       for (const id of requestIds) receiptGenerations.current.delete(id);
       setProcessing(true);
       try {
         yield* processInvoiceEvents(request, (event) => {
-          if (generation.reset === resetGeneration.current && generation.client === clientContextGeneration.current) {
+          if (generation.reset === resetGeneration.current && !clientSwitchInProgress.current) {
             handleProcessEvent(event);
           }
         });
       } finally {
         setProcessing(false);
-        if (generation.reset === resetGeneration.current && generation.client === clientContextGeneration.current) {
+        if (generation.reset === resetGeneration.current && !clientSwitchInProgress.current) {
           await loadWorkspace(false);
         }
       }
@@ -365,7 +339,7 @@ export default function App() {
 
   const handleDropFiles = useCallback(async (files: File[]) => {
     if (files.length === 0 || actionBusy) return;
-    const generation = { reset: resetGeneration.current, client: clientContextGeneration.current };
+    const generation = { reset: resetGeneration.current };
     setActionBusy(true);
     try {
       let firstId: string | null = null;
