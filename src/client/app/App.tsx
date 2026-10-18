@@ -21,7 +21,7 @@ import {
   resolveFlag,
 } from '../lib/api';
 import { Bandeja } from '../features/bandeja/Bandeja';
-import { Counters } from '../features/bandeja/Counters';
+import { Counters, type CounterFilter } from '../features/bandeja/Counters';
 import { ActionBar } from '../features/expediente/ActionBar';
 import { Expediente } from '../features/expediente/Expediente';
 import { Evaluacion } from '../features/evaluacion/Evaluacion';
@@ -77,6 +77,7 @@ export default function App() {
   const [processing, setProcessing] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<AppSection>('inbox');
+  const [inboxFilter, setInboxFilter] = useState<CounterFilter | null>(null);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [rowRevisions, setRowRevisions] = useState<Record<string, number>>({});
@@ -295,6 +296,7 @@ export default function App() {
       resetGeneration.current += 1;
       settleResetOutcome(true);
       setActiveSection('inbox');
+      setInboxFilter(null);
       setSelectedId(null);
       setHeldReadyIds(new Set());
       setExpediente(null);
@@ -412,7 +414,12 @@ export default function App() {
           <main><p className="page-loading" role="status">Conectando con el servidor…</p></main>
         ) : displayedWorkspace ? (
           activeSection === 'inbox' ? <main>
-            <Counters counters={displayedWorkspace.counters} lastRun={displayedWorkspace.lastRun} />
+            <Counters
+              counters={displayedWorkspace.counters}
+              lastRun={displayedWorkspace.lastRun}
+              filter={inboxFilter}
+              onFilter={setInboxFilter}
+            />
             <div className="workspace">
               <Bandeja
                 rows={rows}
@@ -420,6 +427,7 @@ export default function App() {
                 counters={displayedWorkspace.counters}
                 processing={processing || actionBusy}
                 rowRevisions={rowRevisions}
+                filter={inboxFilter}
                 onSelect={selectInvoice}
                 onProcess={() => void handleProcess()}
                 onReceive={openReceive}
