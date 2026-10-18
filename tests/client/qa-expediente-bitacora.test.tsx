@@ -42,8 +42,6 @@ function makeExpediente(): ExpedienteData {
 function renderExpediente(expediente: ExpedienteData) {
   return render(
     <Expediente
-      rows={[expediente.row]}
-      selectedStatus={expediente.row.status}
       expediente={expediente}
       loading={false}
       error={null}
@@ -53,7 +51,6 @@ function renderExpediente(expediente: ExpedienteData) {
       onReject={async (_action: DecisionAction) => undefined}
       onResolveFlag={async (_flagId: string, _resolution: FlagResolution) => undefined}
       onReevaluate={async () => undefined}
-      onSelectStatus={() => undefined}
       onTogglePaymentBatch={() => undefined}
       onOpenData={() => undefined}
     />,
@@ -211,6 +208,35 @@ describe('QA: Expediente document tabs', () => {
     expect(screen.getByText('—', { selector: '.trail-glyph' })).toBeTruthy();
   });
 
+  it('groups the trail by outcome, collapsed, and opens a group from the summary', () => {
+    const checks: CheckResult[] = [
+      { id: 'R1', kind: 'rule', label: 'Proveedor autorizado', passed: false, outcome: 'failed', effect: 'stop', reason: 'No autorizado.' },
+      { id: 'R3', kind: 'rule', label: 'Factura no duplicada', passed: true, outcome: 'passed', effect: 'none', reason: 'Sin duplicados.' },
+      { id: 'R4', kind: 'rule', label: 'Moneda admitida', passed: true, outcome: 'passed', effect: 'none', reason: 'Moneda válida.' },
+      { id: 'scope_match', kind: 'judgment', label: 'Coincidencia con el alcance', passed: true, outcome: 'not_applicable', effect: 'none', reason: 'Sin acuerdo.' },
+    ];
+    renderExpediente(makeExpedienteWithChecks('AL-090', checks));
+
+    const summary = screen.getByRole('group', { name: 'Reglas por resultado' });
+    const cell = (label: string) => within(summary).getByRole('button', { name: new RegExp(label) });
+    expect(cell('No cumple').textContent).toContain('1');
+    expect(cell('^Cumple').textContent).toContain('2');
+    expect(cell('Alerta').hasAttribute('disabled')).toBe(true);
+
+    const groups = Array.from(document.querySelectorAll<HTMLDetailsElement>('.trail-group'));
+    expect(groups.map((group) => group.id)).toEqual(['trail-group-failed', 'trail-group-passed', 'trail-group-not_applicable']);
+    expect(groups.some((group) => group.open)).toBe(false);
+
+    fireEvent.click(cell('No cumple'));
+    expect(document.querySelector<HTMLDetailsElement>('#trail-group-failed')?.open).toBe(true);
+    expect(document.querySelector<HTMLDetailsElement>('#trail-group-passed')?.open).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar todas' }));
+    expect(document.querySelector<HTMLDetailsElement>('#trail-group-failed')?.open).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir las 4 reglas' }));
+    expect(groups.every((group) => group.open)).toBe(true);
+  });
+
   it('shows the original amount, USD equivalent, and applied FX date in R15', () => {
     const reason = 'El monto supera el umbral y requiere aprobación humana. Importe original: CLP 3.800.000 · Equivalente USD: USD 4.000,00 · Tasa ilustrativa aplicada (tabla interna): 2026-10-15.';
     const expediente = makeExpedienteWithChecks('REVIEW-CLP-THRESHOLD', [{
@@ -298,8 +324,8 @@ describe('QA: Expediente document tabs', () => {
     const expediente = makeExpediente();
     render(
       <>
-        <Expediente rows={[expediente.row]} selectedStatus={expediente.row.status} includedInPaymentBatch onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined} expediente={expediente} loading={false} error={null} busy={false} onApprove={async () => undefined} onReject={async () => undefined} onResolveFlag={async () => undefined} onReevaluate={async () => undefined} />
-        <Expediente rows={[expediente.row]} selectedStatus={expediente.row.status} includedInPaymentBatch onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined} expediente={expediente} loading={false} error={null} busy={false} onApprove={async () => undefined} onReject={async () => undefined} onResolveFlag={async () => undefined} onReevaluate={async () => undefined} />
+        <Expediente includedInPaymentBatch onTogglePaymentBatch={() => undefined} onOpenData={() => undefined} expediente={expediente} loading={false} error={null} busy={false} onApprove={async () => undefined} onReject={async () => undefined} onResolveFlag={async () => undefined} onReevaluate={async () => undefined} />
+        <Expediente includedInPaymentBatch onTogglePaymentBatch={() => undefined} onOpenData={() => undefined} expediente={expediente} loading={false} error={null} busy={false} onApprove={async () => undefined} onReject={async () => undefined} onResolveFlag={async () => undefined} onReevaluate={async () => undefined} />
       </>,
     );
 
@@ -360,12 +386,10 @@ describe('QA: Expediente document tabs', () => {
     const onOpenData = vi.fn();
     vi.stubGlobal('crypto', { randomUUID: () => 'stopped-rejection-key' });
     render(
-      <Expediente
-        rows={[expediente.row]} selectedStatus="stopped" expediente={expediente}
+      <Expediente expediente={expediente}
         loading={false} error={null} busy={false} includedInPaymentBatch={false}
         onApprove={async () => undefined} onReject={onReject}
-        onResolveFlag={async () => undefined} onReevaluate={async () => undefined}
-        onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={onOpenData}
+        onResolveFlag={async () => undefined} onReevaluate={async () => undefined} onTogglePaymentBatch={() => undefined} onOpenData={onOpenData}
       />,
     );
 
@@ -397,12 +421,10 @@ describe('QA: Expediente document tabs', () => {
     expediente.row.status = 'ready';
     const onTogglePaymentBatch = vi.fn();
     render(
-      <Expediente
-        rows={[expediente.row]} selectedStatus="ready" expediente={expediente}
+      <Expediente expediente={expediente}
         loading={false} error={null} busy={false} includedInPaymentBatch
         onApprove={async () => undefined} onReject={async () => undefined}
-        onResolveFlag={async () => undefined} onReevaluate={async () => undefined}
-        onSelectStatus={() => undefined} onTogglePaymentBatch={onTogglePaymentBatch} onOpenData={() => undefined}
+        onResolveFlag={async () => undefined} onReevaluate={async () => undefined} onTogglePaymentBatch={onTogglePaymentBatch} onOpenData={() => undefined}
       />,
     );
 
@@ -435,13 +457,10 @@ describe('QA: Expediente document tabs', () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'image-approval-key' });
     render(
       <Expediente
-        rows={[expediente.row]}
-        selectedStatus={expediente.row.status}
         expediente={expediente} loading={false} error={null} busy={false}
         includedInPaymentBatch={false}
         onApprove={onApprove} onReject={async () => undefined}
-        onResolveFlag={async () => undefined} onReevaluate={async () => undefined}
-        onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined}
+        onResolveFlag={async () => undefined} onReevaluate={async () => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined}
       />,
     );
 

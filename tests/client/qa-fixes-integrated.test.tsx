@@ -43,12 +43,10 @@ describe('integrated visual QA fixes', () => {
     };
     render(
       <Expediente
-        rows={[expediente.row]} selectedStatus={expediente.row.status}
         expediente={expediente} loading={false} error={null} busy={false}
         includedInPaymentBatch
         onApprove={async () => undefined} onReject={async () => undefined}
-        onResolveFlag={async () => undefined} onReevaluate={async () => undefined}
-        onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined}
+        onResolveFlag={async () => undefined} onReevaluate={async () => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined}
       />,
     );
 

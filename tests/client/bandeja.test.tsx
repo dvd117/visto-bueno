@@ -157,7 +157,7 @@ afterEach(() => {
 });
 
 describe('Bandeja and Expediente', () => {
-  it('opens invoice groups by default except for ready', () => {
+  it('starts every processed invoice group collapsed', () => {
     const rows = [
       makeRow('ready', 'AL-043'),
       makeRow('approval_required', 'AL-035'),
@@ -186,7 +186,7 @@ describe('Bandeja and Expediente', () => {
     expect(groups.map((group) => group.dataset.state)).toEqual([
       'stopped', 'review_required', 'approval_required', 'stale', 'ready', 'approved', 'rejected',
     ]);
-    expect(groups.filter((group) => !group.open).map((group) => group.dataset.state)).toEqual(['ready']);
+    expect(groups.filter((group) => group.open)).toEqual([]);
     expect(screen.getByRole('heading', { name: 'Antes de procesar' })).not.toBeNull();
     expect(document.querySelector('.arrival-section .invoice-id')?.textContent).toBe('AL-050');
     expect(screen.getAllByText('PDF').length).toBeGreaterThan(0);
@@ -274,6 +274,14 @@ describe('Bandeja and Expediente', () => {
 
     fireEvent.click(readyCounter);
     expect(document.querySelectorAll('.state-group')).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: /Ver todas/ })).toBeNull();
+
+    fireEvent.click(readyCounter);
+    expect(within(readyCounter).getByText('Toca para quitar el filtro')).not.toBeNull();
+    expect(screen.getByText(/Mostrando solo/).textContent).toContain('1 de 4');
+    fireEvent.click(screen.getByRole('button', { name: /Ver todas \(4\)/ }));
+    expect(document.querySelectorAll('.state-group')).toHaveLength(4);
+    expect(readyCounter.getAttribute('aria-pressed')).toBe('false');
     expect(document.querySelector('.state-group[data-state="stopped"] .invoice-id')?.textContent).toBe('AL-042');
     expect(document.querySelector<HTMLDetailsElement>('.state-group[data-state="ready"]')?.open).toBe(false);
   });
@@ -494,8 +502,6 @@ describe('Bandeja and Expediente', () => {
         <>
           <button type="button" onClick={() => setIndex(1)}>Switch invoice</button>
           <ExpedientePanel
-            rows={rows}
-            selectedStatus={rows[index].status}
             expediente={expedientes[index]}
             loading={false}
             error={null}
@@ -505,7 +511,6 @@ describe('Bandeja and Expediente', () => {
             onReject={async () => undefined}
             onResolveFlag={async () => undefined}
             onReevaluate={async () => undefined}
-            onSelectStatus={() => undefined}
             onTogglePaymentBatch={() => undefined}
             onOpenData={() => undefined}
           />

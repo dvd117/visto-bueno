@@ -1,13 +1,11 @@
 import { useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
-import type { DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow } from '../../../shared/api';
-import type { CheckResult, Flag, InvoiceStatus } from '../../../shared/domain/types';
+import type { DecisionAction, Expediente as ExpedienteData, FlagResolution } from '../../../shared/api';
+import type { CheckResult, Flag } from '../../../shared/domain/types';
 import { subtitleForDecision } from '../../../shared/engine/copy';
 import { StatusChip } from '../../app/StatusChip';
 
 interface ExpedienteProps {
-  rows: InvoiceRow[];
-  selectedStatus: InvoiceStatus | null;
   expediente: ExpedienteData | null;
   loading: boolean;
   error: string | null;
@@ -17,19 +15,20 @@ interface ExpedienteProps {
   onReject: (action: DecisionAction) => Promise<void>;
   onResolveFlag: (flagId: string, resolution: FlagResolution) => Promise<void>;
   onReevaluate: () => Promise<void>;
-  onSelectStatus: (status: ActionableStatus) => void;
   onTogglePaymentBatch: (invoiceId: string) => void;
   onOpenData: () => void;
 }
 
 type DocumentMode = 'original' | 'text';
-type ActionableStatus = Extract<InvoiceStatus, 'ready' | 'approval_required' | 'review_required' | 'stopped'>;
+type TrailOutcome = 'failed' | 'alert' | 'pending' | 'passed' | 'not_applicable';
 
-const ACTION_STATES: Array<{ status: ActionableStatus; label: string; glyph: string }> = [
-  { status: 'ready', label: 'Lista para pagar', glyph: '✓' },
-  { status: 'approval_required', label: 'Requiere tu aprobación', glyph: '▣' },
-  { status: 'review_required', label: 'Requiere revisión', glyph: '?' },
-  { status: 'stopped', label: 'Frenada', glyph: '×' },
+// Most urgent first: this is both the summary order and the trail group order.
+const TRAIL_OUTCOMES: Array<{ outcome: TrailOutcome; label: string; glyph: string }> = [
+  { outcome: 'failed', label: 'No cumple', glyph: '×' },
+  { outcome: 'alert', label: 'Alerta', glyph: '!' },
+  { outcome: 'pending', label: 'Pendiente', glyph: '?' },
+  { outcome: 'passed', label: 'Cumple', glyph: '✓' },
+  { outcome: 'not_applicable', label: 'No aplica', glyph: '—' },
 ];
 const CORRECTION_ONLY_FLAG_CHECKS = new Set([
   'missing_amount', 'ambiguous_amount', 'source_amountRaw', 'source_payoutAccount', 'source_payeeTaxId',
@@ -128,22 +127,91 @@ function renderMarkedText(text: string, marks: ExpedienteData['marks']) {
   return nodes;
 }
 
-function DecisionTrail({ checks }: { checks: CheckResult[] }) {
+function trailOutcome(check: CheckResult): TrailOutcome {
+  const outcome = check.outcome ?? (check.passed ? 'passed' : 'failed');
+  if (outcome === 'pending' || outcome === 'not_applicable') return outcome;
+  const unverifiable = check.effect === 'approval' && !check.passed;
+  if (check.effect === 'review' || unverifiable) return 'alert';
+  return outcome === 'passed' ? 'passed' : 'failed';
+}
+
+const trailRowState: Record<TrailOutcome, string> = {
+  failed: ' trail-fail', alert: ' trail-alert', pending: ' trail-alert', passed: ' trail-pass', not_applicable: '',
+};
+
+function outcomeCounts(checks: CheckResult[]): Record<TrailOutcome, number> {
+  const counts: Record<TrailOutcome, number> = { failed: 0, alert: 0, pending: 0, passed: 0, not_applicable: 0 };
+  for (const check of checks) counts[trailOutcome(check)] += 1;
+  return counts;
+}
+
+function TrailSummary({ checks, onOpen }: { checks: CheckResult[]; onOpen: (outcome: TrailOutcome) => void }) {
+  const counts = outcomeCounts(checks);
+  return (
+    <div className="trail-summary" role="group" aria-label="Reglas por resultado">
+      {TRAIL_OUTCOMES.map(({ outcome, label, glyph }) => (
+        <button
+          key={outcome}
+          className={`trail-summary-cell trail-summary-${outcome}`}
+          type="button"
+          disabled={counts[outcome] === 0}
+          onClick={() => onOpen(outcome)}
+        >
+          <span className="trail-summary-label"><span className="trail-summary-glyph" aria-hidden="true">{glyph}</span>{label}</span>
+          <strong>{counts[outcome]}</strong>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DecisionTrail({
+  checks,
+  openOutcomes,
+  onToggle,
+}: {
+  checks: CheckResult[];
+  openOutcomes: Set<TrailOutcome>;
+  onToggle: (outcome: TrailOutcome, open: boolean) => void;
+}) {
   if (checks.length === 0) return <p className="quiet-note">No hay comprobaciones registradas.</p>;
+  return (
+    <div className="trail-groups">
+      {TRAIL_OUTCOMES.map(({ outcome, label, glyph }) => {
+        const groupChecks = checks.filter((check) => trailOutcome(check) === outcome);
+        if (groupChecks.length === 0) return null;
+        return (
+          <details
+            key={outcome}
+            id={`trail-group-${outcome}`}
+            className={`trail-group trail-group-${outcome}`}
+            open={openOutcomes.has(outcome)}
+            onToggle={(event) => onToggle(outcome, event.currentTarget.open)}
+          >
+            <summary>
+              <span className="trail-group-title">
+                <span className="trail-summary-glyph" aria-hidden="true">{glyph}</span>
+                {label}
+              </span>
+              <span className="group-count">{groupChecks.length}</span>
+            </summary>
+            <TrailRows checks={groupChecks} />
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrailRows({ checks }: { checks: CheckResult[] }) {
   return (
     <ul className="trail-list">
       {checks.map((check) => {
-        const outcome = check.outcome ?? (check.passed ? 'passed' : 'failed');
+        const outcome = trailOutcome(check);
         const pending = outcome === 'pending';
         const notApplicable = outcome === 'not_applicable';
-        const unverifiable = check.effect === 'approval' && !check.passed;
-        const alert = !pending && !notApplicable && (check.effect === 'review' || unverifiable);
-        const glyph = pending ? '?' : notApplicable ? '—' : alert ? '!' : outcome === 'passed' ? '✓' : '×';
-        const stateLabel = pending ? 'Pendiente'
-          : notApplicable ? 'No aplica'
-            : alert ? 'Alerta' : outcome === 'passed' ? 'Cumple' : 'No cumple';
-        const rowState = pending || alert ? ' trail-alert'
-          : notApplicable ? '' : outcome === 'passed' ? ' trail-pass' : ' trail-fail';
+        const { glyph, label: stateLabel } = TRAIL_OUTCOMES.find((item) => item.outcome === outcome)!;
+        const rowState = trailRowState[outcome];
         const pendingReason: Record<string, string> = {
           R2: 'No se pudo verificar una sola cuenta bancaria contra un registro.',
           R5: 'No hay un monto verificable para comparar con el acuerdo.',
@@ -237,8 +305,6 @@ function safeFileUrl(value: string | null): string | null {
 }
 
 export function Expediente({
-  rows,
-  selectedStatus,
   expediente,
   loading,
   error,
@@ -248,7 +314,6 @@ export function Expediente({
   onReject,
   onResolveFlag,
   onReevaluate,
-  onSelectStatus,
   onTogglePaymentBatch,
   onOpenData,
 }: ExpedienteProps) {
@@ -262,6 +327,20 @@ export function Expediente({
   const [reason, setReason] = useState('');
   const [accountConfirmation, setAccountConfirmation] = useState({ invoiceId: expediente?.row.id ?? '', digits: '' });
   const [showHistory, setShowHistory] = useState(false);
+  const [openOutcomes, setOpenOutcomes] = useState<Set<TrailOutcome>>(() => new Set());
+  const toggleOutcome = (outcome: TrailOutcome, open: boolean) => {
+    setOpenOutcomes((current) => {
+      if (current.has(outcome) === open) return current;
+      const next = new Set(current);
+      if (open) next.add(outcome);
+      else next.delete(outcome);
+      return next;
+    });
+  };
+  const openTrailGroup = (outcome: TrailOutcome) => {
+    toggleOutcome(outcome, true);
+    document.getElementById(`trail-group-${outcome}`)?.scrollIntoView?.({ block: 'start' });
+  };
   const selectDocumentMode = (mode: DocumentMode) => {
     if (expediente) setDocumentView({ invoiceId: expediente.row.id, mode });
   };
@@ -279,28 +358,6 @@ export function Expediente({
       <p>Las facturas se resuelven según sus comprobaciones; una acción general no cambia una excepción.</p>
     </header>
   );
-  const actionTabs = rows.length === 0 ? null : (
-    <div className="action-tabs" role="group" aria-label="Estados de factura">
-      {ACTION_STATES.map(({ status, label, glyph }) => {
-        const count = rows.filter((row) => row.status === status).length;
-        return (
-          <button
-            key={status}
-            className={`action-tab action-tab-${status}`}
-            type="button"
-            aria-pressed={selectedStatus === status}
-            disabled={busy || count === 0}
-            onClick={() => onSelectStatus(status)}
-          >
-            <span className="status-glyph" aria-hidden="true">{glyph}</span>
-            <span>{label}</span>
-            <strong>{count}</strong>
-          </button>
-        );
-      })}
-    </div>
-  );
-
   function handleDocumentTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, current: DocumentMode) {
     let next: DocumentMode | null = null;
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
@@ -317,13 +374,12 @@ export function Expediente({
     (next === 'original' ? originalTabRef : textTabRef).current?.focus();
   }
 
-  if (!expediente && loading) return <section className="panel expediente">{workbenchHeading}{actionTabs}<p className="record-loading">Abriendo expediente…</p></section>;
-  if (!expediente && error) return <section className="panel expediente">{workbenchHeading}{actionTabs}<p className="record-error">{error}</p></section>;
+  if (!expediente && loading) return <section className="panel expediente">{workbenchHeading}<p className="record-loading">Abriendo expediente…</p></section>;
+  if (!expediente && error) return <section className="panel expediente">{workbenchHeading}<p className="record-error">{error}</p></section>;
   if (!expediente) {
     return (
       <section id="expediente" className="panel expediente" aria-labelledby="record-empty-title">
         {workbenchHeading}
-        {actionTabs}
         <article className="record">
           <div className="record-meta">
             <span className="eyebrow">02 / Expediente · Decisión trazable</span>
@@ -359,7 +415,7 @@ export function Expediente({
   return (
     <section id="expediente" className="panel expediente" aria-labelledby="record-title">
       {workbenchHeading}
-      {actionTabs}
+      {decision && decision.checks.length > 0 && <TrailSummary checks={decision.checks} onOpen={openTrailGroup} />}
       {error && <p className="record-error" role="alert">{error}</p>}
       <article className="record">
         <div className="record-meta">
@@ -471,8 +527,19 @@ export function Expediente({
         </div>
 
         <section className="record-section" aria-labelledby="trail-heading">
-          <div className="section-heading"><h3 id="trail-heading">Trazabilidad de la decisión</h3></div>
-          {decision ? <DecisionTrail checks={decision.checks} /> : <p className="quiet-note">Procesa esta factura para iniciar las comprobaciones.</p>}
+          <div className="section-heading">
+            <h3 id="trail-heading">Trazabilidad de la decisión</h3>
+            {decision && decision.checks.length > 0 && (
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => setOpenOutcomes(openOutcomes.size > 0 ? new Set() : new Set(TRAIL_OUTCOMES.map(({ outcome }) => outcome)))}
+              >
+                {openOutcomes.size > 0 ? 'Cerrar todas' : `Abrir las ${decision.checks.length} reglas`}
+              </button>
+            )}
+          </div>
+          {decision ? <DecisionTrail checks={decision.checks} openOutcomes={openOutcomes} onToggle={toggleOutcome} /> : <p className="quiet-note">Procesa esta factura para iniciar las comprobaciones.</p>}
           {record && !record.jev.ok && <p className="connection-note">JEV no conectado · no se aprobará automáticamente.</p>}
         </section>
 

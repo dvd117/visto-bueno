@@ -4,7 +4,6 @@ import type {
   ClientDirectory, CompanyRecord, DecisionAction, Expediente as ExpedienteData, FlagResolution, InvoiceRow,
   ProcessEvent, ProcessRequest, WorkspaceSummary,
 } from '../../shared/api';
-import type { InvoiceStatus } from '../../shared/domain/types';
 import {
   ApiRequestError,
   bitacoraApi,
@@ -37,7 +36,6 @@ import type { RecibirApi } from '../features/recibir/RecibirPanel';
 import './app.css';
 
 type AppSection = 'inbox' | 'reglas' | 'datos' | 'bitacora' | 'evaluacion';
-type ActionableStatus = Extract<InvoiceStatus, 'ready' | 'approval_required' | 'review_required' | 'stopped'>;
 interface ReceiveGeneration { reset: number }
 interface AppProps { reloadPage?: () => void }
 
@@ -254,11 +252,6 @@ export default function App({ reloadPage = () => window.location.reload() }: App
     setExpediente(null);
     setDetailFailure(null);
   }, [selectedId]);
-
-  const selectActionState = useCallback((status: ActionableStatus) => {
-    const firstInvoice = rows.find((row) => row.status === status);
-    if (firstInvoice) selectInvoice(firstInvoice.id);
-  }, [rows, selectInvoice]);
 
   const togglePaymentBatch = useCallback((invoiceId: string) => {
     setHeldReadyIds((current) => {
@@ -515,14 +508,13 @@ export default function App({ reloadPage = () => window.location.reload() }: App
                 rowRevisions={rowRevisions}
                 filter={inboxFilter}
                 onSelect={selectInvoice}
+                onClearFilter={() => setInboxFilter(null)}
                 onProcess={() => void handleProcess()}
                 onReceive={openReceive}
                 onDropFiles={(files) => void handleDropFiles(files)}
               />
               <Expediente
                 key={`${selectedId ?? 'empty'}:${selectedExpediente?.row.status ?? ''}:${selectedExpediente?.record?.id ?? ''}`}
-                rows={rows}
-                selectedStatus={selectedStatus ?? null}
                 expediente={selectedExpediente}
                 loading={detailLoading}
                 error={detailError}
@@ -532,7 +524,6 @@ export default function App({ reloadPage = () => window.location.reload() }: App
                 onReject={handleReject}
                 onResolveFlag={handleResolveFlag}
                 onReevaluate={handleReevaluate}
-                onSelectStatus={selectActionState}
                 onTogglePaymentBatch={togglePaymentBatch}
                 onOpenData={openData}
               />

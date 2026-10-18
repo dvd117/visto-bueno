@@ -35,8 +35,6 @@ function renderEmptyBandeja(onReceive?: () => void) {
 function renderEmptyExpediente() {
   return render(
     <Expediente
-      rows={[]}
-      selectedStatus={null}
       expediente={null}
       loading={false}
       error={null}
@@ -46,7 +44,6 @@ function renderEmptyExpediente() {
       onReject={vi.fn(async () => {})}
       onResolveFlag={vi.fn(async () => {})}
       onReevaluate={vi.fn(async () => {})}
-      onSelectStatus={vi.fn()}
       onTogglePaymentBatch={vi.fn()}
       onOpenData={vi.fn()}
     />,

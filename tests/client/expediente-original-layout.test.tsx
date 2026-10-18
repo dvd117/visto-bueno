@@ -23,12 +23,10 @@ function makeExpediente(sourceKind: InvoiceRow['sourceKind'], id = 'AL-042'): Ex
 function expedienteView(expediente: ExpedienteData) {
   return (
     <Expediente
-      rows={[expediente.row]} selectedStatus={expediente.row.status}
       expediente={expediente} loading={false} error={null} busy={false}
       includedInPaymentBatch={false}
       onApprove={async () => undefined} onReject={async () => undefined}
-      onResolveFlag={async () => undefined} onReevaluate={async () => undefined}
-      onSelectStatus={() => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined}
+      onResolveFlag={async () => undefined} onReevaluate={async () => undefined} onTogglePaymentBatch={() => undefined} onOpenData={() => undefined}
     />
   );
 }

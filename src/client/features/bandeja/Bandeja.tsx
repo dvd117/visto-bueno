@@ -13,6 +13,7 @@ interface BandejaProps {
   rowRevisions: Record<string, number>;
   filter?: CounterFilter | null;
   onSelect: (id: string) => void;
+  onClearFilter?: () => void;
   onProcess: () => void;
   onReceive?: () => void;
   onDropFiles: (files: File[]) => void;
@@ -23,17 +24,16 @@ type GroupStatus = Exclude<InvoiceStatus, 'queued'>;
 interface StateGroup {
   status: GroupStatus;
   plural: string;
-  openByDefault: boolean;
 }
 
 const stateGroups: StateGroup[] = [
-  { status: 'stopped', plural: 'Frenadas', openByDefault: true },
-  { status: 'review_required', plural: 'Requieren revisión', openByDefault: true },
-  { status: 'approval_required', plural: 'Requieren tu aprobación', openByDefault: true },
-  { status: 'stale', plural: 'Desactualizadas', openByDefault: true },
-  { status: 'ready', plural: 'Listas para pagar', openByDefault: false },
-  { status: 'approved', plural: 'Aprobadas', openByDefault: true },
-  { status: 'rejected', plural: 'Rechazadas', openByDefault: true },
+  { status: 'stopped', plural: 'Frenadas' },
+  { status: 'review_required', plural: 'Requieren revisión' },
+  { status: 'approval_required', plural: 'Requieren tu aprobación' },
+  { status: 'stale', plural: 'Desactualizadas' },
+  { status: 'ready', plural: 'Listas para pagar' },
+  { status: 'approved', plural: 'Aprobadas' },
+  { status: 'rejected', plural: 'Rechazadas' },
 ];
 
 const sourceLabels: Record<SourceKind, string> = {
@@ -57,6 +57,7 @@ export function Bandeja({
   rowRevisions,
   filter = null,
   onSelect,
+  onClearFilter,
   onProcess,
   onReceive,
   onDropFiles,
@@ -190,6 +191,18 @@ export function Bandeja({
               )}
             </section>
           )}
+          {filter !== null && (
+            <div className="filter-bar" role="status">
+              <span>
+                Mostrando solo <strong>{stateGroups.find(({ status }) => status === filter)?.plural}</strong> · {visibleCount} de {rows.length}
+              </span>
+              {onClearFilter && (
+                <button type="button" className="button button-secondary" onClick={onClearFilter}>
+                  Ver todas ({rows.length}) <span aria-hidden="true">×</span>
+                </button>
+              )}
+            </div>
+          )}
           {stateGroups.some(({ status }) => (groupedRows.get(status)?.length ?? 0) > 0) && (
             <p className="eyebrow list-stage-heading">Después de procesar</p>
           )}
@@ -203,11 +216,11 @@ export function Bandeja({
                   className={`state-group state-group-${group.status}`}
                   data-state={group.status}
                   key={group.status}
-                  open={filter ? filter === group.status : group.openByDefault}
+                  open={filter === group.status}
                 >
                   <summary>
                     <span className="group-title">
-                      <StatusChip status={group.status} announce={false} />
+                      <StatusChip status={group.status} announce={false} glyphOnly />
                       <span>{group.plural}</span>
                     </span>
                     <span className="group-count">{groupRows.length}</span>
