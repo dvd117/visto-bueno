@@ -124,3 +124,7 @@ Estas tres evidencias —seguridad, conjunto etiquetado y muestra en vivo— se 
 TypeScript, React, Vite, Hono, SQLite (`better-sqlite3`), `decimal.js` y Vitest. Gemini se usa para proponer datos extraídos; JEV, para juicio tipado. Ningún modelo escribe la explicación final de una decisión.
 
 Consulta [Cómo decide el agente](docs/help/como-decide.md) para la guía breve dirigida a finanzas.
+
+## Licencia
+
+[AGPL-3.0](LICENSE). Puedes usar, modificar y redistribuir Visto Bueno, incluso con fines comerciales; si ofreces una versión modificada como servicio en red, debes publicar su código fuente bajo la misma licencia.

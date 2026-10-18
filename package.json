@@ -2,6 +2,7 @@
   "name": "visto-bueno",
   "private": true,
   "version": "0.0.0",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite --host 127.0.0.1\" \"tsx watch src/server.ts\"",
