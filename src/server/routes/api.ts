@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { evaluationResultSchema, type ApiError, type DecisionAction, type FlagResolution } from '../../shared/api';
 import { textInvoiceInputSchema } from '../../shared/api-schemas';
 import { CURRENCIES } from '../../shared/domain/currencies';
+import { taxIdChecksumValid } from '../../shared/domain/tax-ids';
 import type { Budget, Contract, FxRate, Treasury, Vendor } from '../../shared/domain/types';
 import {
   approveInvoice, markStale, rejectInvoice, resolveFlag,
@@ -49,6 +50,17 @@ const nonNegativeInt = safeInteger.min(0);
 const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US']);
 const currencySchema = z.enum(CURRENCIES);
 const costCenterSchema = z.enum(['ingenieria', 'diseno', 'operaciones', 'legal']);
+
+function vendorTaxIdChangeIsValid(vendor: Vendor, current: Vendor | undefined): boolean {
+  if (current?.country === vendor.country && current.taxId === vendor.taxId) return true;
+  return taxIdChecksumValid(vendor.country, vendor.taxId) !== false;
+}
+
+function vendorTaxIdsAreValid(vendors: Vendor[], current: Vendor[]): boolean {
+  const existingById = new Map(current.map((vendor) => [vendor.id, vendor]));
+  return vendors.every((vendor) => vendorTaxIdChangeIsValid(vendor, existingById.get(vendor.id)));
+}
+
 function validIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -378,10 +390,20 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
     if (!tableNames.has(table)) return jsonFailure(c, 404, 'No encontré esa tabla.', 'not_found');
     const workspaceId = c.get('workspaceId');
     const body = parseJson(c);
+    let vendorInput: Vendor | null = null;
+    if (table === 'vendors') {
+      const parsed = vendorSchema.safeParse(body);
+      if (!parsed.success) return jsonFailure(c, 400, 'Los datos no son válidos o no coinciden con los registros existentes.');
+      vendorInput = parsed.data as Vendor;
+      const current = getWorkspaceData(db, workspaceId).vendors.find(({ id }) => id === vendorInput!.id);
+      if (!vendorTaxIdChangeIsValid(vendorInput, current)) {
+        return jsonFailure(c, 400, 'El identificador fiscal debe tener formato y dígito verificador válidos para el país.');
+      }
+    }
     try {
       const saved = db.transaction(() => {
         if (table === 'vendors') {
-          const parsed = vendorSchema.parse(body) as Vendor;
+          const parsed = vendorInput!;
           const result = putVendor(db, workspaceId, parsed);
           markStale(db, workspaceId, { vendorId: parsed.id });
           return result;
@@ -422,6 +444,9 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
       const parsed = parseTable(table, await file.text());
       if (!parsed.ok) return jsonFailure(c, 400, parsed.summary, 'invalid_csv');
       const workspaceId = c.get('workspaceId');
+      if (table === 'vendors' && !vendorTaxIdsAreValid(parsed.rows as Vendor[], getWorkspaceData(db, workspaceId).vendors)) {
+        return jsonFailure(c, 400, 'El identificador fiscal debe tener formato y dígito verificador válidos para el país.', 'invalid_csv');
+      }
       db.transaction(() => applyCsv(db, workspaceId, table, parsed.rows)).immediate();
       return c.json({ ok: true });
     } catch {

@@ -138,6 +138,20 @@ const vendorSchemaBase = safeIntegerProperties(
   nonBlankProperties(zodSchema(vendorSchema), ['id', 'name', 'taxId', 'payoutAccount']),
   ['version'],
 );
+const vendorSchemaDocument = withProperties(vendorSchemaBase, {}, {
+  description: 'Para proveedores nuevos o con country/taxId modificado: se valida formato y dígito verificador de VE (RIF), PE (RUC) y AR (CUIT). La validación se limita al cliente seleccionado, permite conservar sin cambios un identificador legado del mismo proveedor en ese cliente y no verifica registros oficiales. Para los demás países no se aplica checksum.',
+  'x-runtime-constraints': [
+    {
+      fields: ['country', 'taxId'],
+      relation: 'new_or_changed_vendor_tax_id must match the country format and checksum: VE RIF (V/E/J/P/G + 8 digits + check digit), PE RUC (11 digits, prefix 10 or 20), AR CUIT (11 digits, supported prefix and check digit)',
+      scope: 'selected_client_workspace',
+    },
+    {
+      fields: ['id', 'country', 'taxId'],
+      relation: 'an existing vendor tax ID is legacy only when id, country, and taxId are unchanged in the selected client workspace',
+    },
+  ],
+});
 const contractSchemaBase = safeIntegerProperties(
   nonBlankProperties(zodSchema(contractSchema), ['id', 'vendorId', 'scope', 'unit']),
   ['amountMinor', 'rateMinor', 'maxUnitsPerPeriod', 'version'],
@@ -360,8 +374,8 @@ const components: Record<string, JsonSchema> = {
   DecideResponse: zodSchema(decideResponseSchema),
   DecisionAction: decisionActionSchema,
   FlagResolution: flagResolutionSchema,
-  Vendor: vendorSchemaBase,
-  Vendors: { ...zodSchema(z.array(vendorSchema)), items: vendorSchemaBase },
+  Vendor: vendorSchemaDocument,
+  Vendors: { ...zodSchema(z.array(vendorSchema)), items: vendorSchemaDocument },
   Contract: contractSchemaDocument,
   Contracts: { ...zodSchema(z.array(contractSchema)), items: contractSchemaDocument },
   Budget: budgetSchemaDocument,

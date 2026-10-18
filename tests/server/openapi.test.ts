@@ -25,6 +25,27 @@ afterEach(() => {
 afterAll(() => serverRuntime.dispose());
 
 describe('OpenAPI document', () => {
+  it('documents workspace-scoped country tax-ID format and checksum constraints', async () => {
+    const { app } = makeRuntime();
+    const response = await app.request('/api/openapi.json');
+    const document = await response.json() as { components?: { schemas?: Record<string, JsonSchema> } };
+    const vendor = document.components?.schemas?.Vendor;
+    const vendors = document.components?.schemas?.Vendors;
+
+    expect(vendor?.description).toContain('VE');
+    expect(vendor?.description).toContain('PE');
+    expect(vendor?.description).toContain('AR');
+    expect(vendor?.['x-runtime-constraints']).toContainEqual(expect.objectContaining({
+      fields: ['country', 'taxId'],
+      relation: expect.stringContaining('RIF'),
+    }));
+    expect(vendor?.['x-runtime-constraints']).toContainEqual(expect.objectContaining({
+      fields: ['id', 'country', 'taxId'],
+      relation: expect.stringContaining('selected client workspace'),
+    }));
+    expect(vendors?.items).toMatchObject({ description: vendor?.description });
+  });
+
   it('documents the single-invoice decision endpoint and its idempotency contract', async () => {
     const { app } = makeRuntime();
     const response = await app.request('/api/openapi.json');

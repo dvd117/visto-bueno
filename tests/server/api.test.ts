@@ -8,7 +8,7 @@ import { createServerApp, serverRuntime } from '../../src/server/app';
 import { readExampleFixtures } from '../../src/server/fixtures';
 import { createLiveCallLimiter } from '../../src/server/middleware/limits';
 import { installClientContextForMutations } from './request-context';
-import type { Contract, ExtractionClaims, ExtractionResult, JevAnswers, Rules, SourceKind } from '../../src/shared/domain/types';
+import type { Contract, ExtractionClaims, ExtractionResult, JevAnswers, Rules, SourceKind, Vendor } from '../../src/shared/domain/types';
 
 const runtimes: Array<ReturnType<typeof createServerApp>> = [];
 
@@ -264,11 +264,14 @@ describe('T11 API', () => {
   });
 
   it.each([
-    ['CL', 'CLP'], ['PE', 'PEN'], ['AR', 'ARS'],
-  ] as const)('accepts %s vendors paid in %s through the data API', async (country, payoutCurrency) => {
+    ['CL', 'CLP', 'FICTICIO-CL'],
+    ['PE', 'PEN', '20-00000000-1'],
+    ['AR', 'ARS', '30-00000000-7'],
+    ['VE', 'VES', 'J-00000000-0'],
+  ] as const)('accepts %s vendors paid in %s through the data API', async (country, payoutCurrency, taxId) => {
     const { app } = makeRuntime();
     const vendor = {
-      id: `proveedor-${country.toLowerCase()}`, name: `Proveedor ficticio ${country}`, taxId: `FICTICIO-${country}`, country,
+      id: `proveedor-${country.toLowerCase()}`, name: `Proveedor ficticio ${country}`, taxId, country,
       payoutCurrency, payoutAccount: 'Banco Niebla Azul ···· 6341', status: 'allowed', version: 1,
     };
 
@@ -280,6 +283,88 @@ describe('T11 API', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ country, payoutCurrency });
+  });
+
+  it.each([
+    ['VE', 'VES', 'J-00000000-1'],
+    ['PE', 'PEN', '20-00000000-0'],
+    ['AR', 'ARS', '30-00000000-6'],
+  ] as const)('rejects a new %s vendor with a wrong tax-ID checksum', async (country, payoutCurrency, taxId) => {
+    const { app } = makeRuntime();
+    const response = await app.request('/api/data/vendors', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: `proveedor-${country.toLowerCase()}`, name: `Proveedor ficticio ${country}`, taxId, country,
+        payoutCurrency, payoutAccount: 'Banco Niebla Azul ···· 6342', status: 'allowed', version: 1,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'invalid_request' });
+  });
+
+  it('allows other edits to legacy synthetic vendor IDs without changing their tax ID', async () => {
+    const { app } = makeRuntime();
+    const listResponse = await app.request('/api/data/vendors');
+    const vendors = await listResponse.json() as Vendor[];
+    const legacyVendor = vendors.find(({ id }) => id === 'imprenta-caribe');
+    expect(legacyVendor).toBeDefined();
+
+    const response = await app.request('/api/data/vendors', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...legacyVendor, status: 'blocked' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: 'imprenta-caribe', taxId: 'J-40123456-1', status: 'blocked' });
+  });
+
+  it('applies checksum validation to new vendor rows in CSV imports but allows unchanged legacy IDs', async () => {
+    const { app } = makeRuntime();
+    const upload = async (csv: string) => {
+      const form = new FormData();
+      form.set('file', new File([csv], 'vendors.csv', { type: 'text/csv' }));
+      return app.request('/api/data/vendors/csv', { method: 'POST', body: form });
+    };
+    const invalid = await upload([
+      'id,name,taxId,country,payoutCurrency,payoutAccount,status,version',
+      'proveedor-ve,Proveedor ficticio VE,J-00000000-1,VE,VES,Banco Niebla Azul ···· 6342,allowed,1',
+    ].join('\n'));
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toMatchObject({ error: 'invalid_csv' });
+
+    const legacy = await upload([
+      'id,name,taxId,country,payoutCurrency,payoutAccount,status,version',
+      'imprenta-caribe,Imprenta Caribe C.A.,J-40123456-1,VE,USD,Banco Cielarroyo ···· 6130,allowed,1',
+    ].join('\n'));
+    expect(legacy.status).toBe(200);
+  });
+
+  it('scopes the unchanged-legacy tax-ID exception to the client workspace being edited', async () => {
+    const { app } = makeRuntime({ seedExamples: false });
+    const directoryResponse = await app.request('/api/clients');
+    const cookie = directoryResponse.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const directory = await directoryResponse.json() as { clients: Array<{ id: string; name: string }> };
+    const andina = directory.clients.find(({ name }) => name === 'Andina Labs Inc.');
+    const marea = directory.clients.find(({ name }) => name === 'Marea Norte SpA');
+    expect(andina).toBeDefined();
+    expect(marea).toBeDefined();
+
+    const saveVendor = (clientId: string, status: 'allowed' | 'blocked') => app.request('/api/data/vendors', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie, 'X-Client-Id': clientId },
+      body: JSON.stringify({
+        id: 'imprenta-caribe', name: 'Imprenta Caribe C.A.', taxId: 'J-40123456-1', country: 'VE',
+        payoutCurrency: 'USD', payoutAccount: 'Banco Cielarroyo ···· 6130', status, version: 1,
+      }),
+    });
+
+    expect((await saveVendor(marea!.id, 'allowed')).status).toBe(400);
+    const legacyEdit = await saveVendor(andina!.id, 'blocked');
+    expect(legacyEdit.status).toBe(200);
+    expect(await legacyEdit.json()).toMatchObject({ id: 'imprenta-caribe', taxId: 'J-40123456-1', status: 'blocked' });
   });
 
   it('decides new text through the live pipeline and replays the workspace-scoped idempotency key', async () => {
