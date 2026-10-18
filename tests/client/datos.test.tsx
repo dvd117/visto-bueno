@@ -2,9 +2,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Datos, { type DatosApi, type DataRowMap, type DataTable, type DataTableValues } from '../../src/client/features/datos/Datos';
 import { datosApi } from '../../src/client/lib/api';
+import type { CompanyPreview, CompanyRecord } from '../../src/shared/api';
 
 // JSDOM rendering can exceed Vitest's 5s default when the full suite is parallel.
 const parallelTimeoutMs = 15_000;
+
+const companyRecord: CompanyRecord = {
+  name: 'Andina Labs Inc.', operatingCountries: ['US'], vendorCountries: ['CO'], currencies: ['USD'],
+  limits: { perPaymentUsdMinor: 1_500_000, monthlyUsdMinor: 6_000_000, approvalThresholdUsdMinor: 300_000 },
+};
+const companyPreview: CompanyPreview = {
+  counts: { ready: 0, approval_required: 0, review_required: 0, stopped: 0 },
+  deltas: { ready: 0, approval_required: 0, review_required: 0, stopped: 0 },
+  unsafeApprovals: 0, staleCount: 0,
+};
 
 const data: DataTableValues = {
   vendors: [{
@@ -30,6 +41,9 @@ function makeApi(
     putRow: vi.fn(async (_table: DataTable, row: DataRowMap[DataTable]) => row) as DatosApi['putRow'],
     uploadCsv: uploadCsv as DatosApi['uploadCsv'],
     templateUrl: (table) => `/api/data/templates/${table}.csv`,
+    getCompany: vi.fn(async () => companyRecord) as DatosApi['getCompany'],
+    saveCompany: vi.fn(async (next: CompanyRecord) => next) as DatosApi['saveCompany'],
+    previewCompany: vi.fn(async () => companyPreview) as DatosApi['previewCompany'],
   };
 }
 

@@ -33,6 +33,11 @@ export interface Rules {
   approvalThresholdUsdMinor: number; fuzzyDuplicateWindowDays: number; preset: Preset;
 }
 
+/** Company identity stored per workspace. Limits live in Rules, the only input the engine reads. */
+export interface CompanyProfile {
+  name: string; operatingCountries: VendorCountry[]; vendorCountries: VendorCountry[]; currencies: Currency[];
+}
+
 export type SourceKind = 'pdf' | 'image' | 'text';
 
 export interface ExtractionClaims {

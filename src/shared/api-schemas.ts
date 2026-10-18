@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type {
   ApiError,
   Comparison,
+  CompanyPreview,
+  CompanyRecord,
   ConflictResponse,
   Counters,
   Expediente,
@@ -192,4 +194,29 @@ export const simulationResultSchema: z.ZodType<SimulationResult> = z.object({
 export const logEntrySchema: z.ZodType<LogEntry> = z.object({
   at: z.string(), invoiceId: z.string(), status: invoiceStatusSchema,
   headline: z.string(), seal: z.string(), by: z.string().nullable(),
+}).strict();
+
+const uniqueValues = (values: readonly string[]) => new Set(values).size === values.length;
+export const companyRecordSchema: z.ZodType<CompanyRecord> = z.object({
+  name: z.string().trim().min(1).max(120),
+  operatingCountries: z.array(countrySchema).min(1).max(7).refine(uniqueValues),
+  vendorCountries: z.array(countrySchema).min(1).max(7).refine(uniqueValues),
+  currencies: z.array(currencySchema).min(1).max(7)
+    .refine(uniqueValues).refine((currencies) => currencies.includes('USD')),
+  limits: z.object({
+    perPaymentUsdMinor: nonNegativeInteger,
+    monthlyUsdMinor: nonNegativeInteger,
+    approvalThresholdUsdMinor: nonNegativeInteger,
+  }).strict(),
+}).strict();
+export const companyPreviewSchema: z.ZodType<CompanyPreview> = z.object({
+  counts: simulationCountsSchema,
+  deltas: z.object({
+    ready: safeInteger,
+    approval_required: safeInteger,
+    review_required: safeInteger,
+    stopped: safeInteger,
+  }).strict(),
+  unsafeApprovals: z.literal(0),
+  staleCount: nonNegativeInteger,
 }).strict();

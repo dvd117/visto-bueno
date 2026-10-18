@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Counters, Expediente as ExpedienteData, InvoiceRow } from '../../src/shared/api';
+import type { CompanyRecord, Counters, Expediente as ExpedienteData, InvoiceRow } from '../../src/shared/api';
 import { Bandeja } from '../../src/client/features/bandeja/Bandeja';
 import Datos, { type DatosApi, type DataTable, type DataRowMap, type DataTableValues } from '../../src/client/features/datos/Datos';
 import { Expediente } from '../../src/client/features/expediente/Expediente';
@@ -78,6 +78,16 @@ describe('integrated visual QA fixes', () => {
       putRow: vi.fn(async (_table: DataTable, row: DataRowMap[DataTable]) => row) as DatosApi['putRow'],
       uploadCsv: vi.fn(async () => ({ ok: true })),
       templateUrl: (table) => `/api/data/templates/${table}.csv`,
+      getCompany: vi.fn(async () => ({
+        name: 'Andina Labs Inc.', operatingCountries: ['US'], vendorCountries: ['CO'], currencies: ['USD'],
+        limits: { perPaymentUsdMinor: 1_500_000, monthlyUsdMinor: 6_000_000, approvalThresholdUsdMinor: 300_000 },
+      })) as DatosApi['getCompany'],
+      saveCompany: vi.fn(async (next: CompanyRecord) => next) as DatosApi['saveCompany'],
+      previewCompany: vi.fn(async () => ({
+        counts: { ready: 0, approval_required: 0, review_required: 0, stopped: 0 },
+        deltas: { ready: 0, approval_required: 0, review_required: 0, stopped: 0 },
+        unsafeApprovals: 0 as const, staleCount: 0,
+      })) as DatosApi['previewCompany'],
     };
 
     try {

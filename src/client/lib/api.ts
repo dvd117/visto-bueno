@@ -17,6 +17,8 @@ import { evaluationResultSchema } from '../../shared/api';
 import type { Budget, Contract, FxRate, Treasury, Vendor } from '../../shared/domain/types';
 import {
   apiErrorSchema,
+  companyPreviewSchema,
+  companyRecordSchema,
   conflictSchema,
   countrySchema,
   currencySchema,
@@ -30,6 +32,8 @@ import {
 } from '../../shared/api-schemas';
 export {
   apiErrorSchema,
+  companyPreviewSchema,
+  companyRecordSchema,
   conflictSchema,
   expedienteSchema,
   invoiceRowSchema,
@@ -365,7 +369,15 @@ export function exportReportMd(): Promise<string> {
   return getExportText('/api/export/report.md');
 }
 
-export const datosApi: DatosApi = { getTable, putRow, uploadCsv, templateUrl };
+export const datosApi: DatosApi = {
+  getTable,
+  putRow,
+  uploadCsv,
+  templateUrl,
+  getCompany: () => requestJson('/api/company', companyRecordSchema),
+  saveCompany: (company) => requestJson('/api/company', companyRecordSchema, jsonInit('PUT', company)),
+  previewCompany: (company) => requestJson('/api/company/preview', companyPreviewSchema, jsonInit('POST', company)),
+};
 export const reglasApi: ReglasApi = {
   getRules: () => requestJson('/api/rules', rulesSchema),
   saveRules: (rules) => requestJson('/api/rules', rulesSchema, jsonInit('PUT', rules)),

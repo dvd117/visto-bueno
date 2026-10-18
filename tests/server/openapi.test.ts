@@ -117,6 +117,56 @@ describe('OpenAPI document', () => {
     expect(schemas.ProcessRequest?.allOf).toHaveLength(2);
   });
 
+  it('documents company profile read, save, and preview routes', async () => {
+    const { app } = makeRuntime();
+    const response = await app.request('/api/openapi.json');
+    const document = await response.json() as {
+      paths?: Record<string, Record<string, unknown>>;
+      components?: { schemas?: Record<string, JsonSchema> };
+    };
+    const schemas = document.components?.schemas ?? {};
+
+    expect(document.paths?.['/api/company']).toMatchObject({
+      get: {
+        operationId: 'getCompanyProfile',
+        responses: { '200': { content: { 'application/json': { schema: { $ref: '#/components/schemas/CompanyRecord' } } } } },
+      },
+      put: {
+        operationId: 'putCompanyProfile',
+        requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/CompanyRecord' } } } },
+        responses: { '200': { content: { 'application/json': { schema: { $ref: '#/components/schemas/CompanyRecord' } } } } },
+      },
+    });
+    expect(document.paths?.['/api/company/preview']).toMatchObject({
+      post: {
+        operationId: 'previewCompanyProfile',
+        requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/CompanyRecord' } } } },
+        responses: { '200': { content: { 'application/json': { schema: { $ref: '#/components/schemas/CompanyPreview' } } } } },
+      },
+    });
+    expect(schemas.CompanyRecord).toMatchObject({
+      type: 'object',
+      properties: {
+        name: {
+          pattern: '^\\s*[\\s\\S]{0,119}\\S\\s*$',
+          'x-maxLengthAfterTrim': 120,
+        },
+        operatingCountries: { type: 'array', uniqueItems: true, items: { enum: ['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US'] } },
+        currencies: { type: 'array', contains: { const: 'USD' } },
+        limits: {
+          description: 'approvalThresholdUsdMinor debe ser menor que perPaymentUsdMinor.',
+          'x-runtime-constraints': [{
+            fields: ['approvalThresholdUsdMinor', 'perPaymentUsdMinor'],
+            relation: 'approvalThresholdUsdMinor < perPaymentUsdMinor',
+          }],
+          properties: { perPaymentUsdMinor: { maximum: Number.MAX_SAFE_INTEGER } },
+        },
+      },
+    });
+    expect(schemas.CompanyRecord?.properties?.name?.maxLength).toBeUndefined();
+    expect(schemas.CompanyPreview?.properties?.staleCount).toMatchObject({ type: 'integer', minimum: 0 });
+  });
+
   it('is available without creating a workspace or setting a cookie', async () => {
     const { app, db } = makeRuntime();
     const response = await app.request('/api/openapi.json');

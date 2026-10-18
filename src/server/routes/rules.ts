@@ -100,7 +100,7 @@ function readPriorCommitments(db: Db, workspaceId: string): SimulationPriorCommi
   return prior;
 }
 
-function readSimulationSnapshot(db: Db, workspaceId: string): SimulationInput {
+export function readSimulationSnapshot(db: Db, workspaceId: string): SimulationInput {
   return db.transaction(() => {
     const workspaceData = {
       vendors: db.prepare('SELECT payload_json FROM vendors WHERE workspace_id = ? ORDER BY id')
