@@ -3,6 +3,8 @@ export const LIVE_CALL_WINDOW_MS = 10 * 60 * 1000;
 export const LIVE_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const WORKSPACE_TTL_MS = 24 * 60 * 60 * 1000;
 export const WORKSPACE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+export const MCP_SESSION_CREATE_WINDOW_MS = 60 * 1000;
+export const MCP_SESSION_CREATE_LIMIT_PER_IP = 3;
 
 const LIVE_CALL_LIMIT_MESSAGE = 'Alcanzaste el límite de llamadas en vivo del demo. Inténtalo más tarde.';
 const BODY_LIMIT_MESSAGE = 'La solicitud supera el límite de carga de 2 MB.';
@@ -116,6 +118,44 @@ export function createLiveCallLimiter(options: LiveCallLimiterOptions = {}) {
   }
 
   return { reserveCall };
+}
+
+export interface McpSessionCreationLimiterOptions {
+  now?: () => number;
+  windowMs?: number;
+  maxPerIp?: number;
+  maxTrackedIps?: number;
+}
+
+/** Limits MCP session creation separately from live model-call reservations. */
+export function createMcpSessionCreationLimiter(options: McpSessionCreationLimiterOptions = {}) {
+  const now = options.now ?? Date.now;
+  const windowMs = validateLimit(options.windowMs ?? MCP_SESSION_CREATE_WINDOW_MS, 'windowMs');
+  const maxPerIp = validateLimit(options.maxPerIp ?? MCP_SESSION_CREATE_LIMIT_PER_IP, 'maxPerIp');
+  const maxTrackedIps = validateLimit(options.maxTrackedIps ?? 1024, 'maxTrackedIps');
+  const timestampsByIp = new Map<string, number[]>();
+
+  function reserve(ip: string | null): boolean {
+    const at = now();
+    for (const [key, timestamps] of timestampsByIp) {
+      const recent = timestamps.filter((timestamp) => at - timestamp < windowMs);
+      if (recent.length === 0) timestampsByIp.delete(key);
+      else if (recent.length !== timestamps.length) timestampsByIp.set(key, recent);
+    }
+
+    const key = ip ?? 'unknown';
+    let timestamps = timestampsByIp.get(key);
+    if (!timestamps) {
+      if (timestampsByIp.size >= maxTrackedIps) return false;
+      timestamps = [];
+      timestampsByIp.set(key, timestamps);
+    }
+    if (timestamps.length >= maxPerIp) return false;
+    timestamps.push(at);
+    return true;
+  }
+
+  return { reserve };
 }
 
 export type LimitedBodyResult =

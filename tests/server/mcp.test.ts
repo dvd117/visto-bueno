@@ -6,11 +6,22 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { Expediente, DecideResponse } from '../../src/shared/api';
 import { createServerApp, serverRuntime } from '../../src/server/app';
 import { getInvoice, openDb } from '../../src/server/db/db';
-import { createLiveCallLimiter } from '../../src/server/middleware/limits';
+import { createLiveCallLimiter, MAX_REQUEST_BODY_BYTES } from '../../src/server/middleware/limits';
+import { MCP_SESSION_IDLE_TTL_MS } from '../../src/server/routes/mcp';
 import type { SourceKind } from '../../src/shared/domain/types';
 
 const runtimes: Array<ReturnType<typeof createServerApp>> = [];
 const clients: Client[] = [];
+const MCP_INITIALIZE = {
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'mcp-regression', version: '1' } },
+};
+const MCP_HEADERS = {
+  accept: 'application/json, text/event-stream',
+  'content-type': 'application/json',
+};
 
 function makeRuntime(options: Partial<Parameters<typeof createServerApp>[0]> = {}) {
   const runtime = createServerApp({
@@ -66,6 +77,40 @@ async function visitorCookie(app: ReturnType<typeof createServerApp>['app']): Pr
   return cookie;
 }
 
+async function initializeOverHttp(
+  app: ReturnType<typeof createServerApp>['app'],
+  options: { cookie?: string; forwardedFor?: string; body?: string } = {},
+) {
+  const response = await app.request('/mcp', {
+    method: 'POST',
+    headers: {
+      ...MCP_HEADERS,
+      ...(options.cookie ? { cookie: options.cookie } : {}),
+      ...(options.forwardedFor ? { 'x-forwarded-for': options.forwardedFor } : {}),
+    },
+    body: options.body ?? JSON.stringify(MCP_INITIALIZE),
+  });
+  const responseBody = await response.text();
+  return { status: response.status, sessionId: response.headers.get('mcp-session-id'), responseBody };
+}
+
+function sessionRequestHeaders(sessionId: string, cookie?: string): Record<string, string> {
+  return {
+    ...MCP_HEADERS,
+    'mcp-session-id': sessionId,
+    'mcp-protocol-version': '2025-03-26',
+    ...(cookie ? { cookie } : {}),
+  };
+}
+
+async function requestToolsList(app: ReturnType<typeof createServerApp>['app'], sessionId: string) {
+  return app.request('/mcp', {
+    method: 'POST',
+    headers: sessionRequestHeaders(sessionId),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/list', params: {} }),
+  });
+}
+
 afterEach(async () => {
   await Promise.all(clients.splice(0).map(async (client) => {
     try { await client.close(); } catch { /* A deliberately failed connect has nothing to close. */ }
@@ -77,6 +122,145 @@ afterEach(async () => {
 afterAll(() => serverRuntime.dispose());
 
 describe('I3 MCP server', () => {
+  it('binds each session to its initialization workspace for POST, GET, and DELETE', async () => {
+    const { app } = makeRuntime();
+    const cookieA = await visitorCookie(app);
+    const cookieB = await visitorCookie(app);
+    const created = await app.request('/api/invoices', {
+      method: 'POST',
+      headers: { cookie: cookieA, 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'PRIVATE WORKSPACE A MARKER' }),
+    });
+    const invoiceId = (await created.json() as { id: string }).id;
+    const initialized = await initializeOverHttp(app, { cookie: cookieA });
+    expect(initialized.status).toBe(200);
+    expect(initialized.sessionId).toBeTruthy();
+    const sessionId = initialized.sessionId!;
+
+    const post = await app.request('/mcp', {
+      method: 'POST',
+      headers: sessionRequestHeaders(sessionId, cookieB),
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 2, method: 'tools/call',
+        params: { name: 'explain', arguments: { invoiceId } },
+      }),
+    });
+    const postBody = await post.text();
+    expect(post.status).toBe(404);
+    expect(postBody).not.toContain('PRIVATE WORKSPACE A MARKER');
+
+    const get = await app.request('/mcp', {
+      method: 'GET',
+      headers: {
+        accept: 'text/event-stream',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': '2025-03-26',
+        cookie: cookieB,
+      },
+    });
+    expect(get.status).toBe(404);
+    await get.body?.cancel();
+
+    const deletion = await app.request('/mcp', {
+      method: 'DELETE',
+      headers: { 'mcp-session-id': sessionId, 'mcp-protocol-version': '2025-03-26', cookie: cookieB },
+    });
+    expect(deletion.status).toBe(404);
+    const ownerRequest = await requestToolsList(app, sessionId);
+    expect(ownerRequest.status).toBe(200);
+    await ownerRequest.body?.cancel();
+  });
+
+  it('does not create a workspace for an invalid initialize body', async () => {
+    const { app, db } = makeRuntime({ seedExamples: false });
+    for (let index = 0; index < 16; index += 1) {
+      const result = await initializeOverHttp(app, { body: '{"method":"initialize"}' });
+      expect(result.status).toBe(400);
+    }
+    expect(db.prepare('SELECT COUNT(*) AS count FROM workspaces').get()).toMatchObject({ count: 0 });
+    expect((await initializeOverHttp(app)).status).toBe(200);
+  });
+
+  it('rate-limits session creation per IP without minting rejected workspaces', async () => {
+    const { app, db } = makeRuntime({ seedExamples: false });
+    const attempts = await Promise.all([
+      initializeOverHttp(app), initializeOverHttp(app), initializeOverHttp(app), initializeOverHttp(app),
+    ]);
+    expect(attempts.map(({ status }) => status)).toEqual([200, 200, 200, 429]);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM workspaces').get()).toMatchObject({ count: 3 });
+  });
+
+  it('caps live sessions globally even when initialization comes from distinct IPs', async () => {
+    const { app, db } = makeRuntime({ seedExamples: false, trustProxy: true });
+    const statuses: number[] = [];
+    for (let index = 1; index <= 129; index += 1) {
+      const result = await initializeOverHttp(app, { forwardedFor: `203.0.113.${index}` });
+      statuses.push(result.status);
+    }
+    expect(statuses.slice(0, 128).every((status) => status === 200)).toBe(true);
+    expect(statuses[128]).toBe(503);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM workspaces').get()).toMatchObject({ count: 128 });
+  });
+
+  it('expires idle sessions and drops sessions after workspace TTL cleanup', async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = makeRuntime({ seedExamples: false, autoCleanup: true });
+      const first = await initializeOverHttp(runtime.app);
+      expect(first.status).toBe(200);
+      expect(first.sessionId).toBeTruthy();
+      await vi.advanceTimersByTimeAsync(MCP_SESSION_IDLE_TTL_MS + 60 * 1000);
+      const expired = await requestToolsList(runtime.app, first.sessionId!);
+      expect(expired.status).toBe(404);
+      await expired.body?.cancel();
+
+      const second = await initializeOverHttp(runtime.app);
+      expect(second.status).toBe(200);
+      runtime.db.prepare("UPDATE workspaces SET last_seen = '2000-01-01T00:00:00.000Z'").run();
+      await runtime.runTtlCleanup();
+      expect(runtime.db.prepare('SELECT COUNT(*) AS count FROM workspaces').get()).toMatchObject({ count: 0 });
+      const missingWorkspace = await requestToolsList(runtime.app, second.sessionId!);
+      expect(missingWorkspace.status).toBe(404);
+      await missingWorkspace.body?.cancel();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('enforces the API streaming body limit before parsing or workspace creation', async () => {
+    const paddedInitialize = {
+      ...MCP_INITIALIZE,
+      params: { ...MCP_INITIALIZE.params, capabilities: { padding: 'x'.repeat(MAX_REQUEST_BODY_BYTES + 1_000_000) } },
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(paddedInitialize));
+    for (const contentLength of [String(bytes.byteLength), '0', undefined]) {
+      const runtime = makeRuntime({ seedExamples: false });
+      let emitted = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (emitted >= bytes.byteLength) {
+            controller.close();
+            return;
+          }
+          const end = Math.min(emitted + 64 * 1024, bytes.byteLength);
+          controller.enqueue(bytes.slice(emitted, end));
+          emitted = end;
+        },
+      });
+      const headers = new Headers(MCP_HEADERS);
+      if (contentLength !== undefined) headers.set('content-length', contentLength);
+      const request = new Request('http://localhost/mcp', {
+        method: 'POST', headers, body: stream, duplex: 'half',
+      } as RequestInit);
+      const response = await runtime.app.fetch(request);
+      expect(response.status).toBe(413);
+      expect(emitted).toBeLessThan(bytes.byteLength);
+      expect(runtime.db.prepare('SELECT COUNT(*) AS count FROM workspaces').get()).toMatchObject({ count: 0 });
+      await response.text();
+      runtime.dispose();
+    }
+  });
+
   it('exposes only safe tools and has no approve or reject capability', async () => {
     const { app, db } = makeRuntime();
     const client = connectMcp(app);

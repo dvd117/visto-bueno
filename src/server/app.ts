@@ -91,6 +91,7 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
       db.transaction(() => {
         db.prepare('DELETE FROM workspaces WHERE last_seen < ?').run(cutoff);
       }).immediate();
+      mcp.pruneMissingWorkspaces();
     },
   });
 
