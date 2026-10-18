@@ -10,7 +10,7 @@ Visto Bueno deja una factura lista para pagar solo si cumple las reglas de tu em
 
 > **Estado de implementación:** la demo desplegada integra este flujo y sirve el informe de evaluación en `GET /api/eval`. `EXTRACT_MODE=replay` y `JEV_MODE=replay` permiten probar sin llamadas externas.
 
-El contrato OpenAPI 3.1 está en `/api/openapi.json`; ejemplos con curl en `docs/api.md`.
+El contrato OpenAPI 3.1 está en `/api/openapi.json`. El servidor MCP Streamable HTTP está en `/mcp`; conexión y herramientas en `docs/api.md`.
 
 ## Cómo decide
 

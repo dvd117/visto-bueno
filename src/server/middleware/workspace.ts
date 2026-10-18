@@ -44,6 +44,29 @@ export function activeClientCookie(clientId: string): string {
   return cookie('active_client_id', clientId);
 }
 
+export function ensureRequestWorkspace(
+  db: Db,
+  cookieHeader: string | undefined,
+  options: Pick<WorkspaceMiddlewareOptions, 'seedExamples'> = {},
+): { workspaceId: string; isNew: boolean } {
+  const existingId = cookieValue(cookieHeader, 'workspace_id');
+  const workspaceId = existingId ?? randomUUID();
+  ensureWorkspace(db, workspaceId);
+  if (options.seedExamples !== false) ensureExampleInvoices(db, workspaceId);
+  return { workspaceId, isNew: existingId === null };
+}
+
+export function requestClientIp(
+  incoming: IncomingMessage | undefined,
+  forwardedFor: string | undefined,
+  options: Pick<WorkspaceMiddlewareOptions, 'trustProxy' | 'remoteAddress'> = {},
+): string | null {
+  const remoteAddress = options.remoteAddress
+    ? options.remoteAddress(incoming)
+    : incoming?.socket.remoteAddress;
+  return getClientIp({ forwardedFor, remoteAddress }, { trustProxy: options.trustProxy });
+}
+
 export function createDocumentWorkspaceCookieMiddleware(): MiddlewareHandler<ServerEnv> {
   return async (c, next) => {
     const path = c.req.path;

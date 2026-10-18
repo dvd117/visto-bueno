@@ -12,6 +12,7 @@ import { createDecideRoutes } from './routes/decide';
 import { createOpenApiRoutes } from './routes/openapi';
 import { createRulesRoutes } from './routes/rules';
 import { createCompanyRoutes } from './routes/company';
+import { createMcpRoute } from './routes/mcp';
 import { createClientRoutes } from './routes/clients';
 import type { PipelineOptions } from './pipeline';
 
@@ -39,9 +40,17 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
   const limiter = options.limiter ?? createLiveCallLimiter();
   const lastRuns = new Map<string, { invoices: number; ms: number; costUsd: string; mode: 'replay' | 'live' }>();
   const app = new Hono<ServerEnv>();
+  const mcp = createMcpRoute({
+    db,
+    fetchApi: (request, env) => app.fetch(request, env),
+    seedExamples: options.seedExamples,
+    trustProxy: options.trustProxy,
+    remoteAddress: options.remoteAddress,
+  });
 
   app.use('*', createDocumentWorkspaceCookieMiddleware());
   app.get('/health', (c) => c.json({ ok: true }));
+  app.all('/mcp', mcp.handler);
   app.route('/api', createOpenApiRoutes());
   app.use('/api/*', createWorkspaceMiddleware(db, options));
   app.use('/api/*', async (c, next) => {
@@ -84,6 +93,7 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
       db.transaction(() => {
         db.prepare('DELETE FROM workspaces WHERE last_seen < ?').run(cutoff);
       }).immediate();
+      mcp.pruneMissingWorkspaces();
     },
   });
 
@@ -91,6 +101,7 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
     app,
     db,
     dispose() {
+      mcp.dispose();
       cleanup?.dispose();
       if (options.closeDbOnDispose !== false) db.close();
     },
