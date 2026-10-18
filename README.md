@@ -10,6 +10,8 @@ Visto Bueno deja una factura lista para pagar solo si cumple las reglas de tu em
 
 ## Demo
 
+[![Ver el pitch de 3 minutos en YouTube](https://img.youtube.com/vi/RY77LVJMyrg/maxresdefault.jpg)](https://youtu.be/RY77LVJMyrg)
+
 [visto-bueno.aragort.com](https://visto-bueno.aragort.com) — demo con dos clientes ficticios, **Andina Labs Inc.** (con datos sembrados) y **Marea Norte SpA** (vacío). No se ejecutan pagos reales.
 
 > **Estado de implementación:** la demo desplegada integra este flujo y sirve el informe de evaluación en `GET /api/eval`. `EXTRACT_MODE=replay` y `JEV_MODE=replay` permiten probar sin llamadas externas.
