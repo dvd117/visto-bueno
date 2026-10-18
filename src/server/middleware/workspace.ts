@@ -29,6 +29,29 @@ function workspaceCookie(workspaceId: string): string {
   return `workspace_id=${workspaceId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`;
 }
 
+export function ensureRequestWorkspace(
+  db: Db,
+  cookieHeader: string | undefined,
+  options: Pick<WorkspaceMiddlewareOptions, 'seedExamples'> = {},
+): { workspaceId: string; isNew: boolean } {
+  const existingId = cookieValue(cookieHeader);
+  const workspaceId = existingId ?? randomUUID();
+  ensureWorkspace(db, workspaceId);
+  if (options.seedExamples !== false) ensureExampleInvoices(db, workspaceId);
+  return { workspaceId, isNew: existingId === null };
+}
+
+export function requestClientIp(
+  incoming: IncomingMessage | undefined,
+  forwardedFor: string | undefined,
+  options: Pick<WorkspaceMiddlewareOptions, 'trustProxy' | 'remoteAddress'> = {},
+): string | null {
+  const remoteAddress = options.remoteAddress
+    ? options.remoteAddress(incoming)
+    : incoming?.socket.remoteAddress;
+  return getClientIp({ forwardedFor, remoteAddress }, { trustProxy: options.trustProxy });
+}
+
 export function createDocumentWorkspaceCookieMiddleware(): MiddlewareHandler<ServerEnv> {
   return async (c, next) => {
     const path = c.req.path;
@@ -46,21 +69,11 @@ export function createDocumentWorkspaceCookieMiddleware(): MiddlewareHandler<Ser
 
 export function createWorkspaceMiddleware(db: Db, options: WorkspaceMiddlewareOptions = {}): MiddlewareHandler<ServerEnv> {
   return async (c, next) => {
-    const existingId = cookieValue(c.req.header('cookie'));
-    const workspaceId = existingId ?? randomUUID();
-    ensureWorkspace(db, workspaceId);
-    if (options.seedExamples !== false) ensureExampleInvoices(db, workspaceId);
-
-    const remoteAddress = options.remoteAddress
-      ? options.remoteAddress(c.env?.incoming)
-      : c.env?.incoming?.socket.remoteAddress;
+    const { workspaceId, isNew } = ensureRequestWorkspace(db, c.req.header('cookie'), options);
     c.set('workspaceId', workspaceId);
-    c.set('clientIp', getClientIp({
-      forwardedFor: c.req.header('x-forwarded-for'),
-      remoteAddress,
-    }, { trustProxy: options.trustProxy }));
+    c.set('clientIp', requestClientIp(c.env?.incoming, c.req.header('x-forwarded-for'), options));
 
-    if (!existingId) c.header('Set-Cookie', workspaceCookie(workspaceId));
+    if (isNew) c.header('Set-Cookie', workspaceCookie(workspaceId));
     await next();
   };
 }

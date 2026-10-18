@@ -6,6 +6,7 @@ import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { evaluationResultSchema, type ApiError, type DecisionAction, type FlagResolution } from '../../shared/api';
+import { textInvoiceInputSchema } from '../../shared/api-schemas';
 import { CURRENCIES } from '../../shared/domain/currencies';
 import type { Budget, Contract, FxRate, Treasury, Vendor } from '../../shared/domain/types';
 import {
@@ -40,7 +41,7 @@ export const processSchema = z.object({
   mode: z.enum(['replay', 'live']).optional(),
   examples: z.literal(true).optional(),
 }).strict();
-export const textInvoiceSchema = z.object({ text: z.string().trim().min(1).max(2 * 1024 * 1024) }).strict();
+export const textInvoiceSchema = textInvoiceInputSchema;
 
 const safeInteger = z.number().int().refine(Number.isSafeInteger, 'Debe ser un entero seguro.');
 const positiveInt = safeInteger.min(1);

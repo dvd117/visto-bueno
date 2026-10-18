@@ -5,15 +5,15 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { DecideResponse } from '../../shared/api';
 import type { DecisionRecord } from '../../shared/domain/types';
-import { decideResponseSchema } from '../../shared/api-schemas';
+import {
+  decideResponseSchema, idempotencyKeySchema, seededInvoiceInputSchema, textInvoiceInputSchema,
+} from '../../shared/api-schemas';
 import { createInvoice, getInvoice, type Db } from '../db/db';
 import type { ServerEnv } from '../middleware/workspace';
 import { processBatch, type PipelineOptions, type ProcessMode } from '../pipeline';
-import { fileKind, textInvoiceSchema, validFileBytes } from './api';
+import { fileKind, validFileBytes } from './api';
 
-const idempotencyKeySchema = z.string().trim().min(1).max(120);
-const seededInvoiceSchema = z.object({ invoiceId: z.string().min(1).max(80) }).strict();
-const decideJsonSchema = z.union([textInvoiceSchema, seededInvoiceSchema]);
+const decideJsonSchema = z.union([textInvoiceInputSchema, seededInvoiceInputSchema]);
 
 type DecideRouteOptions = PipelineOptions & { uploadDirectory: string };
 type DecideInput =

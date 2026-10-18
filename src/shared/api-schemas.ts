@@ -150,6 +150,31 @@ export const decideResponseSchema: z.ZodType<DecideResponse> = z.object({
   sealId: z.string(),
   decisionRecordId: z.string(),
 }).strict();
+
+export const invoiceIdSchema = z.string().min(1).max(80);
+export const idempotencyKeySchema = z.string().trim().min(1).max(120);
+export const textInvoiceInputSchema = z.object({
+  text: z.string().trim().min(1).max(2 * 1024 * 1024),
+}).strict();
+export const seededInvoiceInputSchema = z.object({ invoiceId: invoiceIdSchema }).strict();
+
+const base64FileContentSchema = z.string().min(4).max(2_796_204)
+  .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
+export const mcpFileInputSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  mimeType: z.enum(['application/pdf', 'image/png', 'image/jpeg', 'image/webp']),
+  contentBase64: base64FileContentSchema,
+}).strict();
+export const mcpDecideInputSchema = z.union([
+  seededInvoiceInputSchema.extend({ idempotencyKey: idempotencyKeySchema }),
+  textInvoiceInputSchema.extend({ idempotencyKey: idempotencyKeySchema }),
+  z.object({ file: mcpFileInputSchema, idempotencyKey: idempotencyKeySchema }).strict(),
+]);
+export const mcpExplainInputSchema = z.object({ invoiceId: invoiceIdSchema }).strict();
+export const mcpExportBatchInputSchema = z.object({
+  readyIds: z.array(invoiceIdSchema).max(100).optional(),
+}).strict();
+
 const decisionRecordSchema: z.ZodType<DecisionRecord> = z.object({
   id: z.string(),
   invoiceId: z.string(),
