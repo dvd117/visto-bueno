@@ -24,23 +24,23 @@ import type { ServerEnv } from '../middleware/workspace';
 import { processBatch, type PipelineOptions, type ProcessMode } from '../pipeline';
 
 const error = (message: string, code = 'invalid_request'): ApiError => ({ error: code, message });
-const actionSchema = z.object({
+export const actionSchema = z.object({
   approver: z.string().trim().min(1).max(120),
   reason: z.string().trim().min(1).max(500),
   idempotencyKey: z.string().trim().min(1).max(120),
   accountLast4: z.string().max(32).optional(),
 }).strict();
-const resolutionSchema = z.object({
+export const resolutionSchema = z.object({
   choice: z.string().trim().min(1).max(120),
   reason: z.string().trim().min(1).max(500),
   approver: z.string().trim().min(1).max(120),
 }).strict();
-const processSchema = z.object({
+export const processSchema = z.object({
   ids: z.array(z.string().trim().min(1).max(80)).max(100).optional(),
   mode: z.enum(['replay', 'live']).optional(),
   examples: z.literal(true).optional(),
 }).strict();
-const textInvoiceSchema = z.object({ text: z.string().trim().min(1).max(2 * 1024 * 1024) }).strict();
+export const textInvoiceSchema = z.object({ text: z.string().trim().min(1).max(2 * 1024 * 1024) }).strict();
 
 const safeInteger = z.number().int().refine(Number.isSafeInteger, 'Debe ser un entero seguro.');
 const positiveInt = safeInteger.min(1);
@@ -53,13 +53,13 @@ function validIsoDate(value: string): boolean {
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
-const vendorSchema = z.object({
+export const vendorSchema = z.object({
   id: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(200),
   taxId: z.string().trim().min(1).max(100), country: countrySchema,
   payoutCurrency: currencySchema, payoutAccount: z.string().trim().min(1).max(200),
   status: z.enum(['allowed', 'blocked']), version: positiveInt,
 }).strict();
-const contractSchema = z.object({
+export const contractSchema = z.object({
   id: z.string().trim().min(1).max(100), vendorId: z.string().trim().min(1).max(100),
   scope: z.string().trim().min(1).max(500), type: z.enum(['fixed', 'variable']), currency: currencySchema,
   amountMinor: positiveInt.optional(), rateMinor: positiveInt.optional(), unit: z.string().trim().min(1).max(100).optional(),
@@ -75,7 +75,7 @@ const contractSchema = z.object({
     context.addIssue({ code: 'custom', path: ['type'], message: 'El contrato variable requiere tarifa, unidad y máximo de unidades.' });
   }
 });
-const budgetSchema = z.object({
+export const budgetSchema = z.object({
   costCenter: costCenterSchema, month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
   approvedUsdMinor: nonNegativeInt,
 }).strict();
@@ -83,7 +83,7 @@ const fxSchema = z.object({
   currency: currencySchema, perUsd: z.string().regex(/^\d+(?:\.\d+)?$/).refine((value) => new Decimal(value).isPositive()),
   date: z.string().refine(validIsoDate, 'La fecha de vigencia no es válida.'),
 }).strict();
-const treasurySchema = z.object({
+export const treasurySchema = z.object({
   balanceUsdMinor: nonNegativeInt, fx: z.array(fxSchema).min(1).max(20),
 }).strict().superRefine((treasury, context) => {
   const currencies = treasury.fx.map((rate) => rate.currency);
