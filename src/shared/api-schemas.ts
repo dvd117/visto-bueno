@@ -12,20 +12,22 @@ import type {
   SimulationResult,
   WorkspaceSummary,
 } from './api';
+import { CURRENCIES } from './domain/currencies';
 import type { DecisionRecord, Rules } from './domain/types';
 
 const invoiceStatusSchema = z.enum([
   'queued', 'ready', 'approval_required', 'review_required', 'stopped', 'approved', 'rejected', 'stale',
 ]);
 const sourceKindSchema = z.enum(['pdf', 'image', 'text']);
-export const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'US']);
-export const currencySchema = z.enum(['USD', 'COP', 'MXN']);
+export const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US']);
+export const currencySchema = z.enum(CURRENCIES);
 export const invoiceRowSchema: z.ZodType<InvoiceRow> = z.object({
   id: z.string(),
   payee: z.string(),
   concept: z.string(),
   amount: z.string(),
   amountUsd: z.string().nullable(),
+  fxDate: z.string().nullable().optional(),
   due: z.string().nullable(),
   status: invoiceStatusSchema,
   reason: z.string(),

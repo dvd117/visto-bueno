@@ -53,13 +53,15 @@ describe('CSV data tables', () => {
     expect(Number.isInteger(amountMinor)).toBe(true);
   });
 
-  it('accepts Chile as a vendor country without adding a currency', () => {
-    const result = parseTable('vendors', templateCsv('vendors').replace(',CO,', ',CL,'));
+  it.each([
+    ['CL', 'CLP'], ['PE', 'PEN'], ['AR', 'ARS'],
+  ] as const)('accepts %s vendors paid in %s', (country, currency) => {
+    const result = parseTable('vendors', templateCsv('vendors')
+      .replace(',CO,USD,', `,${country},${currency},`));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.rows[0]?.country).toBe('CL');
-    expect(result.rows[0]?.payoutCurrency).toBe('USD');
+    expect(result.rows[0]).toMatchObject({ country, payoutCurrency: currency });
   });
 
   it.each([
@@ -94,6 +96,34 @@ describe('CSV data tables', () => {
     expect(fx.ok).toBe(true);
     if (!fx.ok) return;
     expect(fx.rows[0]?.perUsd).toBe('18.8656');
+  });
+
+  it('uses zero-decimal CLP units for contract CSV amounts and validates its illustrative FX rate', () => {
+    const contractCsv = templateCsv('contracts').replace('USD,850.00', 'CLP,950');
+    const contract = parseTable('contracts', contractCsv);
+    expect(contract.ok).toBe(true);
+    if (contract.ok) expect(contract.rows[0]?.amountMinor).toBe(950);
+
+    const invalidContract = parseTable('contracts', contractCsv.replace('CLP,950,', 'CLP,950.00,'));
+    expect(invalidContract.ok).toBe(false);
+
+    const fx = parseTable('fx', templateCsv('fx').replace('USD,1,', 'CLP,950,'));
+    expect(fx.ok).toBe(true);
+    if (fx.ok) expect(fx.rows[0]).toMatchObject({ currency: 'CLP', perUsd: '950', date: '2026-10-15' });
+  });
+
+  it('returns a row validation error for malformed contract amounts without throwing', () => {
+    const csv = templateCsv('contracts').replace('USD,850.00', 'USD,not-a-number');
+
+    expect(parseTable('contracts', csv).ok).toBe(false);
+  });
+
+  it('returns a row validation error for malformed FX rates without throwing', () => {
+    const csv = templateCsv('fx').replace('USD,1,', 'USD,not-a-rate,');
+    const result = parseTable('fx', csv);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors).toHaveLength(1);
   });
 
   it('reports an unterminated quoted field against its 1-based data row', () => {

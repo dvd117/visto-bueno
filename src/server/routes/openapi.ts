@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { evaluationResultSchema } from '../../shared/api';
+import { CURRENCIES } from '../../shared/domain/currencies';
 import {
   apiErrorSchema,
   conflictSchema,
@@ -161,7 +162,7 @@ const treasurySchemaDocument = withProperties(treasurySchemaBase, {
     ...fxArray,
     description: 'Cada moneda puede aparecer una sola vez.',
     items: fxItemWithConstraints,
-    allOf: ['USD', 'COP', 'MXN'].map((currency) => ({
+    allOf: CURRENCIES.map((currency) => ({
       contains: {
         properties: { currency: { const: currency } },
         required: ['currency'],

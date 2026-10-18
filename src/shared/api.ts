@@ -4,7 +4,7 @@ import type { Currency, DecisionRecord, InvoiceStatus, Rules, SourceKind, Vendor
 
 export interface InvoiceRow {
   id: string; payee: string; concept: string; /** formatted */ amount: string;
-  amountUsd: string | null; due: string | null; status: InvoiceStatus; reason: string; subtitle?: string; sourceKind: SourceKind;
+  amountUsd: string | null; fxDate?: string | null; due: string | null; status: InvoiceStatus; reason: string; subtitle?: string; sourceKind: SourceKind;
   country: VendorCountry | null; currency: Currency | null;
   reevaluatedFrom?: InvoiceStatus;
 }

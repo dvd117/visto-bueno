@@ -97,6 +97,7 @@ export function Bandeja({
                 <span className="invoice-value">
                   <strong>{row.amount}</strong>
                   {row.amountUsd && <span>{row.amountUsd}</span>}
+                  {row.fxDate && <span className="invoice-fx-date">Tasa ilustrativa · {row.fxDate}</span>}
                 </span>
                 <span className="invoice-state">
                   <StatusChip

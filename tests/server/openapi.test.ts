@@ -9,6 +9,7 @@ type JsonSchema = {
   properties?: Record<string, JsonSchema>;
   items?: JsonSchema;
   allOf?: JsonSchema[];
+  enum?: string[];
 };
 
 function makeRuntime() {
@@ -98,7 +99,8 @@ describe('OpenAPI document', () => {
     expect(contract?.['x-runtime-constraints']).toContainEqual({ fields: ['start', 'end'], relation: 'start <= end' });
     expect(fx?.items?.properties?.perUsd?.pattern).toBe('^(?=.*[1-9])\\d+(?:\\.\\d+)?$');
     expect(fx?.items?.properties?.date).toMatchObject({ format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
-    expect(fx?.allOf).toHaveLength(3);
+    expect(fx?.items?.properties?.currency?.enum).toEqual(['USD', 'COP', 'MXN', 'CLP', 'PEN', 'ARS', 'VES']);
+    expect(fx?.allOf).toHaveLength(7);
     expect(fx?.allOf?.[0]).toMatchObject({ minContains: 0, maxContains: 1 });
     const processId = schemas.ProcessRequest?.properties?.ids?.items;
     expect(processId).toMatchObject({

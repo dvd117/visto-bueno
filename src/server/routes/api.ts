@@ -6,6 +6,7 @@ import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { evaluationResultSchema, type ApiError, type DecisionAction, type FlagResolution } from '../../shared/api';
+import { CURRENCIES } from '../../shared/domain/currencies';
 import type { Budget, Contract, FxRate, Treasury, Vendor } from '../../shared/domain/types';
 import {
   approveInvoice, markStale, rejectInvoice, resolveFlag,
@@ -44,8 +45,8 @@ export const textInvoiceSchema = z.object({ text: z.string().trim().min(1).max(2
 const safeInteger = z.number().int().refine(Number.isSafeInteger, 'Debe ser un entero seguro.');
 const positiveInt = safeInteger.min(1);
 const nonNegativeInt = safeInteger.min(0);
-const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'US']);
-const currencySchema = z.enum(['USD', 'COP', 'MXN']);
+const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US']);
+const currencySchema = z.enum(CURRENCIES);
 const costCenterSchema = z.enum(['ingenieria', 'diseno', 'operaciones', 'legal']);
 function validIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
