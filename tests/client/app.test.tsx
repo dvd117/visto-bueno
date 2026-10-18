@@ -23,6 +23,10 @@ function json(value: unknown): Response {
 beforeEach(() => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const path = new URL(String(input), window.location.href).pathname;
+    if (path === '/api/clients') return json({
+      activeId: 'client-andina',
+      clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 0, readyCount: 0 }],
+    });
     if (path === '/api/workspace') return json({
       company: { name: 'Andina Labs Inc.', fictional: true },
       rules,

@@ -6,6 +6,7 @@ import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { evaluationResultSchema, type ApiError, type DecisionAction, type FlagResolution } from '../../shared/api';
+import { textInvoiceInputSchema } from '../../shared/api-schemas';
 import { CURRENCIES } from '../../shared/domain/currencies';
 import { taxIdChecksumValid } from '../../shared/domain/tax-ids';
 import type { Budget, Contract, FxRate, Treasury, Vendor } from '../../shared/domain/types';
@@ -16,7 +17,7 @@ import {
   createInvoice, getAuditLog, getInvoice, getWorkspaceData, listInvoices,
   putBudget, putContract, putTreasury, putVendor, type Db,
 } from '../db/db';
-import { resetWorkspace } from '../db/workspace';
+import { listOwnedWorkspaceClients, readCompanyProfile, resetWorkspace } from '../db/workspace';
 import { getCounters, invoiceRows, originalMoney, toExpediente, toInvoiceRow } from '../format';
 import { ensureExampleInvoices } from '../fixtures';
 import { logCsv, paymentsCsv, reconciliationCsv, reportMd, type PaymentExportItem } from '../export/builders';
@@ -25,23 +26,23 @@ import type { ServerEnv } from '../middleware/workspace';
 import { processBatch, type PipelineOptions, type ProcessMode } from '../pipeline';
 
 const error = (message: string, code = 'invalid_request'): ApiError => ({ error: code, message });
-const actionSchema = z.object({
+export const actionSchema = z.object({
   approver: z.string().trim().min(1).max(120),
   reason: z.string().trim().min(1).max(500),
   idempotencyKey: z.string().trim().min(1).max(120),
   accountLast4: z.string().max(32).optional(),
 }).strict();
-const resolutionSchema = z.object({
+export const resolutionSchema = z.object({
   choice: z.string().trim().min(1).max(120),
   reason: z.string().trim().min(1).max(500),
   approver: z.string().trim().min(1).max(120),
 }).strict();
-const processSchema = z.object({
+export const processSchema = z.object({
   ids: z.array(z.string().trim().min(1).max(80)).max(100).optional(),
   mode: z.enum(['replay', 'live']).optional(),
   examples: z.literal(true).optional(),
 }).strict();
-const textInvoiceSchema = z.object({ text: z.string().trim().min(1).max(2 * 1024 * 1024) }).strict();
+export const textInvoiceSchema = textInvoiceInputSchema;
 
 const safeInteger = z.number().int().refine(Number.isSafeInteger, 'Debe ser un entero seguro.');
 const positiveInt = safeInteger.min(1);
@@ -65,13 +66,13 @@ function validIsoDate(value: string): boolean {
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
-const vendorSchema = z.object({
+export const vendorSchema = z.object({
   id: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(200),
   taxId: z.string().trim().min(1).max(100), country: countrySchema,
   payoutCurrency: currencySchema, payoutAccount: z.string().trim().min(1).max(200),
   status: z.enum(['allowed', 'blocked']), version: positiveInt,
 }).strict();
-const contractSchema = z.object({
+export const contractSchema = z.object({
   id: z.string().trim().min(1).max(100), vendorId: z.string().trim().min(1).max(100),
   scope: z.string().trim().min(1).max(500), type: z.enum(['fixed', 'variable']), currency: currencySchema,
   amountMinor: positiveInt.optional(), rateMinor: positiveInt.optional(), unit: z.string().trim().min(1).max(100).optional(),
@@ -87,7 +88,7 @@ const contractSchema = z.object({
     context.addIssue({ code: 'custom', path: ['type'], message: 'El contrato variable requiere tarifa, unidad y máximo de unidades.' });
   }
 });
-const budgetSchema = z.object({
+export const budgetSchema = z.object({
   costCenter: costCenterSchema, month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
   approvedUsdMinor: nonNegativeInt,
 }).strict();
@@ -95,7 +96,7 @@ const fxSchema = z.object({
   currency: currencySchema, perUsd: z.string().regex(/^\d+(?:\.\d+)?$/).refine((value) => new Decimal(value).isPositive()),
   date: z.string().refine(validIsoDate, 'La fecha de vigencia no es válida.'),
 }).strict();
-const treasurySchema = z.object({
+export const treasurySchema = z.object({
   balanceUsdMinor: nonNegativeInt, fx: z.array(fxSchema).min(1).max(20),
 }).strict().superRefine((treasury, context) => {
   const currencies = treasury.fx.map((rate) => rate.currency);
@@ -129,7 +130,7 @@ function jsonFailure(c: ApiContext, status: 400 | 404 | 409 | 413 | 429 | 500 | 
   return c.json(error(message, code), status);
 }
 
-function fileKind(file: File): { sourceKind: 'pdf' | 'image'; extension: string; mimeType: string } | null {
+export function fileKind(file: File): { sourceKind: 'pdf' | 'image'; extension: string; mimeType: string } | null {
   const mime = file.type.toLowerCase();
   const ext = file.name.toLowerCase().split('.').pop();
   if (mime === 'application/pdf' || ext === 'pdf') return { sourceKind: 'pdf', extension: 'pdf', mimeType: 'application/pdf' };
@@ -139,7 +140,7 @@ function fileKind(file: File): { sourceKind: 'pdf' | 'image'; extension: string;
   return null;
 }
 
-function validFileBytes(bytes: Uint8Array, kind: 'pdf' | 'image', mimeType: string): boolean {
+export function validFileBytes(bytes: Uint8Array, kind: 'pdf' | 'image', mimeType: string): boolean {
   if (kind === 'pdf') return Buffer.from(bytes.subarray(0, 5)).toString('ascii') === '%PDF-';
   if (mimeType === 'image/png') return Buffer.from(bytes.subarray(0, 8)).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (mimeType === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
@@ -205,7 +206,7 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
     const workspaceId = c.get('workspaceId');
     const data = getWorkspaceData(db, workspaceId);
     return c.json({
-      company: { name: 'Andina Labs Inc.', fictional: true as const },
+      company: { name: readCompanyProfile(db, workspaceId).name, fictional: true as const },
       rules: data.rules,
       counters: getCounters(db, workspaceId),
       lastRun: options.lastRuns.get(workspaceId) ?? null,
@@ -213,14 +214,16 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
   });
 
   router.post('/workspace/reset', async (c) => {
-    const workspaceId = c.get('workspaceId');
-    const existing = listInvoices(db, workspaceId);
-    resetWorkspace(db, workspaceId);
-    options.lastRuns.delete(workspaceId);
+    const clients = listOwnedWorkspaceClients(db, c.get('ownerId'));
+    const existing = clients.flatMap((client) => listInvoices(db, client.id));
+    for (const client of clients) {
+      resetWorkspace(db, client.id);
+      options.lastRuns.delete(client.id);
+      if (client.isPrimary) ensureExampleInvoices(db, client.id);
+    }
     await Promise.all(existing.flatMap((invoice) => invoice.filePath?.startsWith('uploads/')
       ? [rm(resolve(options.uploadDirectory, basename(invoice.filePath)), { force: true })]
       : []));
-    ensureExampleInvoices(db, workspaceId);
     return c.json({ ok: true });
   });
 

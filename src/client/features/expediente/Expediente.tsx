@@ -252,11 +252,19 @@ export function Expediente({
   onTogglePaymentBatch,
   onOpenData,
 }: ExpedienteProps) {
-  const [documentMode, setDocumentMode] = useState<DocumentMode>('text');
+  const fileUrl = safeFileUrl(expediente?.fileUrl ?? null);
+  const hasOriginalFile = Boolean(fileUrl && (expediente?.row.sourceKind === 'pdf' || expediente?.row.sourceKind === 'image'));
+  const [documentView, setDocumentView] = useState<{ invoiceId: string; mode: DocumentMode } | null>(null);
+  const documentMode = documentView && documentView.invoiceId === expediente?.row.id
+    ? documentView.mode
+    : hasOriginalFile ? 'original' : 'text';
   const [approver, setApprover] = useState('');
   const [reason, setReason] = useState('');
   const [accountConfirmation, setAccountConfirmation] = useState({ invoiceId: expediente?.row.id ?? '', digits: '' });
   const [showHistory, setShowHistory] = useState(false);
+  const selectDocumentMode = (mode: DocumentMode) => {
+    if (expediente) setDocumentView({ invoiceId: expediente.row.id, mode });
+  };
   const documentTabsId = useId();
   const originalTabRef = useRef<HTMLButtonElement>(null);
   const textTabRef = useRef<HTMLButtonElement>(null);
@@ -305,7 +313,7 @@ export function Expediente({
     if (!next) return;
 
     event.preventDefault();
-    setDocumentMode(next);
+    selectDocumentMode(next);
     (next === 'original' ? originalTabRef : textTabRef).current?.focus();
   }
 
@@ -341,8 +349,6 @@ export function Expediente({
     && (row.sourceKind !== 'image' || /^\d{4}$/.test(accountLast4));
   const canSubmitDecision = Boolean(approver.trim() && reason.trim()) && !busy;
   const canSubmitApprovalAction = canSubmitDecision && (row.sourceKind !== 'image' || /^\d{4}$/.test(accountLast4));
-  const fileUrl = safeFileUrl(expediente.fileUrl);
-
   const decisionAction = (): DecisionAction => ({
     approver: approver.trim(),
     reason: reason.trim(),
@@ -391,78 +397,83 @@ export function Expediente({
           </aside>
         )}
 
-        <section className="record-section" aria-labelledby="comparison-heading">
-          <Comparison data={expediente} />
-        </section>
+        <div className="record-evidence-grid">
+          <section className="record-section" aria-labelledby="comparison-heading">
+            <Comparison data={expediente} />
+          </section>
+
+          <section className="record-section document-section" aria-labelledby="document-heading">
+            <div className="section-heading"><h3 id="document-heading">Documento</h3></div>
+            <div className="document-switch" role="tablist" aria-label="Vista del documento">
+              <button
+                ref={originalTabRef}
+                id={originalTabId}
+                type="button"
+                role="tab"
+                aria-controls={originalPanelId}
+                aria-selected={documentMode === 'original'}
+                tabIndex={documentMode === 'original' ? 0 : -1}
+                onClick={() => selectDocumentMode('original')}
+                onKeyDown={(event) => handleDocumentTabKeyDown(event, 'original')}
+              >
+                Documento original
+              </button>
+              <button
+                ref={textTabRef}
+                id={textTabId}
+                type="button"
+                role="tab"
+                aria-controls={textPanelId}
+                aria-selected={documentMode === 'text'}
+                tabIndex={documentMode === 'text' ? 0 : -1}
+                onClick={() => selectDocumentMode('text')}
+                onKeyDown={(event) => handleDocumentTabKeyDown(event, 'text')}
+              >
+                Texto que leyó el agente
+              </button>
+            </div>
+            <div
+              id={originalPanelId}
+              role="tabpanel"
+              aria-labelledby={originalTabId}
+              className="document-surface"
+              hidden={documentMode !== 'original'}
+              tabIndex={0}
+            >
+              {documentMode === 'original' ? (
+                fileUrl ? (
+                  row.sourceKind === 'image'
+                    ? <img className="original-image" src={fileUrl} alt={`Documento original de ${row.id}`} />
+                    : row.sourceKind === 'pdf'
+                      ? <iframe className="original-document" src={fileUrl} title={`Documento original de ${row.id}`} />
+                      : <p className="quiet-note">No hay un archivo original disponible.</p>
+                ) : <p className="quiet-note">No hay un archivo original disponible.</p>
+              ) : null}
+              {documentMode === 'original' && fileUrl && row.sourceKind === 'pdf' && (
+                <p className="original-document-link"><a href={fileUrl} target="_blank" rel="noreferrer">Abrir PDF original</a></p>
+              )}
+            </div>
+            <div
+              id={textPanelId}
+              role="tabpanel"
+              aria-labelledby={textTabId}
+              className="document-surface"
+              hidden={documentMode !== 'text'}
+              tabIndex={0}
+            >
+              {documentMode === 'text' ? (
+                expediente.sourceText ? (
+                  <pre className="document-text">{renderMarkedText(expediente.sourceText, expediente.marks)}</pre>
+                ) : <p className="quiet-note">No hay texto extraído para mostrar.</p>
+              ) : null}
+            </div>
+          </section>
+        </div>
 
         <section className="record-section" aria-labelledby="trail-heading">
           <div className="section-heading"><h3 id="trail-heading">Trazabilidad de la decisión</h3></div>
           {decision ? <DecisionTrail checks={decision.checks} /> : <p className="quiet-note">Procesa esta factura para iniciar las comprobaciones.</p>}
           {record && !record.jev.ok && <p className="connection-note">JEV no conectado · no se aprobará automáticamente.</p>}
-        </section>
-
-        <section className="record-section document-section" aria-labelledby="document-heading">
-          <div className="section-heading"><h3 id="document-heading">Documento</h3></div>
-          <div className="document-switch" role="tablist" aria-label="Vista del documento">
-            <button
-              ref={originalTabRef}
-              id={originalTabId}
-              type="button"
-              role="tab"
-              aria-controls={originalPanelId}
-              aria-selected={documentMode === 'original'}
-              tabIndex={documentMode === 'original' ? 0 : -1}
-              onClick={() => setDocumentMode('original')}
-              onKeyDown={(event) => handleDocumentTabKeyDown(event, 'original')}
-            >
-              Documento original
-            </button>
-            <button
-              ref={textTabRef}
-              id={textTabId}
-              type="button"
-              role="tab"
-              aria-controls={textPanelId}
-              aria-selected={documentMode === 'text'}
-              tabIndex={documentMode === 'text' ? 0 : -1}
-              onClick={() => setDocumentMode('text')}
-              onKeyDown={(event) => handleDocumentTabKeyDown(event, 'text')}
-            >
-              Texto que leyó el agente
-            </button>
-          </div>
-          <div
-            id={originalPanelId}
-            role="tabpanel"
-            aria-labelledby={originalTabId}
-            className="document-surface"
-            hidden={documentMode !== 'original'}
-            tabIndex={0}
-          >
-            {documentMode === 'original' ? (
-              fileUrl ? (
-                row.sourceKind === 'image'
-                  ? <img className="original-image" src={fileUrl} alt={`Documento original de ${row.id}`} />
-                  : row.sourceKind === 'pdf'
-                    ? <iframe className="original-document" src={fileUrl} title={`Documento original de ${row.id}`} />
-                    : <p className="quiet-note">No hay un archivo original disponible.</p>
-              ) : <p className="quiet-note">No hay un archivo original disponible.</p>
-            ) : null}
-          </div>
-          <div
-            id={textPanelId}
-            role="tabpanel"
-            aria-labelledby={textTabId}
-            className="document-surface"
-            hidden={documentMode !== 'text'}
-            tabIndex={0}
-          >
-            {documentMode === 'text' ? (
-              expediente.sourceText ? (
-                <pre className="document-text">{renderMarkedText(expediente.sourceText, expediente.marks)}</pre>
-              ) : <p className="quiet-note">No hay texto extraído para mostrar.</p>
-            ) : null}
-          </div>
         </section>
 
         {row.status === 'ready' && (

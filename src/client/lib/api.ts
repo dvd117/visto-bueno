@@ -2,9 +2,10 @@ import Decimal from 'decimal.js';
 import { z } from 'zod';
 import type {
   ApiError,
-  Comparison,
+  ClientDirectory,
+  ClientSwitchResponse,
+  CompanyRecord,
   ConflictResponse,
-  Counters,
   DecisionAction,
   Expediente,
   FlagResolution,
@@ -13,171 +14,140 @@ import type {
   NewInvoiceText,
   ProcessEvent,
   ProcessRequest,
-  RunStats,
-  SimulationResult,
   WorkspaceSummary,
 } from '../../shared/api';
 import { evaluationResultSchema } from '../../shared/api';
-import { CURRENCIES } from '../../shared/domain/currencies';
-import type { Budget, Contract, DecisionRecord, FxRate, Rules, Treasury, Vendor } from '../../shared/domain/types';
+import type { Budget, Contract, FxRate, Treasury, Vendor } from '../../shared/domain/types';
+import {
+  apiErrorSchema,
+  clientDirectorySchema,
+  clientSwitchResponseSchema,
+  companyPreviewSchema,
+  companyRecordSchema,
+  conflictSchema,
+  countrySchema,
+  currencySchema,
+  expedienteSchema,
+  invoiceRowSchema,
+  logEntrySchema,
+  processEventSchema,
+  rulesSchema,
+  simulationResultSchema,
+  workspaceSummarySchema,
+} from '../../shared/api-schemas';
+export {
+  apiErrorSchema,
+  clientDirectorySchema,
+  clientSwitchRequestSchema,
+  clientSwitchResponseSchema,
+  companyPreviewSchema,
+  companyRecordSchema,
+  conflictSchema,
+  expedienteSchema,
+  invoiceRowSchema,
+  logEntrySchema,
+  processEventSchema,
+  simulationResultSchema,
+  workspaceSummarySchema,
+} from '../../shared/api-schemas';
 import type {
   BitacoraApi, CsvTable, DataRowMap, DataTable, DataTableValues, DataUploadResult, DatosApi, EvaluationResult, ReglasApi,
 } from './api-types';
 
-const invoiceStatusSchema = z.enum([
-  'queued', 'ready', 'approval_required', 'review_required', 'stopped', 'approved', 'rejected', 'stale',
-]);
-const sourceKindSchema = z.enum(['pdf', 'image', 'text']);
-const countrySchema = z.enum(['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US']);
-const currencySchema = z.enum(CURRENCIES);
-const invoiceRowSchema: z.ZodType<InvoiceRow> = z.object({
-  id: z.string(),
-  payee: z.string(),
-  concept: z.string(),
-  amount: z.string(),
-  amountUsd: z.string().nullable(),
-  fxDate: z.string().nullable().optional(),
-  due: z.string().nullable(),
-  status: invoiceStatusSchema,
-  reason: z.string(),
-  subtitle: z.string().optional(),
-  sourceKind: sourceKindSchema,
-  country: countrySchema.nullable(),
-  currency: currencySchema.nullable(),
-  reevaluatedFrom: invoiceStatusSchema.optional(),
-});
+const CLIENT_CONTEXT_STORAGE_KEY = 'visto-bueno:client-context-switch';
+const TAB_CLIENT_ID_STORAGE_KEY = 'visto-bueno:client-id';
+let exportGeneration = 0;
+let clientContextReady = false;
+let clientDirectoryInitialization: Promise<ClientDirectory> | null = null;
 
-const countersSchema: z.ZodType<Counters> = z.object({
-  ready: z.number().int(),
-  approval_required: z.number().int(),
-  review_required: z.number().int(),
-  stopped: z.number().int(),
-  approved: z.number().int(),
-  rejected: z.number().int(),
-  stale: z.number().int(),
-  queued: z.number().int(),
-});
+interface BrowserEventHost {
+  addEventListener(type: string, listener: (event: { key?: string | null }) => void): void;
+  localStorage?: { setItem(key: string, value: string): void };
+  sessionStorage?: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+    removeItem(key: string): void;
+  };
+}
 
-const runStatsSchema: z.ZodType<RunStats> = z.object({
-  invoices: z.number().int().nonnegative(),
-  ms: z.number().nonnegative(),
-  costUsd: z.string(),
-  mode: z.enum(['replay', 'live']),
-});
+function browserEventHost(): BrowserEventHost | null {
+  return (globalThis as unknown as { window?: BrowserEventHost }).window ?? null;
+}
 
-const rulesSchema: z.ZodType<Rules> = z.object({
-  version: z.number().int(),
-  perPaymentLimitUsdMinor: z.number().int(),
-  monthlyLimitUsdMinor: z.number().int(),
-  approvalThresholdUsdMinor: z.number().int(),
-  fuzzyDuplicateWindowDays: z.number().int(),
-  preset: z.enum(['estricto', 'equilibrado', 'permisivo']),
-});
+if (browserEventHost()) {
+  browserEventHost()?.addEventListener('storage', (event) => {
+    if (event.key !== CLIENT_CONTEXT_STORAGE_KEY) return;
+    // Another tab changed the shared cookie. Keep this tab's selected client,
+    // but discard downloads that began before that switch.
+    exportGeneration += 1;
+  });
+}
 
-const jevAnswerSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('noul'), noul: z.number() }),
-  z.object({
-    type: z.literal('choice'),
-    choice: z.string(),
-    probabilities: z.record(z.string(), z.number()),
-    confidence: z.number(),
-  }),
-  z.object({
-    type: z.literal('score'),
-    score: z.number(),
-    probabilities: z.record(z.string(), z.number()),
-    confidence: z.number(),
-  }),
-]);
-const jevAnswersSchema = z.discriminatedUnion('ok', [
-  z.object({
-    ok: z.literal(true),
-    answers: z.partialRecord(z.enum([
-      'instructs_agent', 'artificial_urgency', 'scope_match', 'fuzzy_duplicate', 'document_type', 'cost_center',
-    ]), jevAnswerSchema),
-    latencyMs: z.number().nonnegative(),
-    recorded: z.boolean(),
-    inputTokens: z.number().int().nonnegative(),
-  }),
-  z.object({
-    ok: z.literal(false),
-    error: z.enum(['no_key', 'timeout', 'malformed', 'http_error', 'missing_recording']),
-  }),
-]);
+export function getExportGeneration(): number {
+  return exportGeneration;
+}
 
-const checkSchema = z.object({
-  id: z.string(),
-  kind: z.enum(['verify', 'rule', 'judgment']),
-  label: z.string(),
-  passed: z.boolean(),
-  outcome: z.enum(['passed', 'failed', 'pending', 'not_applicable']).optional(),
-  effect: z.enum(['none', 'stop', 'approval', 'review']),
-  reason: z.string(),
-  probability: z.number().optional(),
-  evidence: z.object({ invoice: z.string().optional(), record: z.string().optional() }).optional(),
-}).transform((check) => ({
-  ...check,
-  outcome: check.outcome ?? (check.passed ? 'passed' as const : 'failed' as const),
-}));
-const flagSchema = z.object({
-  id: z.string(),
-  checkId: z.string(),
-  reason: z.string(),
-  resolution: z.object({ choice: z.string(), reason: z.string(), by: z.string(), at: z.string() }).optional(),
-});
-const decisionSchema = z.object({
-  status: z.enum(['ready', 'approval_required', 'review_required', 'stopped']),
-  checks: z.array(checkSchema),
-  flags: z.array(flagSchema),
-  canApprove: z.boolean(),
-  headline: z.string(),
-  nextStep: z.string().nullable(),
-  amountUsdMinor: z.number().int().nullable(),
-  contractId: z.string().nullable(),
-  costCenter: z.enum(['ingenieria', 'diseno', 'operaciones', 'legal']).nullable(),
-});
-const decisionRecordSchema: z.ZodType<DecisionRecord> = z.object({
-  id: z.string(),
-  invoiceId: z.string(),
-  decision: decisionSchema,
-  rulesSnapshot: rulesSchema,
-  dataVersions: z.object({ vendor: z.number().int().optional(), contract: z.number().int().optional(), fxDate: z.string() }),
-  jev: jevAnswersSchema,
-  seal: z.string(),
-  createdAt: z.string(),
-  supersedes: z.string().optional(),
-});
+export function isExportGenerationCurrent(generation: number): boolean {
+  return generation === exportGeneration;
+}
 
-const comparisonSchema: z.ZodType<Comparison> = z.object({
-  field: z.string(),
-  invoice: z.string().nullable(),
-  record: z.string().nullable(),
-  differs: z.boolean(),
-});
-const expedienteSchema: z.ZodType<Expediente> = z.object({
-  row: invoiceRowSchema,
-  record: decisionRecordSchema.nullable(),
-  comparison: z.array(comparisonSchema),
-  sourceText: z.string().max(8000).nullable(),
-  marks: z.array(z.object({ text: z.string().max(8000), kind: z.enum(['value', 'suspicious']) })),
-  fileUrl: z.string().max(2048).nullable(),
-  history: z.array(decisionRecordSchema),
-});
+function invalidateClientExports(): void {
+  exportGeneration += 1;
+}
 
-const workspaceSummarySchema: z.ZodType<WorkspaceSummary> = z.object({
-  company: z.object({ name: z.string(), fictional: z.literal(true) }),
-  rules: rulesSchema,
-  counters: countersSchema,
-  lastRun: runStatsSchema.nullable(),
-});
-const apiErrorSchema: z.ZodType<ApiError> = z.object({ error: z.string(), message: z.string() });
-const conflictSchema: z.ZodType<ConflictResponse> = z.object({ error: z.literal('conflict'), expediente: expedienteSchema });
+function readTabClientId(): string | null {
+  try {
+    return browserEventHost()?.sessionStorage?.getItem(TAB_CLIENT_ID_STORAGE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
 
-const processEventSchema: z.ZodType<ProcessEvent> = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('decided'), row: invoiceRowSchema, counters: countersSchema }),
-  z.object({ type: z.literal('error'), invoiceId: z.string(), message: z.string(), status: z.literal(429).optional() }),
-  z.object({ type: z.literal('done'), stats: runStatsSchema }),
-]);
+function writeTabClientId(clientId: string): void {
+  const storage = browserEventHost()?.sessionStorage;
+  if (!storage) throw new Error('Session storage is unavailable.');
+  storage.setItem(TAB_CLIENT_ID_STORAGE_KEY, clientId);
+}
+
+function restoreTabClientId(clientId: string | null): void {
+  const storage = browserEventHost()?.sessionStorage;
+  if (!storage) return;
+  if (clientId) storage.setItem(TAB_CLIENT_ID_STORAGE_KEY, clientId);
+  else storage.removeItem(TAB_CLIENT_ID_STORAGE_KEY);
+}
+
+function broadcastClientContextSwitch(): void {
+  const browser = browserEventHost();
+  if (!browser?.localStorage) return;
+  try {
+    browser.localStorage.setItem(CLIENT_CONTEXT_STORAGE_KEY, `${Date.now()}-${Math.random()}`);
+  } catch {
+    // The same-tab generation guard still protects exports when storage is unavailable.
+  }
+}
+
+function withClientContextQuery(path: string): string {
+  const activeClientId = readTabClientId();
+  if (!activeClientId) return path;
+  const url = new URL(path, 'http://localhost');
+  url.searchParams.set('client_id', activeClientId);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+async function apiFetch(
+  path: string,
+  init?: RequestInit,
+  options: { omitClientContext?: boolean } = {},
+): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const browser = browserEventHost();
+  const activeClientId = readTabClientId();
+  if (!options.omitClientContext && browser && !activeClientId) {
+    throw new Error('This tab has no selected client. Initialize its client context first.');
+  }
+  if (!options.omitClientContext && activeClientId) headers.set('X-Client-Id', activeClientId);
+  return fetch(path, { ...init, headers });
+}
 
 const safeInteger = z.number().int().refine(Number.isSafeInteger, 'Debe ser un entero seguro.');
 const positiveInteger = safeInteger.min(1);
@@ -234,27 +204,6 @@ const dataSchemas: Record<DataTable, z.ZodType<unknown>> = {
 const dataRowSchemas: Record<DataTable, z.ZodType<unknown>> = {
   vendors: vendorSchema, contracts: contractSchema, budgets: budgetSchema, treasury: treasurySchema,
 };
-const simulationCountsSchema = z.object({
-  ready: nonNegativeInteger,
-  approval_required: nonNegativeInteger,
-  review_required: nonNegativeInteger,
-  stopped: nonNegativeInteger,
-}).strict();
-const simulationResultSchema: z.ZodType<SimulationResult> = z.object({
-  counts: simulationCountsSchema,
-  deltas: z.object({
-    ready: safeInteger,
-    approval_required: safeInteger,
-    review_required: safeInteger,
-    stopped: safeInteger,
-  }).strict(),
-  unsafeApprovals: z.literal(0),
-}).strict();
-const logEntrySchema: z.ZodType<LogEntry> = z.object({
-  at: z.string(), invoiceId: z.string(), status: invoiceStatusSchema,
-  headline: z.string(), seal: z.string(), by: z.string().nullable(),
-}).strict();
-
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly payload: ApiError | ConflictResponse | null;
@@ -285,8 +234,13 @@ async function readError(response: Response): Promise<ApiRequestError> {
   return new ApiRequestError('No pude completar la solicitud.', response.status);
 }
 
-async function requestJson<T>(url: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+async function requestJson<T>(
+  url: string,
+  schema: z.ZodType<T>,
+  init?: RequestInit,
+  options: { omitClientContext?: boolean } = {},
+): Promise<T> {
+  const response = await apiFetch(url, init, options);
   if (!response.ok) throw await readError(response);
   let raw: unknown;
   try {
@@ -311,12 +265,62 @@ export function getWorkspace(): Promise<WorkspaceSummary> {
   return requestJson('/api/workspace', workspaceSummarySchema);
 }
 
+export function getCompany(): Promise<CompanyRecord> {
+  return requestJson('/api/company', companyRecordSchema);
+}
+
+export function getClients(): Promise<ClientDirectory> {
+  if (clientContextReady) return requestJson('/api/clients', clientDirectorySchema);
+  if (!clientDirectoryInitialization) {
+    const initialClientId = readTabClientId();
+    clientDirectoryInitialization = (async () => {
+      if (initialClientId) {
+        try {
+          // Validate a tab's saved selection without ever replacing it from a response.
+          return await requestJson('/api/clients', clientDirectorySchema);
+        } catch (error) {
+          if (!(error instanceof ApiRequestError) || (error.status !== 403 && error.status !== 404)) throw error;
+        }
+      }
+
+      // This one-time bootstrap is the only headerless directory request: no tab
+      // selection exists yet, so the server supplies the owner's default/cookie client.
+      const directory = await requestJson(
+        '/api/clients', clientDirectorySchema, undefined, { omitClientContext: true },
+      );
+      if (readTabClientId() === initialClientId) writeTabClientId(directory.activeId);
+      return directory;
+    })().then((directory) => {
+      clientContextReady = true;
+      return directory;
+    }, (error: unknown) => {
+      clientDirectoryInitialization = null;
+      throw error;
+    });
+  }
+  return clientDirectoryInitialization;
+}
+
+export async function switchClient(clientId: string): Promise<ClientSwitchResponse> {
+  const previousClientId = readTabClientId();
+  writeTabClientId(clientId);
+  invalidateClientExports();
+  try {
+    const response = await requestJson('/api/clients/switch', clientSwitchResponseSchema, jsonInit('POST', { clientId }));
+    broadcastClientContextSwitch();
+    return response;
+  } catch (error) {
+    if (readTabClientId() === clientId) restoreTabClientId(previousClientId);
+    throw error;
+  }
+}
+
 export function getInvoices(): Promise<InvoiceRow[]> {
   return requestJson('/api/invoices', z.array(invoiceRowSchema));
 }
 
 export async function getEvaluation(): Promise<EvaluationResult | null> {
-  const response = await fetch('/api/eval');
+  const response = await apiFetch('/api/eval');
   if (response.status === 503) return null;
   if (!response.ok) throw await readError(response);
 
@@ -332,7 +336,10 @@ export async function getEvaluation(): Promise<EvaluationResult | null> {
 }
 
 export function getExpediente(id: string): Promise<Expediente> {
-  return requestJson(`/api/invoices/${encodeURIComponent(id)}`, expedienteSchema);
+  return requestJson(`/api/invoices/${encodeURIComponent(id)}`, expedienteSchema).then((expediente) => ({
+    ...expediente,
+    fileUrl: expediente.fileUrl ? withClientContextQuery(expediente.fileUrl) : null,
+  }));
 }
 
 function isNewInvoiceText(input: File | NewInvoiceText): input is NewInvoiceText {
@@ -351,7 +358,7 @@ export function createInvoice(input: File | NewInvoiceText): Promise<InvoiceRow>
 }
 
 export async function resetWorkspace(): Promise<void> {
-  const response = await fetch('/api/workspace/reset', { method: 'POST' });
+  const response = await apiFetch('/api/workspace/reset', { method: 'POST' });
   if (!response.ok) throw await readError(response);
 }
 
@@ -360,7 +367,7 @@ export async function processInvoices(
   onEvent: (event: ProcessEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch('/api/process', {
+  const response = await apiFetch('/api/process', {
     ...jsonInit('POST', request),
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     signal,
@@ -482,7 +489,7 @@ export async function putRow<T extends DataTable>(table: T, row: DataRowMap[T]):
 export async function uploadCsv(table: CsvTable, file: File): Promise<DataUploadResult> {
   const body = new FormData();
   body.append('file', file);
-  const response = await fetch(`/api/data/${table}/csv`, { method: 'POST', body });
+  const response = await apiFetch(`/api/data/${table}/csv`, { method: 'POST', body });
   if (response.ok) {
     try {
       const result: unknown = await response.json();
@@ -498,7 +505,7 @@ export async function uploadCsv(table: CsvTable, file: File): Promise<DataUpload
 }
 
 export function templateUrl(table: CsvTable): string {
-  return `/api/data/${table}/template.csv`;
+  return withClientContextQuery(`/api/data/${table}/template.csv`);
 }
 
 export function getLog(): Promise<LogEntry[]> {
@@ -506,9 +513,14 @@ export function getLog(): Promise<LogEntry[]> {
 }
 
 async function getExportText(path: string): Promise<string> {
-  const response = await fetch(path);
+  const generation = getExportGeneration();
+  const response = await apiFetch(withClientContextQuery(path));
   if (!response.ok) throw await readError(response);
-  return response.text();
+  const content = await response.text();
+  if (!isExportGenerationCurrent(generation)) {
+    throw new ApiRequestError('El cliente cambió mientras se preparaba el archivo.', 409);
+  }
+  return content;
 }
 
 export function exportPaymentsCsv(): Promise<string> {
@@ -523,7 +535,21 @@ export function exportReportMd(): Promise<string> {
   return getExportText('/api/export/report.md');
 }
 
-export const datosApi: DatosApi = { getTable, putRow, uploadCsv, templateUrl };
+export function exportPaymentBatchCsv(kind: 'payments' | 'reconciliation', readyIds: string[]): Promise<string> {
+  const query = new URLSearchParams({ batch: '1' });
+  readyIds.forEach((id) => query.append('ready', id));
+  return getExportText(`/api/export/${kind}.csv?${query.toString()}`);
+}
+
+export const datosApi: DatosApi = {
+  getTable,
+  putRow,
+  uploadCsv,
+  templateUrl,
+  getCompany: () => requestJson('/api/company', companyRecordSchema),
+  saveCompany: (company) => requestJson('/api/company', companyRecordSchema, jsonInit('PUT', company)),
+  previewCompany: (company) => requestJson('/api/company/preview', companyPreviewSchema, jsonInit('POST', company)),
+};
 export const reglasApi: ReglasApi = {
   getRules: () => requestJson('/api/rules', rulesSchema),
   saveRules: (rules) => requestJson('/api/rules', rulesSchema, jsonInit('PUT', rules)),

@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Expediente, InvoiceRow, ProcessEvent, WorkspaceSummary } from '../../src/shared/api';
 import { Counters } from '../../src/client/features/bandeja/Counters';
 import { Bandeja } from '../../src/client/features/bandeja/Bandeja';
+import { Expediente as ExpedientePanel } from '../../src/client/features/expediente/Expediente';
 import App from '../../src/client/app/App';
 
 const rules = {
@@ -28,6 +30,7 @@ function makeRow(status: InvoiceRow['status'] = 'stopped', id = 'AL-042'): Invoi
     status,
     reason: 'La cuenta bancaria no coincide con la registrada.',
     sourceKind: 'pdf',
+    receivedAt: '2026-10-17T12:00:00.000Z',
   };
 }
 
@@ -117,11 +120,17 @@ function processResponse(events: ProcessEvent[]): Response {
 }
 
 function installApi(rows: InvoiceRow[], expediente = makeExpediente(rows[0])) {
-  const workspace = makeWorkspace({
-    [rows[0]?.status === 'queued' ? 'queued' : rows[0]?.status ?? 'stopped']: rows.length,
-  });
+  const counts = rows.reduce<Partial<WorkspaceSummary['counters']>>((result, row) => {
+    result[row.status] = (result[row.status] ?? 0) + 1;
+    return result;
+  }, {});
+  const workspace = makeWorkspace(counts);
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (new URL(url, window.location.href).pathname === '/api/clients') return jsonResponse({
+      activeId: 'client-andina',
+      clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: rows.length, readyCount: rows.filter((row) => row.status === 'ready').length }],
+    });
     if (url === '/api/workspace') return jsonResponse(workspace);
     if (url === '/api/invoices' && (!init?.method || init.method === 'GET')) return jsonResponse(rows);
     if (url === `/api/invoices/${rows[0]?.id}`) return jsonResponse(expediente);
@@ -148,6 +157,127 @@ afterEach(() => {
 });
 
 describe('Bandeja and Expediente', () => {
+  it('opens invoice groups by default except for ready', () => {
+    const rows = [
+      makeRow('ready', 'AL-043'),
+      makeRow('approval_required', 'AL-035'),
+      makeRow('review_required', 'AL-044'),
+      makeRow('stopped', 'AL-042'),
+      makeRow('stale', 'AL-045'),
+      makeRow('approved', 'AL-046'),
+      makeRow('rejected', 'AL-047'),
+      { ...makeRow('queued', 'AL-050'), receivedAt: '2026-10-18T12:00:00.000Z' },
+    ];
+
+    render(
+      <Bandeja
+        rows={rows}
+        selectedId={null}
+        counters={makeWorkspace({ queued: 1 }).counters}
+        processing={false}
+        rowRevisions={{}}
+        onSelect={vi.fn()}
+        onProcess={vi.fn()}
+        onDropFiles={vi.fn()}
+      />,
+    );
+
+    const groups = Array.from(document.querySelectorAll<HTMLDetailsElement>('.state-group'));
+    expect(groups.map((group) => group.dataset.state)).toEqual([
+      'stopped', 'review_required', 'approval_required', 'stale', 'ready', 'approved', 'rejected',
+    ]);
+    expect(groups.filter((group) => !group.open).map((group) => group.dataset.state)).toEqual(['ready']);
+    expect(screen.getByRole('heading', { name: 'Antes de procesar' })).not.toBeNull();
+    expect(document.querySelector('.arrival-section .invoice-id')?.textContent).toBe('AL-050');
+    expect(screen.getAllByText('PDF').length).toBeGreaterThan(0);
+  });
+
+  it('marks a three-row expansion button to hide on desktop only', () => {
+    const rows = [
+      makeRow('stopped', 'AL-042'),
+      makeRow('stopped', 'AL-043'),
+      makeRow('stopped', 'AL-044'),
+    ];
+
+    render(
+      <Bandeja
+        rows={rows}
+        selectedId={null}
+        counters={makeWorkspace({ stopped: 3 }).counters}
+        processing={false}
+        rowRevisions={{}}
+        onSelect={vi.fn()}
+        onProcess={vi.fn()}
+        onDropFiles={vi.fn()}
+      />,
+    );
+
+    const moreButton = document.querySelector('.state-group[data-state="stopped"] .more-rows');
+    expect(moreButton?.getAttribute('data-hide-on-desktop')).toBe('true');
+  });
+
+  it('sorts rows inside each state group by receipt time, newest first', () => {
+    const older = { ...makeRow('stopped', 'AL-042'), receivedAt: '2026-10-16T21:14:00.000Z' };
+    const newer = { ...makeRow('stopped', 'AL-049'), receivedAt: '2026-10-17T09:30:00.000Z' };
+    const oldest = { ...makeRow('stopped', 'AL-040'), receivedAt: '2026-10-16T08:00:00.000Z' };
+
+    render(
+      <Bandeja
+        rows={[older, newer, oldest]}
+        selectedId={null}
+        counters={makeWorkspace({ stopped: 3 }).counters}
+        processing={false}
+        rowRevisions={{}}
+        onSelect={vi.fn()}
+        onProcess={vi.fn()}
+        onDropFiles={vi.fn()}
+      />,
+    );
+
+    const stoppedGroup = document.querySelector('.state-group[data-state="stopped"]');
+    const ids = within(stoppedGroup as HTMLElement).getAllByRole('button', { name: /AL-/ })
+      .map((row) => row.querySelector('.invoice-id')?.textContent);
+    expect(ids).toEqual(['AL-049', 'AL-042', 'AL-040']);
+    fireEvent.click(within(stoppedGroup as HTMLElement).getByRole('button', { name: 'Ver las 3 facturas' }));
+    expect(within(stoppedGroup as HTMLElement).getByRole('button', { name: 'Mostrar menos' }).getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('preserves receivedAt through the shared API schema for newest-first inbox ordering', async () => {
+    const older = { ...makeRow('stopped', 'AL-049'), receivedAt: '2026-10-16T21:14:00.000Z' };
+    const newer = { ...makeRow('stopped', 'AL-040'), receivedAt: '2026-10-17T09:30:00.000Z' };
+    installApi([older, newer]);
+
+    render(<App />);
+
+    await screen.findByRole('button', { name: /AL-040/ });
+    const stoppedGroup = document.querySelector('.state-group[data-state="stopped"]');
+    const ids = within(stoppedGroup as HTMLElement).getAllByRole('button', { name: /AL-/ })
+      .map((row) => row.querySelector('.invoice-id')?.textContent);
+    expect(ids).toEqual(['AL-040', 'AL-049']);
+  });
+
+  it('uses counter buttons to filter invoice groups and clears the filter on a second click', async () => {
+    const rows = [
+      makeRow('stopped', 'AL-042'),
+      makeRow('review_required', 'AL-044'),
+      makeRow('approval_required', 'AL-035'),
+      makeRow('ready', 'AL-043'),
+    ];
+    installApi(rows);
+
+    render(<App />);
+
+    const readyCounter = await screen.findByRole('button', { name: /^Listas para pagar/ });
+    fireEvent.click(readyCounter);
+    expect(document.querySelectorAll('.state-group')).toHaveLength(1);
+    expect(document.querySelector('.state-group[data-state="ready"] .invoice-id')?.textContent).toBe('AL-043');
+
+    fireEvent.click(readyCounter);
+    expect(document.querySelectorAll('.state-group')).toHaveLength(4);
+    expect(document.querySelector('.state-group[data-state="stopped"] .invoice-id')?.textContent).toBe('AL-042');
+    expect(document.querySelector<HTMLDetailsElement>('.state-group[data-state="ready"]')?.open).toBe(false);
+  });
+
   it('formats ISO due dates in Latin American Spanish', () => {
     const row = { ...makeRow('ready'), due: '2026-10-15' };
 
@@ -302,11 +432,14 @@ describe('Bandeja and Expediente', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Procesar/i }));
 
-    const invoiceRow = await screen.findByRole('button', { name: /AL-042/ });
-    expect(await within(invoiceRow).findByRole('status', { name: 'Lista para pagar' })).not.toBeNull();
     await waitFor(() => {
-      const readyMetric = screen.getByText('Listas para pagar').parentElement?.parentElement;
-      expect(readyMetric && within(readyMetric).getByText('1')).not.toBeNull();
+      const readyRow = document.querySelector('.state-group[data-state="ready"] .invoice-row');
+      expect(readyRow?.querySelector('.invoice-id')?.textContent).toBe('AL-042');
+      expect(readyRow?.querySelector('[aria-label="Lista para pagar"]')).not.toBeNull();
+    });
+    await waitFor(() => {
+      const readyMetric = screen.getByRole('button', { name: /^Listas para pagar/ });
+      expect(within(readyMetric).getByText('1')).not.toBeNull();
     });
     expect((await screen.findAllByText(/0,8 s/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/grabado/i)).length).toBeGreaterThan(0);
@@ -335,5 +468,56 @@ describe('Bandeja and Expediente', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Texto que leyó el agente' }));
     expect(screen.getByText('4412').tagName).toBe('MARK');
     expect(screen.getByText('Paga de inmediato.').tagName).toBe('MARK');
+  });
+
+  it('shows the new invoice default tab on the first render after switching invoices', () => {
+    const rows = [makeRow('stopped', 'AL-042'), makeRow('stopped', 'AL-043')];
+    const expedientes = rows.map((row) => {
+      const expediente = makeExpediente(row);
+      expediente.fileUrl = `/api/files/${row.id}`;
+      return expediente;
+    });
+
+    function InvoiceSwitchHarness() {
+      const [index, setIndex] = useState(0);
+      const [tabOnSwitch, setTabOnSwitch] = useState('');
+      const previousInvoiceId = useRef<string | null>(null);
+
+      useLayoutEffect(() => {
+        if (previousInvoiceId.current !== null && previousInvoiceId.current !== rows[index].id) {
+          setTabOnSwitch(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent ?? '');
+        }
+        previousInvoiceId.current = rows[index].id;
+      }, [index]);
+
+      return (
+        <>
+          <button type="button" onClick={() => setIndex(1)}>Switch invoice</button>
+          <ExpedientePanel
+            rows={rows}
+            selectedStatus={rows[index].status}
+            expediente={expedientes[index]}
+            loading={false}
+            error={null}
+            busy={false}
+            includedInPaymentBatch={false}
+            onApprove={async () => undefined}
+            onReject={async () => undefined}
+            onResolveFlag={async () => undefined}
+            onReevaluate={async () => undefined}
+            onSelectStatus={() => undefined}
+            onTogglePaymentBatch={() => undefined}
+            onOpenData={() => undefined}
+          />
+          <output data-testid="tab-on-invoice-switch">{tabOnSwitch}</output>
+        </>
+      );
+    }
+
+    render(<InvoiceSwitchHarness />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Texto que leyó el agente' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch invoice' }));
+
+    expect(screen.getByTestId('tab-on-invoice-switch').textContent).toBe('Documento original');
   });
 });

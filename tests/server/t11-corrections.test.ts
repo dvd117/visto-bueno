@@ -3,6 +3,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { getTable, putRow, reglasApi } from '../../src/client/lib/api';
 import { createInvoice, getDecisionHistory, getInvoice, openDb } from '../../src/server/db/db';
 import { createServerApp, serverRuntime } from '../../src/server/app';
+import { installClientContextForMutations } from './request-context';
 import type { Rules } from '../../src/shared/domain/types';
 
 // SQLite setup and route work can exceed Vitest's 5s default when the full suite is parallel.
@@ -12,6 +13,7 @@ const runtimes: Array<ReturnType<typeof createServerApp>> = [];
 
 function makeRuntime() {
   const runtime = createServerApp({ db: openDb(':memory:'), autoCleanup: false, remoteAddress: () => '192.0.2.10' });
+  installClientContextForMutations(runtime);
   runtimes.push(runtime);
   return runtime;
 }
@@ -82,6 +84,7 @@ describe('T11 correction regressions', () => {
   it('processes queued received invoices by default without enabling live mode', async () => {
     const limiter = { reserveCall: vi.fn(() => ({ ok: true as const, reservation: { start: () => true, cancel: () => undefined } })) };
     const runtime = createServerApp({ db: openDb(':memory:'), autoCleanup: false, limiter });
+    installClientContextForMutations(runtime);
     runtimes.push(runtime);
     const { app } = runtime;
     const created = await app.request('/api/invoices', {

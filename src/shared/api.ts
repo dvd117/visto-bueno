@@ -1,11 +1,13 @@
 // API request/response types (plan Task 11). Routes live under /api, scoped to the workspace cookie.
 import { z } from 'zod';
-import type { Currency, DecisionRecord, InvoiceStatus, Rules, SourceKind, VendorCountry } from './domain/types';
+import type {
+  CheckResult, CompanyProfile, Currency, DecisionRecord, InvoiceStatus, Rules, SourceKind, VendorCountry,
+} from './domain/types';
 
 export interface InvoiceRow {
   id: string; payee: string; concept: string; /** formatted */ amount: string;
   amountUsd: string | null; fxDate?: string | null; due: string | null; status: InvoiceStatus; reason: string; subtitle?: string; sourceKind: SourceKind;
-  country: VendorCountry | null; currency: Currency | null;
+  country: VendorCountry | null; currency: Currency | null; /** immutable ISO receipt timestamp */ receivedAt: string;
   reevaluatedFrom?: InvoiceStatus;
 }
 
@@ -176,6 +178,22 @@ export interface WorkspaceSummary {
   rules: Rules; counters: Counters; lastRun: RunStats | null;
 }
 
+/** GET /api/clients; client ids are opaque and only usable by their owning visitor. */
+export interface ClientSummary {
+  id: string;
+  name: string;
+  invoiceCount: number;
+  readyCount: number;
+}
+
+export interface ClientDirectory {
+  activeId: string;
+  clients: ClientSummary[];
+}
+
+export interface ClientSwitchRequest { clientId: string }
+export interface ClientSwitchResponse { activeId: string }
+
 /** POST /api/process (response is an SSE stream of ProcessEvent) */
 export interface ProcessRequest { ids?: string[]; mode?: 'replay' | 'live'; examples?: true }
 
@@ -184,12 +202,28 @@ export interface NewInvoiceText { text: string }
 
 /** POST /api/invoices/:id/approve and /reject. 409 returns ConflictResponse. */
 export interface DecisionAction { approver: string; reason: string; idempotencyKey: string; accountLast4?: string }
+export interface DecideResponse {
+  state: 'ready' | 'approval_required' | 'review_required' | 'stopped';
+  headline: string;
+  reasons: string[];
+  checks: CheckResult[];
+  sealId: string;
+  decisionRecordId: string;
+}
 
 /** POST /api/invoices/:id/flags/:flagId/resolve */
 export interface FlagResolution { choice: string; reason: string; approver: string }
 
 /** POST /api/rules/simulate */
 export interface SimulateRequest { rules: Rules }
+
+/** GET and PUT /api/company; POST /api/company/preview takes the same body. */
+export interface CompanyRecord extends CompanyProfile {
+  limits: { perPaymentUsdMinor: number; monthlyUsdMinor: number; approvalThresholdUsdMinor: number };
+}
+
+/** POST /api/company/preview: the rules simulation plus pending invoices a save would mark stale. */
+export interface CompanyPreview extends SimulationResult { staleCount: number }
 
 /** Body of a 409 from approve/reject. */
 export interface ConflictResponse { error: 'conflict'; expediente: Expediente }

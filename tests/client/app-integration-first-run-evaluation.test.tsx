@@ -23,6 +23,10 @@ function json(value: unknown, status = 200): Response {
 function installApi(evalStatus = 503, evalBody?: unknown) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const path = new URL(String(input), window.location.href).pathname;
+    if (path === '/api/clients') return json({
+      activeId: 'client-andina',
+      clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 0, readyCount: 0 }],
+    });
     if (path === '/api/workspace') return json({
       company: { name: 'Andina Labs Inc.', fictional: true },
       rules,
@@ -81,7 +85,7 @@ describe('App first-run and evaluation integration', () => {
     const page = screen.getByRole('main');
     expect(within(page).queryByRole('table')).toBeNull();
     expect(within(page).queryByText(/\b\d+\b|US\$|\bms\b/)).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith('/api/eval');
+    expect(fetchMock.mock.calls.some(([input]) => input === '/api/eval')).toBe(true);
   });
 
   it('shows an error state for non-503 evaluation failures', async () => {

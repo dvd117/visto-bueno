@@ -20,7 +20,7 @@ const rules = {
 const queuedRow: InvoiceRow = {
   id: 'AL-030', payee: 'Proveedor por identificar', concept: 'Factura recibida',
   amount: '—', amountUsd: null, due: null, status: 'queued', reason: 'Pendiente de evaluación',
-  sourceKind: 'text', country: null, currency: null,
+  sourceKind: 'text', country: null, currency: null, receivedAt: '2026-10-17T12:00:00.000Z',
 };
 const readyRow: InvoiceRow = {
   ...queuedRow, payee: 'Pixel Patio S.A.S.', concept: 'Diseño y mantenimiento',
@@ -67,6 +67,10 @@ async function prepareResetUploadRace(failResetBeforeServer = false) {
   let missingDetailReads = 0;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = new URL(String(input), window.location.href).pathname;
+    if (path === '/api/clients') return json({
+      activeId: 'client-andina',
+      clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 1, readyCount: 0 }],
+    });
     if (path === '/api/workspace') return json({
       company: { name: 'Andina Labs Inc.', fictional: true }, rules, counters, lastRun: null,
     });
@@ -143,6 +147,10 @@ describe('App load flow', () => {
     const resetInvoices = new Promise<Response>((resolve) => { resolveResetInvoices = resolve; });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = new URL(String(input), window.location.href).pathname;
+      if (path === '/api/clients') return json({
+        activeId: 'client-andina',
+        clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 1, readyCount: 0 }],
+      });
       if (path === '/api/workspace') return json({
         company: { name: 'Andina Labs Inc.', fictional: true }, rules, counters, lastRun: null,
       });
@@ -194,6 +202,10 @@ describe('App load flow', () => {
     let staleDetailReads = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = new URL(String(input), window.location.href).pathname;
+      if (path === '/api/clients') return json({
+        activeId: 'client-andina',
+        clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 1, readyCount: 0 }],
+      });
       if (path === '/api/workspace') return json({
         company: { name: 'Andina Labs Inc.', fictional: true }, rules, counters, lastRun: null,
       });
@@ -325,6 +337,10 @@ describe('App load flow', () => {
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), window.location.href).pathname;
+      if (path === '/api/clients') return json({
+        activeId: 'client-andina',
+        clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 1, readyCount: 0 }],
+      });
       if (path === '/api/workspace') return json({
         company: { name: 'Andina Labs Inc.', fictional: true }, rules, counters, lastRun: null,
       });
@@ -361,6 +377,10 @@ describe('App load flow', () => {
     let otherDetailRequests = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), window.location.href).pathname;
+      if (path === '/api/clients') return json({
+        activeId: 'client-andina',
+        clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 1, readyCount: 0 }],
+      });
       if (path === '/api/workspace') return json({
         company: { name: 'Andina Labs Inc.', fictional: true }, rules, counters, lastRun: null,
       });
@@ -406,6 +426,10 @@ describe('App load flow', () => {
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), window.location.href).pathname;
+      if (path === '/api/clients') return json({
+        activeId: 'client-andina',
+        clients: [{ id: 'client-andina', name: 'Andina Labs Inc.', invoiceCount: 1, readyCount: 0 }],
+      });
       if (path === '/api/workspace') return json({
         company: { name: 'Andina Labs Inc.', fictional: true }, rules, counters, lastRun: null,
       });

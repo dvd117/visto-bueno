@@ -1,4 +1,6 @@
-import type { ApiError, LogEntry, SimulationResult } from '../../shared/api';
+import type {
+  ApiError, CompanyPreview, CompanyRecord, LogEntry, SimulationResult,
+} from '../../shared/api';
 import type { Budget, Contract, Rules, Treasury, Vendor } from '../../shared/domain/types';
 
 export type { ApiEvaluationResult as EvaluationResult } from '../../shared/api';
@@ -27,6 +29,9 @@ export interface DatosApi {
   putRow<T extends DataTable>(table: T, row: DataRowMap[T]): Promise<DataRowMap[T]>;
   uploadCsv(table: CsvTable, file: File): Promise<DataUploadResult>;
   templateUrl(table: CsvTable): string;
+  getCompany(): Promise<CompanyRecord>;
+  saveCompany(company: CompanyRecord): Promise<CompanyRecord>;
+  previewCompany(company: CompanyRecord): Promise<CompanyPreview>;
 }
 
 export interface BitacoraApi {

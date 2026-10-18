@@ -20,9 +20,10 @@ interface StatusChipProps {
   animate?: boolean;
   delay?: number;
   revision?: number;
+  announce?: boolean;
 }
 
-export function StatusChip({ status, subtitle, large = false, animate = false, delay = 0, revision = 0 }: StatusChipProps) {
+export function StatusChip({ status, subtitle, large = false, animate = false, delay = 0, revision = 0, announce = true }: StatusChipProps) {
   const reduceMotion = useReducedMotion();
   const subtitleId = useId();
   const { glyph, label, tone } = statusText[status];
@@ -36,13 +37,13 @@ export function StatusChip({ status, subtitle, large = false, animate = false, d
       {subtitle && <span className="status-subtitle" id={subtitleId}>{subtitle}</span>}
     </>
   );
+  const statusAttributes = announce ? { role: 'status' as const, 'aria-label': label } : {};
 
   if (animate && !reduceMotion) {
     return (
       <motion.span
         key={`${status}-${revision}`}
-        role="status"
-        aria-label={label}
+        {...statusAttributes}
         aria-describedby={subtitle ? subtitleId : undefined}
         className={className}
         initial={{ opacity: 0, y: -2 }}
@@ -55,7 +56,7 @@ export function StatusChip({ status, subtitle, large = false, animate = false, d
   }
 
   return (
-    <span role="status" aria-label={label} aria-describedby={subtitle ? subtitleId : undefined} className={className}>
+    <span {...statusAttributes} aria-describedby={subtitle ? subtitleId : undefined} className={className}>
       {content}
     </span>
   );
