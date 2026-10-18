@@ -227,6 +227,72 @@ describe('I3 MCP server', () => {
     await ownerRequest.body?.cancel();
   });
 
+  it('keeps a visitor session bound to its initialize-time client after the active client changes', async () => {
+    const extractProvider = async (input: { kind: SourceKind }) => ({
+      ok: false as const, error: 'unreadable' as const, sourceKind: input.kind,
+    });
+    const { app, db } = makeRuntime({ extractProvider });
+    const ownerCookie = await visitorCookie(app);
+    const ownerId = ownerCookie.slice('workspace_id='.length);
+    const directoryResponse = await app.request('/api/clients', { headers: { cookie: ownerCookie } });
+    const directory = await directoryResponse.json() as { clients: Array<{ id: string; name: string }> };
+    const marea = directory.clients.find(({ name }) => name === 'Marea Norte SpA');
+    const andina = directory.clients.find(({ name }) => name === 'Andina Labs Inc.');
+    if (!marea || !andina) throw new Error('Expected both demo clients for the visitor.');
+    const mareaWorkspace = (db.prepare('SELECT workspace_id FROM workspace_clients WHERE owner_id = ? AND client_id = ?')
+      .get(ownerId, marea.id) as { workspace_id: string }).workspace_id;
+    const mareaCookie = `${ownerCookie}; active_client_id=${marea.id}`;
+    const switchedToMarea = await app.request('/api/clients/switch', {
+      method: 'POST', headers: { cookie: ownerCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ clientId: marea.id }),
+    });
+    expect(switchedToMarea.status).toBe(200);
+
+    let activeCookie = mareaCookie;
+    const responses: Response[] = [];
+    const client = new Client({ name: 'visto-bueno-client-binding-test', version: '1.0.0' });
+    const transport = new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set('cookie', activeCookie);
+        headers.set('x-client-id', marea.id);
+        const response = await app.request(input, { ...init, headers });
+        responses.push(response);
+        return response;
+      },
+    });
+    clients.push(client);
+    await client.connect(transport);
+
+    const assertDecisionInMarea = async (idempotencyKey: string) => {
+      const result = await client.callTool({
+        name: 'decide', arguments: { text: 'Marea Norte sample invoice.', idempotencyKey },
+      });
+      expect(result.isError).not.toBe(true);
+      const decision = toolJson<DecideResponse>(result);
+      expect(db.prepare('SELECT workspace_id FROM decision_records WHERE id = ?')
+        .get(decision.decisionRecordId)).toEqual({ workspace_id: mareaWorkspace });
+    };
+
+    await assertDecisionInMarea('mcp-marea-before-switch');
+    const switchedToAndina = await app.request('/api/clients/switch', {
+      method: 'POST', headers: { cookie: mareaCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ clientId: andina.id }),
+    });
+    expect(switchedToAndina.status).toBe(200);
+    activeCookie = `${ownerCookie}; active_client_id=${andina.id}`;
+    await assertDecisionInMarea('mcp-marea-after-switch');
+
+    const sessionId = responses[0]?.headers.get('mcp-session-id');
+    expect(sessionId).toBeTruthy();
+    expect((await requestToolsList(app, sessionId!)).status).toBe(404);
+    const otherOwnerCookie = await visitorCookie(app);
+    expect((await requestToolsList(app, sessionId!, otherOwnerCookie)).status).toBe(404);
+    const ownerRequest = await requestToolsList(app, sessionId!, activeCookie);
+    expect(ownerRequest.status).toBe(200);
+    await ownerRequest.body?.cancel();
+  });
+
   it('does not create a workspace for an invalid initialize body', async () => {
     const { app, db } = makeRuntime({ seedExamples: false });
     for (let index = 0; index < 16; index += 1) {
@@ -372,7 +438,8 @@ describe('I3 MCP server', () => {
     const secondAfter = toolJson<Expediente>(await second.callTool({ name: 'explain', arguments: { invoiceId: 'AL-030' } }));
     expect(firstAfter.record).not.toBeNull();
     expect(secondAfter.record).toBeNull();
-    expect(db.prepare('SELECT COUNT(*) AS count FROM workspaces').get()).toMatchObject({ count: 2 });
+    // K1 creates an empty secondary client workspace when each anonymous session first calls the API.
+    expect(db.prepare('SELECT COUNT(*) AS count FROM workspaces').get()).toMatchObject({ count: 4 });
   });
 
   it('uses an existing visitor cookie but cannot reach that visitor from another MCP session', async () => {

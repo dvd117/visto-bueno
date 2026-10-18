@@ -13,6 +13,7 @@ import { createOpenApiRoutes } from './routes/openapi';
 import { createRulesRoutes } from './routes/rules';
 import { createCompanyRoutes } from './routes/company';
 import { createMcpRoute } from './routes/mcp';
+import { createClientRoutes } from './routes/clients';
 import type { PipelineOptions } from './pipeline';
 
 export interface CreateServerAppOptions extends Partial<Omit<PipelineOptions, 'db'>>,
@@ -75,6 +76,7 @@ export function createServerApp(options: CreateServerAppOptions = {}): ServerRun
   }));
   app.route('/api', createRulesRoutes({ db }));
   app.route('/api', createCompanyRoutes({ db }));
+  app.route('/api', createClientRoutes({ db }));
   app.notFound((c) => c.req.path.startsWith('/api/')
     ? c.json({ error: 'not_found', message: 'No encontré esta ruta.' }, 404)
     : c.text('Not Found', 404));

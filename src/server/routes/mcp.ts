@@ -12,6 +12,7 @@ import {
   mcpExportBatchInputSchema,
 } from '../../shared/api-schemas';
 import type { Db } from '../db/db';
+import { ensureClientWorkspaces, getOwnedWorkspaceClient, primaryWorkspaceForOwner } from '../db/workspace';
 import { ensureRequestWorkspace, requestClientIp, type ServerEnv, type WorkspaceMiddlewareOptions } from '../middleware/workspace';
 import { createMcpSessionCreationLimiter, MAX_REQUEST_BODY_BYTES, readLimitedBody } from '../middleware/limits';
 
@@ -30,7 +31,8 @@ interface McpSession {
   server: McpServer;
   transport: WebStandardStreamableHTTPServerTransport;
   workspaceId: string;
-  requiresWorkspaceCookie: boolean;
+  ownerId: string | null;
+  clientId: string | null;
   lastActivityAt: number;
 }
 
@@ -89,6 +91,16 @@ function cookieIncludesWorkspace(cookieHeader: string | undefined, workspaceId: 
     .filter((value) => value.startsWith('workspace_id='))
     .map((value) => value.slice('workspace_id='.length)) ?? [];
   return values.length > 0 && values.every((value) => value === workspaceId);
+}
+
+function cookieValue(cookieHeader: string | undefined, name: string): string | null {
+  const value = cookieHeader?.split(';').map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`))?.slice(name.length + 1);
+  return value && /^[A-Za-z0-9_-]{1,80}$/.test(value) ? value : null;
+}
+
+function validClientId(value: string | undefined): string | null {
+  return value && /^[A-Za-z0-9_-]{1,80}$/.test(value) ? value : null;
 }
 
 export function createMcpRoute(options: McpRouteOptions): {
@@ -153,8 +165,8 @@ export function createMcpRoute(options: McpRouteOptions): {
     if (sessionId && !session) return sessionNotFound();
     if (session) {
       const cookie = c.req.header('cookie');
-      if (session.requiresWorkspaceCookie
-        ? !cookieIncludesWorkspace(cookie, session.workspaceId)
+      if (session.ownerId !== null
+        ? !cookieIncludesWorkspace(cookie, session.ownerId)
         : cookieNamesDifferentWorkspace(cookie, session.workspaceId)) return sessionNotFound();
       if (!workspaceExists(session.workspaceId) || Date.now() - session.lastActivityAt >= MCP_SESSION_IDLE_TTL_MS) {
         closeSession(sessionId!, session);
@@ -201,23 +213,42 @@ export function createMcpRoute(options: McpRouteOptions): {
 
     pendingCreations += 1;
     let workspaceId: string | undefined;
+    let ownerId: string | null = null;
+    let clientId: string | null = null;
     let workspaceWasNew = false;
     let sessionState: McpSession | undefined;
     let server: McpServer | undefined;
     let transport: WebStandardStreamableHTTPServerTransport | undefined;
     try {
-      const requestedWorkspaceId = c.req.header('cookie')?.split(';').map((value) => value.trim())
-        .find((value) => value.startsWith('workspace_id='))?.slice('workspace_id='.length);
-      const workspaceExisted = requestedWorkspaceId ? workspaceExists(requestedWorkspaceId) : false;
-      const workspace = ensureRequestWorkspace(options.db, c.req.header('cookie'), options);
-      workspaceId = workspace.workspaceId;
-      workspaceWasNew = !workspaceExisted;
+      const cookie = c.req.header('cookie');
+      const visitorOwnerId = cookieValue(cookie, 'workspace_id');
+      ownerId = visitorOwnerId;
+      if (visitorOwnerId) {
+        ensureClientWorkspaces(options.db, visitorOwnerId, visitorOwnerId);
+        const requestedClientId = c.req.header('x-client-id');
+        const requestedClientContext = requestedClientId === undefined ? undefined : validClientId(requestedClientId);
+        const cookieClientId = cookieValue(cookie, 'active_client_id');
+        const selectedClient = requestedClientId !== undefined
+          ? (requestedClientContext
+            ? getOwnedWorkspaceClient(options.db, visitorOwnerId, requestedClientContext)
+            : null)
+          : (cookieClientId ? getOwnedWorkspaceClient(options.db, visitorOwnerId, cookieClientId) : null)
+            ?? primaryWorkspaceForOwner(options.db, visitorOwnerId);
+        if (!selectedClient) return sessionNotFound();
+        workspaceId = selectedClient.id;
+        clientId = selectedClient.clientId;
+      } else {
+        const workspace = ensureRequestWorkspace(options.db, cookie, options);
+        workspaceId = workspace.workspaceId;
+        workspaceWasNew = workspace.isNew;
+      }
       server = new McpServer(MCP_SERVER_INFO);
       sessionState = {
         server,
         transport: null as unknown as WebStandardStreamableHTTPServerTransport,
         workspaceId,
-        requiresWorkspaceCookie: !workspace.isNew,
+        ownerId,
+        clientId,
         lastActivityAt: Date.now(),
       };
       const currentSession = sessionState;
@@ -245,9 +276,10 @@ export function createMcpRoute(options: McpRouteOptions): {
       }, async (input, extra) => {
         try {
           const requestHeaders = new Headers({
-            cookie: `workspace_id=${currentSession.workspaceId}`,
+            cookie: `workspace_id=${currentSession.ownerId ?? currentSession.workspaceId}`,
             'Idempotency-Key': input.idempotencyKey,
           });
+          if (currentSession.clientId) requestHeaders.set('X-Client-Id', currentSession.clientId);
           let body: FormData | string;
           if ('file' in input) {
             const form = new FormData();
@@ -278,7 +310,10 @@ export function createMcpRoute(options: McpRouteOptions): {
         try {
           const response = await options.fetchApi(new Request(
             `http://visto-bueno.internal/api/invoices/${encodeURIComponent(invoiceId)}`,
-            { headers: { cookie: `workspace_id=${currentSession.workspaceId}` } },
+            { headers: {
+              cookie: `workspace_id=${currentSession.ownerId ?? currentSession.workspaceId}`,
+              ...(currentSession.clientId ? { 'X-Client-Id': currentSession.clientId } : {}),
+            } },
           ), internalEnvironment(clientIpFromToolRequest(extra)));
           if (!response.ok) return genericToolError();
           const parsed = expedienteSchema.safeParse(await response.json());
@@ -302,7 +337,10 @@ export function createMcpRoute(options: McpRouteOptions): {
             path += `?${query.toString()}`;
           }
           const response = await options.fetchApi(new Request(`http://visto-bueno.internal${path}`, {
-            headers: { cookie: `workspace_id=${currentSession.workspaceId}` },
+            headers: {
+              cookie: `workspace_id=${currentSession.ownerId ?? currentSession.workspaceId}`,
+              ...(currentSession.clientId ? { 'X-Client-Id': currentSession.clientId } : {}),
+            },
           }), internalEnvironment(clientIpFromToolRequest(extra)));
           if (!response.ok) return genericToolError();
           return toolText(await response.text());

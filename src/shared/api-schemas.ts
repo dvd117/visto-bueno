@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import type {
   ApiError,
+  ClientDirectory,
+  ClientSwitchRequest,
+  ClientSwitchResponse,
   Comparison,
   CompanyPreview,
   CompanyRecord,
@@ -264,4 +267,22 @@ export const companyPreviewSchema: z.ZodType<CompanyPreview> = z.object({
   }).strict(),
   unsafeApprovals: z.literal(0),
   staleCount: nonNegativeInteger,
+}).strict();
+
+export const clientDirectorySchema: z.ZodType<ClientDirectory> = z.object({
+  activeId: z.string(),
+  clients: z.array(z.object({
+    id: z.string(),
+    name: z.string().min(1),
+    invoiceCount: nonNegativeInteger,
+    readyCount: nonNegativeInteger,
+  }).strict()),
+}).strict();
+
+export const clientSwitchRequestSchema: z.ZodType<ClientSwitchRequest> = z.object({
+  clientId: z.string().min(1).max(80).regex(/^[A-Za-z0-9_-]+$/),
+}).strict();
+
+export const clientSwitchResponseSchema: z.ZodType<ClientSwitchResponse> = z.object({
+  activeId: z.string(),
 }).strict();

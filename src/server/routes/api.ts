@@ -16,7 +16,7 @@ import {
   createInvoice, getAuditLog, getInvoice, getWorkspaceData, listInvoices,
   putBudget, putContract, putTreasury, putVendor, type Db,
 } from '../db/db';
-import { resetWorkspace } from '../db/workspace';
+import { listOwnedWorkspaceClients, readCompanyProfile, resetWorkspace } from '../db/workspace';
 import { getCounters, invoiceRows, originalMoney, toExpediente, toInvoiceRow } from '../format';
 import { ensureExampleInvoices } from '../fixtures';
 import { logCsv, paymentsCsv, reconciliationCsv, reportMd, type PaymentExportItem } from '../export/builders';
@@ -194,7 +194,7 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
     const workspaceId = c.get('workspaceId');
     const data = getWorkspaceData(db, workspaceId);
     return c.json({
-      company: { name: 'Andina Labs Inc.', fictional: true as const },
+      company: { name: readCompanyProfile(db, workspaceId).name, fictional: true as const },
       rules: data.rules,
       counters: getCounters(db, workspaceId),
       lastRun: options.lastRuns.get(workspaceId) ?? null,
@@ -202,14 +202,16 @@ export function createApiRoutes(options: ApiRouteOptions): Hono<ServerEnv> {
   });
 
   router.post('/workspace/reset', async (c) => {
-    const workspaceId = c.get('workspaceId');
-    const existing = listInvoices(db, workspaceId);
-    resetWorkspace(db, workspaceId);
-    options.lastRuns.delete(workspaceId);
+    const clients = listOwnedWorkspaceClients(db, c.get('ownerId'));
+    const existing = clients.flatMap((client) => listInvoices(db, client.id));
+    for (const client of clients) {
+      resetWorkspace(db, client.id);
+      options.lastRuns.delete(client.id);
+      if (client.isPrimary) ensureExampleInvoices(db, client.id);
+    }
     await Promise.all(existing.flatMap((invoice) => invoice.filePath?.startsWith('uploads/')
       ? [rm(resolve(options.uploadDirectory, basename(invoice.filePath)), { force: true })]
       : []));
-    ensureExampleInvoices(db, workspaceId);
     return c.json({ ok: true });
   });
 

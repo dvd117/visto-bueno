@@ -6,6 +6,18 @@ CREATE TABLE IF NOT EXISTS workspaces (
   last_seen TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS workspace_clients (
+  client_id TEXT NOT NULL UNIQUE,
+  workspace_id TEXT PRIMARY KEY NOT NULL,
+  owner_id TEXT NOT NULL,
+  default_name TEXT NOT NULL,
+  is_primary INTEGER NOT NULL CHECK (is_primary IN (0, 1)),
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS workspace_clients_owner_idx ON workspace_clients(owner_id, is_primary DESC, created_at);
+
 CREATE TABLE IF NOT EXISTS workspace_values (
   workspace_id TEXT NOT NULL,
   key TEXT NOT NULL,
