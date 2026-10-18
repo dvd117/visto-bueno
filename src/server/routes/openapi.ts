@@ -63,8 +63,27 @@ function mapProperties(
   ])));
 }
 
-function nonBlankProperties(schema: JsonSchema, names: string[]): JsonSchema {
-  return mapProperties(schema, names, (property) => ({ ...property, pattern: '\\S' }));
+function trimmedStringPattern(maxLength: number): string {
+  const trimmedValue = maxLength === 1
+    ? '\\S'
+    : `\\S(?:[\\s\\S]{0,${maxLength - 2}}\\S)?`;
+  return `^\\s*${trimmedValue}\\s*$`;
+}
+
+function trimmedStringProperties(schema: JsonSchema, names: string[]): JsonSchema {
+  return mapProperties(schema, names, (property) => {
+    const maxLength = property.maxLength;
+    if (typeof maxLength !== 'number') return { ...property, pattern: '\\S' };
+
+    // JSON Schema maxLength applies before normalization; runtime .trim().max() does not.
+    const trimmedProperty = { ...property };
+    delete trimmedProperty.maxLength;
+    return {
+      ...trimmedProperty,
+      pattern: trimmedStringPattern(maxLength),
+      'x-maxLengthAfterTrim': maxLength,
+    };
+  });
 }
 
 function safeIntegerProperties(schema: JsonSchema, names: string[]): JsonSchema {
@@ -89,9 +108,9 @@ const contractShapeConstraints = [{
   },
 }];
 
-const invoiceTextSchema = nonBlankProperties(zodSchema(textInvoiceSchema), ['text']);
-const decisionActionSchema = nonBlankProperties(zodSchema(actionSchema), ['approver', 'reason', 'idempotencyKey']);
-const flagResolutionSchema = nonBlankProperties(zodSchema(resolutionSchema), ['choice', 'reason', 'approver']);
+const invoiceTextSchema = trimmedStringProperties(zodSchema(textInvoiceSchema), ['text']);
+const decisionActionSchema = trimmedStringProperties(zodSchema(actionSchema), ['approver', 'reason', 'idempotencyKey']);
+const flagResolutionSchema = trimmedStringProperties(zodSchema(resolutionSchema), ['choice', 'reason', 'approver']);
 const processRequestBase = zodSchema(processSchema);
 const processIds = propertySchema(processRequestBase, 'ids');
 const processIdItem = { ...(processIds.items as JsonSchema) };
@@ -129,11 +148,11 @@ const processRequestSchema = withProperties(processRequestBase, {
 });
 
 const vendorSchemaBase = safeIntegerProperties(
-  nonBlankProperties(zodSchema(vendorSchema), ['id', 'name', 'taxId', 'payoutAccount']),
+  trimmedStringProperties(zodSchema(vendorSchema), ['id', 'name', 'taxId', 'payoutAccount']),
   ['version'],
 );
 const contractSchemaBase = safeIntegerProperties(
-  nonBlankProperties(zodSchema(contractSchema), ['id', 'vendorId', 'scope', 'unit']),
+  trimmedStringProperties(zodSchema(contractSchema), ['id', 'vendorId', 'scope', 'unit']),
   ['amountMinor', 'rateMinor', 'maxUnitsPerPeriod', 'version'],
 );
 const contractProperties = {

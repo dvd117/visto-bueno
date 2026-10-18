@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../../src/server/db/db';
+import { actionSchema } from '../../src/server/routes/api';
 import { createServerApp, serverRuntime } from '../../src/server/app';
 
 const runtimes: Array<ReturnType<typeof createServerApp>> = [];
@@ -80,9 +81,44 @@ describe('OpenAPI document', () => {
     const contract = schemas.Contract;
     const fx = schemas.Treasury?.properties?.fx;
 
-    expect(schemas.NewInvoiceText?.properties?.text).toMatchObject({
-      minLength: 1, maxLength: 2 * 1024 * 1024, pattern: '\\S',
-    });
+    const trimmedProperties: Array<{ property: JsonSchema | undefined; maxLength: number }> = [
+      { property: schemas.NewInvoiceText?.properties?.text, maxLength: 2 * 1024 * 1024 },
+      { property: schemas.DecisionAction?.properties?.approver, maxLength: 120 },
+      { property: schemas.DecisionAction?.properties?.reason, maxLength: 500 },
+      { property: schemas.DecisionAction?.properties?.idempotencyKey, maxLength: 120 },
+      { property: schemas.FlagResolution?.properties?.choice, maxLength: 120 },
+      { property: schemas.FlagResolution?.properties?.reason, maxLength: 500 },
+      { property: schemas.FlagResolution?.properties?.approver, maxLength: 120 },
+      { property: schemas.Vendor?.properties?.id, maxLength: 100 },
+      { property: schemas.Vendor?.properties?.name, maxLength: 200 },
+      { property: schemas.Vendor?.properties?.taxId, maxLength: 100 },
+      { property: schemas.Vendor?.properties?.payoutAccount, maxLength: 200 },
+      { property: schemas.Contract?.properties?.id, maxLength: 100 },
+      { property: schemas.Contract?.properties?.vendorId, maxLength: 100 },
+      { property: schemas.Contract?.properties?.scope, maxLength: 500 },
+      { property: schemas.Contract?.properties?.unit, maxLength: 100 },
+    ];
+    for (const { property, maxLength } of trimmedProperties) {
+      expect(property?.minLength).toBe(1);
+      expect(property?.maxLength).toBeUndefined();
+      expect(property?.['x-maxLengthAfterTrim']).toBe(maxLength);
+      expect(typeof property?.pattern).toBe('string');
+      if (maxLength <= 1000) {
+        const pattern = new RegExp(property?.pattern as string);
+        expect(pattern.test(`  ${'x'.repeat(maxLength)}  `)).toBe(true);
+        expect(pattern.test(`  ${'x'.repeat(maxLength + 1)}  `)).toBe(false);
+        expect(pattern.test('   ')).toBe(false);
+      }
+    }
+    expect(schemas.DecisionAction?.properties?.accountLast4?.maxLength).toBe(32);
+    const paddedApprover = `  ${'A'.repeat(120)}  `;
+    expect(actionSchema.safeParse({
+      approver: paddedApprover, reason: 'Validar', idempotencyKey: 'approve-1',
+    }).success).toBe(true);
+    const approverPattern = new RegExp(schemas.DecisionAction?.properties?.approver?.pattern as string);
+    expect(approverPattern.test(paddedApprover)).toBe(true);
+    expect(approverPattern.test(`  ${'A'.repeat(121)}  `)).toBe(false);
+    expect(approverPattern.test('   ')).toBe(false);
     expect(contract?.properties?.start).toMatchObject({
       type: 'string', format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$',
     });
