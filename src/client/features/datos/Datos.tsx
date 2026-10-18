@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Decimal from 'decimal.js';
 import { CURRENCIES, CURRENCY_DEFINITIONS } from '../../../shared/domain/currencies';
-import type { Budget, Contract, CostCenter, Currency, FxRate, Treasury, Vendor } from '../../../shared/domain/types';
+import type { CompanyPreview, CompanyRecord } from '../../../shared/api';
+import type {
+  Budget, Contract, CostCenter, Currency, FxRate, Treasury, Vendor, VendorCountry,
+} from '../../../shared/domain/types';
 import type {
   CsvTable, DataTable, DataTableValues, DatosApi,
 } from '../../lib/api-types';
@@ -274,6 +277,308 @@ const treasuryColumns: Column<TreasuryEditorRow>[] = [
   }),
 ];
 
+type CompanyFormValues = {
+  name: string;
+  operatingCountries: VendorCountry[];
+  vendorCountries: VendorCountry[];
+  currencies: Currency[];
+  perPaymentUsd: string;
+  monthlyUsd: string;
+  approvalThresholdUsd: string;
+};
+
+type ImpactState =
+  | { key: string; status: 'loading' | 'error' }
+  | { key: string; status: 'ready'; result: CompanyPreview };
+
+const impactRows: Array<{ key: keyof CompanyPreview['counts']; label: string }> = [
+  { key: 'ready', label: 'listas' },
+  { key: 'approval_required', label: 'requieren tu aprobación' },
+  { key: 'review_required', label: 'requieren revisión' },
+  { key: 'stopped', label: 'frenadas' },
+];
+
+const controlClass = 'datos-control w-full border border-line bg-page px-3 py-2 text-ink focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink';
+const choiceClass = 'inline-flex min-h-11 cursor-pointer items-center gap-2 border border-line px-3 py-2 text-sm text-ink has-[:disabled]:cursor-default has-[:disabled]:text-soft focus-within:outline focus-within:outline-[3px] focus-within:outline-offset-2 focus-within:outline-ink';
+const buttonClass = 'datos-save-button min-h-11 bg-ink px-4 py-2 font-semibold text-white focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-50';
+
+function formFromRecord(record: CompanyRecord): CompanyFormValues {
+  return {
+    name: record.name,
+    operatingCountries: record.operatingCountries,
+    vendorCountries: record.vendorCountries,
+    currencies: record.currencies,
+    perPaymentUsd: minorToDecimal(record.limits.perPaymentUsdMinor, 'USD'),
+    monthlyUsd: minorToDecimal(record.limits.monthlyUsdMinor, 'USD'),
+    approvalThresholdUsd: minorToDecimal(record.limits.approvalThresholdUsdMinor, 'USD'),
+  };
+}
+
+function companyFromForm(form: CompanyFormValues): { company: CompanyRecord | null; error: string | null } {
+  const name = form.name.trim();
+  if (!name) return { company: null, error: 'Escribe el nombre de la empresa.' };
+  if (form.operatingCountries.length === 0) return { company: null, error: 'Elige al menos un país donde opera.' };
+  if (form.vendorCountries.length === 0) return { company: null, error: 'Elige al menos un país de proveedores.' };
+  try {
+    const limits = {
+      perPaymentUsdMinor: decimalToMinor(form.perPaymentUsd, 'USD'),
+      monthlyUsdMinor: decimalToMinor(form.monthlyUsd, 'USD'),
+      approvalThresholdUsdMinor: decimalToMinor(form.approvalThresholdUsd, 'USD'),
+    };
+    if (limits.approvalThresholdUsdMinor >= limits.perPaymentUsdMinor) {
+      return { company: null, error: 'Debe ser menor que el límite por pago.' };
+    }
+    return {
+      company: {
+        name,
+        operatingCountries: [...form.operatingCountries].sort(),
+        vendorCountries: [...form.vendorCountries].sort(),
+        currencies: [...form.currencies].sort(),
+        limits,
+      },
+      error: null,
+    };
+  } catch (cause) {
+    return { company: null, error: cause instanceof Error ? cause.message : 'Revisa los montos.' };
+  }
+}
+
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  return [...a].sort().join('|') === [...b].sort().join('|');
+}
+
+function sameLimits(a: CompanyRecord['limits'], b: CompanyRecord['limits']): boolean {
+  return a.perPaymentUsdMinor === b.perPaymentUsdMinor
+    && a.monthlyUsdMinor === b.monthlyUsdMinor
+    && a.approvalThresholdUsdMinor === b.approvalThresholdUsdMinor;
+}
+
+function sameCompany(a: CompanyRecord, b: CompanyRecord): boolean {
+  return a.name === b.name
+    && sameSet(a.operatingCountries, b.operatingCountries)
+    && sameSet(a.vendorCountries, b.vendorCountries)
+    && sameSet(a.currencies, b.currencies)
+    && sameLimits(a.limits, b.limits);
+}
+
+function toggle<T extends string>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+}
+
+function deltaLabel(delta: number): string {
+  if (delta > 0) return `+${delta}`;
+  if (delta < 0) return `−${Math.abs(delta)}`;
+  return '0';
+}
+
+function CompanyProfileSection({ api }: { api: DatosApi }) {
+  const [company, setCompany] = useState<CompanyRecord | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void api.getCompany()
+      .then((record) => { if (active) setCompany(record); })
+      .catch(() => { if (active) setLoadError('No pude cargar el perfil de la empresa. Recarga la página para intentarlo de nuevo.'); });
+    return () => { active = false; };
+  }, [api]);
+
+  return (
+    <section aria-labelledby="company-heading" className="mb-10 space-y-4 border-t-[3px] border-line-bold pt-4">
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-soft">00 / PERFIL</p>
+        <h2 id="company-heading" className="text-xl font-bold tracking-tight">Perfil de la empresa</h2>
+        <p className="mt-1 max-w-2xl text-xs text-soft">Un cambio de límite desactualiza las facturas pendientes; tú las vuelves a evaluar. Ningún cambio de perfil aprueba una excepción ni libera una factura detenida.</p>
+      </div>
+      {loadError ? <p role="alert" className="text-stopped">{loadError}</p>
+        : !company ? <p role="status" className="text-soft">Cargando perfil…</p>
+          : <CompanyEditor api={api} initial={company} />}
+    </section>
+  );
+}
+
+function CompanyEditor({ api, initial }: { api: DatosApi; initial: CompanyRecord }) {
+  const [saved, setSaved] = useState(initial);
+  const [form, setForm] = useState(() => formFromRecord(initial));
+  const [impact, setImpact] = useState<ImpactState | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  const { company, error: validationError } = companyFromForm(form);
+  const limitsKey = company ? JSON.stringify(company.limits) : null;
+  const limitsChanged = company !== null && !sameLimits(company.limits, saved.limits);
+  const changed = company !== null && !sameCompany(company, saved);
+  const currentImpact = limitsChanged && impact?.key === limitsKey ? impact : null;
+  const impactReady = currentImpact?.status === 'ready' ? currentImpact : null;
+  const canSave = changed && !saving && (!limitsChanged || impactReady !== null);
+
+  useEffect(() => {
+    if (!company || !limitsChanged || !limitsKey) {
+      setImpact(null);
+      return undefined;
+    }
+    let active = true;
+    setImpact({ key: limitsKey, status: 'loading' });
+    api.previewCompany(company)
+      .then((result) => { if (active) setImpact({ key: limitsKey, status: 'ready', result }); })
+      .catch(() => { if (active) setImpact({ key: limitsKey, status: 'error' }); });
+    return () => { active = false; };
+    // Depends on the limits only, so name and country edits never re-run the preview.
+  }, [api, limitsChanged, limitsKey]);
+
+  async function save() {
+    if (!company || !canSave) return;
+    const staleCount = impactReady?.result.staleCount ?? 0;
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    try {
+      const next = await api.saveCompany(company);
+      setSaved(next);
+      setForm(formFromRecord(next));
+      setSaveMessage(limitsChanged
+        ? `Perfil guardado. Quedaron ${staleCount} facturas pendientes desactualizadas; reevalúalas en la Bandeja.`
+        : 'Perfil guardado.');
+    } catch {
+      setSaveError('No pude guardar el perfil. Tus cambios siguen sin aplicarse.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="grid gap-6 lg:grid-cols-2" noValidate onSubmit={(event) => { event.preventDefault(); void save(); }}>
+      <div className="space-y-5">
+        <div className="space-y-1">
+          <label className="block text-sm font-semibold" htmlFor="company-name">Nombre de la empresa</label>
+          <input
+            className={controlClass}
+            disabled={saving}
+            id="company-name"
+            onChange={(event) => setForm({ ...form, name: event.currentTarget.value })}
+            type="text"
+            value={form.name}
+          />
+        </div>
+
+        <fieldset className="space-y-2" disabled={saving}>
+          <legend className="text-sm font-semibold">Países donde opera</legend>
+          <div className="flex flex-wrap gap-2">
+            {countryOptions.map((option) => {
+              const code = option.value as VendorCountry;
+              return (
+                <label className={choiceClass} key={option.value}>
+                  <input
+                    checked={form.operatingCountries.includes(code)}
+                    onChange={() => setForm({ ...form, operatingCountries: toggle(form.operatingCountries, code) })}
+                    type="checkbox"
+                  />
+                  {option.label}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-2" disabled={saving}>
+          <legend className="text-sm font-semibold">Países de proveedores</legend>
+          <div className="flex flex-wrap gap-2">
+            {countryOptions.map((option) => {
+              const code = option.value as VendorCountry;
+              return (
+                <label className={choiceClass} key={option.value}>
+                  <input
+                    checked={form.vendorCountries.includes(code)}
+                    onChange={() => setForm({ ...form, vendorCountries: toggle(form.vendorCountries, code) })}
+                    type="checkbox"
+                  />
+                  {option.label}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-2" disabled={saving}>
+          <legend className="text-sm font-semibold">Monedas que paga</legend>
+          <div className="flex flex-wrap gap-2">
+            {currencyOptions.map((option) => {
+              const base = option.value === 'USD';
+              return (
+                <label className={choiceClass} key={option.value}>
+                  <input
+                    checked={form.currencies.includes(option.value)}
+                    disabled={base}
+                    onChange={() => setForm({ ...form, currencies: toggle(form.currencies, option.value) })}
+                    type="checkbox"
+                  />
+                  {option.label}{base ? ' · base' : ''}
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-xs text-soft">USD es la moneda base y siempre está activa. Países y monedas se guardan en el perfil; hoy solo los límites cambian las decisiones.</p>
+        </fieldset>
+      </div>
+
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {([
+            ['perPaymentUsd', 'Límite por pago (USD)', 'company-payment-limit'],
+            ['monthlyUsd', 'Límite mensual (USD)', 'company-monthly-limit'],
+            ['approvalThresholdUsd', 'Umbral de aprobación humana (USD)', 'company-approval-threshold'],
+          ] as const).map(([field, label, id]) => (
+            <div className="space-y-1" key={field}>
+              <label className="block text-sm font-semibold" htmlFor={id}>{label}</label>
+              <input
+                className={controlClass}
+                disabled={saving}
+                id={id}
+                inputMode="decimal"
+                onChange={(event) => setForm({ ...form, [field]: event.currentTarget.value })}
+                type="text"
+                value={form[field]}
+              />
+            </div>
+          ))}
+        </div>
+        {validationError && <p role="alert" className="text-sm text-stopped">{validationError}</p>}
+
+        <section aria-labelledby="company-impact-title" className="space-y-2 border border-line p-4">
+          <h3 id="company-impact-title" className="text-sm font-bold">Impacto en la Bandeja</h3>
+          {!limitsChanged && <p className="text-xs text-soft">Cambia un límite para ver cómo afecta a las facturas antes de guardar.</p>}
+          {currentImpact?.status === 'loading' && <p role="status" className="text-xs text-soft">Calculando el impacto…</p>}
+          {currentImpact?.status === 'error' && <p role="alert" className="text-xs text-stopped">No pude calcular el impacto. El perfil sigue sin guardar.</p>}
+          {impactReady && (
+            <div aria-live="polite" className="space-y-2 text-sm">
+              <p>
+                Con estos límites, tu bandeja queda así:{' '}
+                {impactRows.map(({ key, label }, index) => (
+                  <span key={key}>
+                    {impactReady.result.counts[key]} {label} ({deltaLabel(impactReady.result.deltas[key])}){index < impactRows.length - 1 ? ' · ' : ''}
+                  </span>
+                ))}
+              </p>
+              <p>Facturas pendientes que quedan desactualizadas: {impactReady.result.staleCount}. Tú las vuelves a evaluar.</p>
+            </div>
+          )}
+        </section>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button className={buttonClass} disabled={!canSave} type="submit">
+            {saving ? 'Guardando…' : 'Guardar perfil'}
+          </button>
+          <div aria-live="polite" className="text-sm">
+            {saveMessage && <p role="status" className="text-soft">{saveMessage}</p>}
+            {saveError && <p role="alert" className="text-stopped">{saveError}</p>}
+          </div>
+        </div>
+      </div>
+    </form>
+  );
+}
+
 export default function Datos({ api }: { api: DatosApi }) {
   const [tables, setTables] = useState<DataTableValues | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -379,6 +684,8 @@ export default function Datos({ api }: { api: DatosApi }) {
         <h1 className="text-3xl font-extrabold tracking-tight">Preparar datos</h1>
         <p className="mt-2 max-w-2xl text-sm text-soft">Edita los registros que usa la evaluación. Los importes respetan los decimales propios de cada moneda; CLP usa pesos enteros.</p>
       </header>
+
+      <CompanyProfileSection api={api} />
 
       {loadError ? <p role="alert" className="border-l-4 border-stopped py-2 pl-3 text-stopped">{loadError}</p>
         : !tables ? <p role="status" className="text-soft">Cargando datos…</p>

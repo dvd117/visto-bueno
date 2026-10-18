@@ -1,7 +1,18 @@
 import { readFileSync } from 'node:fs';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Datos, { type DatosApi, type DataRowMap, type DataTable, type DataTableValues } from '../../src/client/features/datos/Datos';
+import type { CompanyPreview, CompanyRecord } from '../../src/shared/api';
+
+const companyRecord: CompanyRecord = {
+  name: 'Andina Labs Inc.', operatingCountries: ['US'], vendorCountries: ['CO'], currencies: ['USD'],
+  limits: { perPaymentUsdMinor: 1_500_000, monthlyUsdMinor: 6_000_000, approvalThresholdUsdMinor: 300_000 },
+};
+const companyPreview: CompanyPreview = {
+  counts: { ready: 0, approval_required: 0, review_required: 0, stopped: 0 },
+  deltas: { ready: 0, approval_required: 0, review_required: 0, stopped: 0 },
+  unsafeApprovals: 0, staleCount: 0,
+};
 
 const globalCss = readFileSync(`${process.cwd()}/src/client/app/app.css`, 'utf8');
 const featureCss = readFileSync(`${process.cwd()}/src/client/features/datos/datos.css`, 'utf8');
@@ -40,6 +51,9 @@ function makeApi(): DatosApi {
     putRow: vi.fn(async (_table: DataTable, row: DataRowMap[DataTable]) => row) as DatosApi['putRow'],
     uploadCsv: vi.fn(async () => ({ ok: true as const })),
     templateUrl: (table) => `/api/data/templates/${table}.csv`,
+    getCompany: vi.fn(async () => companyRecord) as DatosApi['getCompany'],
+    saveCompany: vi.fn(async (next: CompanyRecord) => next) as DatosApi['saveCompany'],
+    previewCompany: vi.fn(async () => companyPreview) as DatosApi['previewCompany'],
   };
 }
 
@@ -56,6 +70,16 @@ function contrastRatio(foreground: string, background: string) {
 }
 
 describe('Preparar datos — QA visual', () => {
+  it('keeps the enabled company save button white against the global button cascade', async () => {
+    render(<Datos api={makeApi()} />);
+    fireEvent.change(await screen.findByLabelText('Nombre de la empresa'), { target: { value: 'Marea Norte SpA' } });
+
+    const button = screen.getByRole('button', { name: 'Guardar perfil' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(button.classList.contains('datos-save-button')).toBe(true);
+    expect(getComputedStyle(button).color).toBe('rgb(255, 255, 255)');
+  });
+
   it('keeps the primary label readable against the real global button cascade', async () => {
     document.body.style.color = '#191919';
     const unrepairedButton = document.createElement('button');

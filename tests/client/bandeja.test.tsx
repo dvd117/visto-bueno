@@ -30,6 +30,7 @@ function makeRow(status: InvoiceRow['status'] = 'stopped', id = 'AL-042'): Invoi
     status,
     reason: 'La cuenta bancaria no coincide con la registrada.',
     sourceKind: 'pdf',
+    receivedAt: '2026-10-17T12:00:00.000Z',
   };
 }
 
@@ -119,9 +120,11 @@ function processResponse(events: ProcessEvent[]): Response {
 }
 
 function installApi(rows: InvoiceRow[], expediente = makeExpediente(rows[0])) {
-  const workspace = makeWorkspace({
-    [rows[0]?.status === 'queued' ? 'queued' : rows[0]?.status ?? 'stopped']: rows.length,
-  });
+  const counts = rows.reduce<Partial<WorkspaceSummary['counters']>>((result, row) => {
+    result[row.status] = (result[row.status] ?? 0) + 1;
+    return result;
+  }, {});
+  const workspace = makeWorkspace(counts);
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === '/api/workspace') return jsonResponse(workspace);
@@ -150,6 +153,127 @@ afterEach(() => {
 });
 
 describe('Bandeja and Expediente', () => {
+  it('opens invoice groups by default except for ready', () => {
+    const rows = [
+      makeRow('ready', 'AL-043'),
+      makeRow('approval_required', 'AL-035'),
+      makeRow('review_required', 'AL-044'),
+      makeRow('stopped', 'AL-042'),
+      makeRow('stale', 'AL-045'),
+      makeRow('approved', 'AL-046'),
+      makeRow('rejected', 'AL-047'),
+      { ...makeRow('queued', 'AL-050'), receivedAt: '2026-10-18T12:00:00.000Z' },
+    ];
+
+    render(
+      <Bandeja
+        rows={rows}
+        selectedId={null}
+        counters={makeWorkspace({ queued: 1 }).counters}
+        processing={false}
+        rowRevisions={{}}
+        onSelect={vi.fn()}
+        onProcess={vi.fn()}
+        onDropFiles={vi.fn()}
+      />,
+    );
+
+    const groups = Array.from(document.querySelectorAll<HTMLDetailsElement>('.state-group'));
+    expect(groups.map((group) => group.dataset.state)).toEqual([
+      'stopped', 'review_required', 'approval_required', 'stale', 'ready', 'approved', 'rejected',
+    ]);
+    expect(groups.filter((group) => !group.open).map((group) => group.dataset.state)).toEqual(['ready']);
+    expect(screen.getByRole('heading', { name: 'Antes de procesar' })).not.toBeNull();
+    expect(document.querySelector('.arrival-section .invoice-id')?.textContent).toBe('AL-050');
+    expect(screen.getAllByText('PDF').length).toBeGreaterThan(0);
+  });
+
+  it('marks a three-row expansion button to hide on desktop only', () => {
+    const rows = [
+      makeRow('stopped', 'AL-042'),
+      makeRow('stopped', 'AL-043'),
+      makeRow('stopped', 'AL-044'),
+    ];
+
+    render(
+      <Bandeja
+        rows={rows}
+        selectedId={null}
+        counters={makeWorkspace({ stopped: 3 }).counters}
+        processing={false}
+        rowRevisions={{}}
+        onSelect={vi.fn()}
+        onProcess={vi.fn()}
+        onDropFiles={vi.fn()}
+      />,
+    );
+
+    const moreButton = document.querySelector('.state-group[data-state="stopped"] .more-rows');
+    expect(moreButton?.getAttribute('data-hide-on-desktop')).toBe('true');
+  });
+
+  it('sorts rows inside each state group by receipt time, newest first', () => {
+    const older = { ...makeRow('stopped', 'AL-042'), receivedAt: '2026-10-16T21:14:00.000Z' };
+    const newer = { ...makeRow('stopped', 'AL-049'), receivedAt: '2026-10-17T09:30:00.000Z' };
+    const oldest = { ...makeRow('stopped', 'AL-040'), receivedAt: '2026-10-16T08:00:00.000Z' };
+
+    render(
+      <Bandeja
+        rows={[older, newer, oldest]}
+        selectedId={null}
+        counters={makeWorkspace({ stopped: 3 }).counters}
+        processing={false}
+        rowRevisions={{}}
+        onSelect={vi.fn()}
+        onProcess={vi.fn()}
+        onDropFiles={vi.fn()}
+      />,
+    );
+
+    const stoppedGroup = document.querySelector('.state-group[data-state="stopped"]');
+    const ids = within(stoppedGroup as HTMLElement).getAllByRole('button', { name: /AL-/ })
+      .map((row) => row.querySelector('.invoice-id')?.textContent);
+    expect(ids).toEqual(['AL-049', 'AL-042', 'AL-040']);
+    fireEvent.click(within(stoppedGroup as HTMLElement).getByRole('button', { name: 'Ver las 3 facturas' }));
+    expect(within(stoppedGroup as HTMLElement).getByRole('button', { name: 'Mostrar menos' }).getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('preserves receivedAt through the shared API schema for newest-first inbox ordering', async () => {
+    const older = { ...makeRow('stopped', 'AL-049'), receivedAt: '2026-10-16T21:14:00.000Z' };
+    const newer = { ...makeRow('stopped', 'AL-040'), receivedAt: '2026-10-17T09:30:00.000Z' };
+    installApi([older, newer]);
+
+    render(<App />);
+
+    await screen.findByRole('button', { name: /AL-040/ });
+    const stoppedGroup = document.querySelector('.state-group[data-state="stopped"]');
+    const ids = within(stoppedGroup as HTMLElement).getAllByRole('button', { name: /AL-/ })
+      .map((row) => row.querySelector('.invoice-id')?.textContent);
+    expect(ids).toEqual(['AL-040', 'AL-049']);
+  });
+
+  it('uses counter buttons to filter invoice groups and clears the filter on a second click', async () => {
+    const rows = [
+      makeRow('stopped', 'AL-042'),
+      makeRow('review_required', 'AL-044'),
+      makeRow('approval_required', 'AL-035'),
+      makeRow('ready', 'AL-043'),
+    ];
+    installApi(rows);
+
+    render(<App />);
+
+    const readyCounter = await screen.findByRole('button', { name: /^Listas para pagar/ });
+    fireEvent.click(readyCounter);
+    expect(document.querySelectorAll('.state-group')).toHaveLength(1);
+    expect(document.querySelector('.state-group[data-state="ready"] .invoice-id')?.textContent).toBe('AL-043');
+
+    fireEvent.click(readyCounter);
+    expect(document.querySelectorAll('.state-group')).toHaveLength(4);
+    expect(document.querySelector('.state-group[data-state="stopped"] .invoice-id')?.textContent).toBe('AL-042');
+    expect(document.querySelector<HTMLDetailsElement>('.state-group[data-state="ready"]')?.open).toBe(false);
+  });
+
   it('formats ISO due dates in Latin American Spanish', () => {
     const row = { ...makeRow('ready'), due: '2026-10-15' };
 
@@ -304,11 +428,14 @@ describe('Bandeja and Expediente', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Procesar/i }));
 
-    const invoiceRow = await screen.findByRole('button', { name: /AL-042/ });
-    expect(await within(invoiceRow).findByRole('status', { name: 'Lista para pagar' })).not.toBeNull();
     await waitFor(() => {
-      const readyMetric = screen.getByText('Listas para pagar').parentElement?.parentElement;
-      expect(readyMetric && within(readyMetric).getByText('1')).not.toBeNull();
+      const readyRow = document.querySelector('.state-group[data-state="ready"] .invoice-row');
+      expect(readyRow?.querySelector('.invoice-id')?.textContent).toBe('AL-042');
+      expect(readyRow?.querySelector('[aria-label="Lista para pagar"]')).not.toBeNull();
+    });
+    await waitFor(() => {
+      const readyMetric = screen.getByRole('button', { name: /^Listas para pagar/ });
+      expect(within(readyMetric).getByText('1')).not.toBeNull();
     });
     expect((await screen.findAllByText(/0,8 s/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/grabado/i)).length).toBeGreaterThan(0);

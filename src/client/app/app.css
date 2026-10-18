@@ -218,6 +218,28 @@ textarea {
   border-right: 1px solid var(--line);
 }
 
+.metric.filter-trigger {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--page);
+  text-align: left;
+  cursor: pointer;
+}
+
+.metric.filter-trigger:hover,
+.metric.filter-trigger[aria-pressed="true"] {
+  background: var(--wash);
+}
+
+.metric.filter-trigger:focus-visible,
+.state-group > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 .metric:last-child {
   border-right: 0;
 }
@@ -340,6 +362,112 @@ textarea {
   border-bottom: 1px solid var(--line);
 }
 
+.arrival-section {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 11px;
+}
+
+.arrival-heading {
+  margin: 5px 0 7px;
+  font-size: 18px;
+  font-weight: 780;
+  letter-spacing: -0.04em;
+}
+
+.arrival-section .section-description {
+  margin-bottom: 8px;
+}
+
+.list-stage-heading {
+  margin: 14px 0 0;
+  border-top: 1px solid var(--line);
+  padding: 10px 3px 7px;
+}
+
+.state-groups {
+  border-bottom: 1px solid var(--line);
+}
+
+.state-group {
+  border-top: 1px solid var(--line);
+}
+
+.state-group > summary {
+  display: flex;
+  min-height: 43px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 3px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.state-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.state-group > summary::after {
+  content: "+";
+  color: var(--soft);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.state-group[open] > summary::after {
+  content: "−";
+}
+
+.group-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.group-title > span:last-child {
+  min-width: 0;
+}
+
+.group-count {
+  flex: 0 0 auto;
+  color: var(--soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.group-rows:not([data-expanded="true"]) .invoice-row:nth-child(n+4) {
+  display: none;
+}
+
+.more-rows {
+  margin: 7px 3px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 3px 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.more-rows[data-hide-on-desktop="true"][aria-expanded="false"] {
+  display: none;
+}
+
+.empty-filter {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 4px;
+  color: var(--soft);
+  font-size: 11px;
+}
+
 .invoice-row {
   position: relative;
   display: grid;
@@ -435,6 +563,13 @@ textarea {
   color: var(--soft);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.invoice-source {
+  margin-top: 3px;
+  color: var(--faint);
+  font-size: 9px;
+  line-height: 1.3;
 }
 
 .invoice-reason {
@@ -1168,7 +1303,9 @@ textarea {
   .navigation { flex: 1 1 100%; flex-wrap: wrap; gap: 16px; }
   .header-actions { flex: 1 1 100%; flex-wrap: wrap; }
   .overview { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 16px 0 20px; }
+  .metric.filter-trigger:nth-child(2), .metric.filter-trigger:nth-child(4) { border-right: 0; }
   .metric { border-bottom: 1px solid var(--line); padding: 11px 10px 12px; }
+  .metric.filter-trigger { border-bottom: 1px solid var(--line); }
   .metric:nth-child(2), .metric:nth-child(4) { border-right: 0; }
   .metric-count { font-size: 40px; }
   .metric-run { grid-column: 1 / -1; flex-direction: column; align-items: stretch; border-bottom: 0; }
@@ -1195,6 +1332,7 @@ textarea {
   .header-actions { gap: 6px; }
   .button { min-height: 34px; padding: 7px 8px; font-size: 10px; }
   .overview { margin: 14px 0 18px; }
+  .metric.filter-trigger { padding: 10px 9px; }
   .metric { padding: 10px 9px; }
   .metric-label { min-height: 27px; font-size: 9px; }
   .metric-count { font-size: 36px; }
@@ -1203,6 +1341,9 @@ textarea {
   .section-title { font-size: 23px; }
   .list-guide { padding: 8px 3px; }
   .list-guide span:last-child { display: none; }
+  .state-group > summary { min-height: 40px; }
+  .group-rows:not([data-expanded="true"]) .invoice-row:nth-child(n+3) { display: none; }
+  .more-rows[data-hide-on-desktop="true"][aria-expanded="false"] { display: inline-block; }
   .invoice-row { grid-template-columns: 22px minmax(0, 1fr) minmax(48px, 60px) minmax(90px, 110px); gap: 6px; padding: 11px 4px; }
   .invoice-value { padding-top: 16px; font-size: 9px; }
   .invoice-value strong { font-size: 10px; }

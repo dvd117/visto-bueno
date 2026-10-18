@@ -6,6 +6,7 @@ import { evaluationResultSchema } from '../../shared/api';
 import { CURRENCIES } from '../../shared/domain/currencies';
 import {
   apiErrorSchema,
+  companyPreviewSchema,
   conflictSchema,
   decideResponseSchema,
   expedienteSchema,
@@ -174,6 +175,48 @@ const treasurySchemaDocument = withProperties(treasurySchemaBase, {
   },
 });
 
+const companyRecordSchemaDocument: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'operatingCountries', 'vendorCountries', 'currencies', 'limits'],
+  properties: {
+    name: {
+      type: 'string', minLength: 1,
+      description: 'Se recorta antes de validar el límite de 120 caracteres.',
+      pattern: '^\\s*[\\s\\S]{0,119}\\S\\s*$',
+      'x-maxLengthAfterTrim': 120,
+    },
+    operatingCountries: {
+      type: 'array', minItems: 1, maxItems: 7, uniqueItems: true,
+      items: { type: 'string', enum: ['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US'] },
+    },
+    vendorCountries: {
+      type: 'array', minItems: 1, maxItems: 7, uniqueItems: true,
+      items: { type: 'string', enum: ['CO', 'MX', 'VE', 'CL', 'PE', 'AR', 'US'] },
+    },
+    currencies: {
+      type: 'array', minItems: 1, maxItems: CURRENCIES.length, uniqueItems: true,
+      items: { type: 'string', enum: [...CURRENCIES] },
+      contains: { const: 'USD' }, minContains: 1, maxContains: 1,
+    },
+    limits: {
+      type: 'object',
+      description: 'approvalThresholdUsdMinor debe ser menor que perPaymentUsdMinor.',
+      'x-runtime-constraints': [{
+        fields: ['approvalThresholdUsdMinor', 'perPaymentUsdMinor'],
+        relation: 'approvalThresholdUsdMinor < perPaymentUsdMinor',
+      }],
+      additionalProperties: false,
+      required: ['perPaymentUsdMinor', 'monthlyUsdMinor', 'approvalThresholdUsdMinor'],
+      properties: {
+        perPaymentUsdMinor: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+        monthlyUsdMinor: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+        approvalThresholdUsdMinor: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+      },
+    },
+  },
+};
+
 const evaluationResultJsonSchema = {
   ...zodSchema(evaluationResultSchema),
   'x-runtime-constraints': [
@@ -305,6 +348,8 @@ const components: Record<string, JsonSchema> = {
   Budget: budgetSchemaDocument,
   Budgets: { ...zodSchema(z.array(budgetSchema)), items: budgetSchemaDocument },
   Treasury: treasurySchemaDocument,
+  CompanyRecord: companyRecordSchemaDocument,
+  CompanyPreview: zodSchema(companyPreviewSchema),
   Rules: rulesSchema,
   SimulationRequest: {
     type: 'object',
@@ -373,6 +418,30 @@ export const openApiDocument = {
         '200': jsonResponse('Workspace reiniciado.', ref('ResetResult')),
       }, {
         description: 'Restablece los datos de demostración del workspace actual.',
+      }),
+    },
+    '/api/company': {
+      get: operation('getCompanyProfile', 'Consultar el perfil de la empresa', {
+        '200': jsonResponse('Perfil y límites actuales de la empresa.', ref('CompanyRecord')),
+      }),
+      put: operation('putCompanyProfile', 'Guardar el perfil de la empresa', {
+        '200': jsonResponse('Perfil y límites guardados.', ref('CompanyRecord')),
+        '400': jsonResponse('El perfil o los límites no son válidos.', ref('ApiError')),
+      }, {
+        requestBody: requestBody('Perfil, países, monedas y límites de la empresa.', {
+          'application/json': { schema: ref('CompanyRecord') },
+        }),
+      }),
+    },
+    '/api/company/preview': {
+      post: operation('previewCompanyProfile', 'Previsualizar el impacto del perfil', {
+        '200': jsonResponse('Impacto en estados y facturas pendientes.', ref('CompanyPreview')),
+        '400': jsonResponse('El perfil o los límites no son válidos.', ref('ApiError')),
+      }, {
+        description: 'Simula los límites propuestos sin guardar el perfil ni cambiar facturas.',
+        requestBody: requestBody('Perfil candidato que se desea previsualizar.', {
+          'application/json': { schema: ref('CompanyRecord') },
+        }),
       }),
     },
     '/api/invoices': {

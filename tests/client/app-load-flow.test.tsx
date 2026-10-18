@@ -20,7 +20,7 @@ const rules = {
 const queuedRow: InvoiceRow = {
   id: 'AL-030', payee: 'Proveedor por identificar', concept: 'Factura recibida',
   amount: '—', amountUsd: null, due: null, status: 'queued', reason: 'Pendiente de evaluación',
-  sourceKind: 'text', country: null, currency: null,
+  sourceKind: 'text', country: null, currency: null, receivedAt: '2026-10-17T12:00:00.000Z',
 };
 const readyRow: InvoiceRow = {
   ...queuedRow, payee: 'Pixel Patio S.A.S.', concept: 'Diseño y mantenimiento',

@@ -1,11 +1,13 @@
 // API request/response types (plan Task 11). Routes live under /api, scoped to the workspace cookie.
 import { z } from 'zod';
-import type { CheckResult, Currency, DecisionRecord, InvoiceStatus, Rules, SourceKind, VendorCountry } from './domain/types';
+import type {
+  CheckResult, CompanyProfile, Currency, DecisionRecord, InvoiceStatus, Rules, SourceKind, VendorCountry,
+} from './domain/types';
 
 export interface InvoiceRow {
   id: string; payee: string; concept: string; /** formatted */ amount: string;
   amountUsd: string | null; fxDate?: string | null; due: string | null; status: InvoiceStatus; reason: string; subtitle?: string; sourceKind: SourceKind;
-  country: VendorCountry | null; currency: Currency | null;
+  country: VendorCountry | null; currency: Currency | null; /** immutable ISO receipt timestamp */ receivedAt: string;
   reevaluatedFrom?: InvoiceStatus;
 }
 
@@ -198,6 +200,14 @@ export interface FlagResolution { choice: string; reason: string; approver: stri
 
 /** POST /api/rules/simulate */
 export interface SimulateRequest { rules: Rules }
+
+/** GET and PUT /api/company; POST /api/company/preview takes the same body. */
+export interface CompanyRecord extends CompanyProfile {
+  limits: { perPaymentUsdMinor: number; monthlyUsdMinor: number; approvalThresholdUsdMinor: number };
+}
+
+/** POST /api/company/preview: the rules simulation plus pending invoices a save would mark stale. */
+export interface CompanyPreview extends SimulationResult { staleCount: number }
 
 /** Body of a 409 from approve/reject. */
 export interface ConflictResponse { error: 'conflict'; expediente: Expediente }
