@@ -103,10 +103,10 @@ function sessionRequestHeaders(sessionId: string, cookie?: string): Record<strin
   };
 }
 
-async function requestToolsList(app: ReturnType<typeof createServerApp>['app'], sessionId: string) {
+async function requestToolsList(app: ReturnType<typeof createServerApp>['app'], sessionId: string, cookie?: string) {
   return app.request('/mcp', {
     method: 'POST',
-    headers: sessionRequestHeaders(sessionId),
+    headers: sessionRequestHeaders(sessionId, cookie),
     body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/list', params: {} }),
   });
 }
@@ -166,7 +166,63 @@ describe('I3 MCP server', () => {
       headers: { 'mcp-session-id': sessionId, 'mcp-protocol-version': '2025-03-26', cookie: cookieB },
     });
     expect(deletion.status).toBe(404);
-    const ownerRequest = await requestToolsList(app, sessionId);
+    const ownerRequest = await requestToolsList(app, sessionId, cookieA);
+    expect(ownerRequest.status).toBe(200);
+    await ownerRequest.body?.cancel();
+  });
+
+  it('requires the owner cookie on every request for sessions bound to a visitor workspace', async () => {
+    const { app } = makeRuntime();
+    const cookieA = await visitorCookie(app);
+    const created = await app.request('/api/invoices', {
+      method: 'POST',
+      headers: { cookie: cookieA, 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'PRIVATE WORKSPACE A MARKER' }),
+    });
+    expect(created.status).toBe(201);
+    const invoiceId = (await created.json() as { id: string }).id;
+    const initialized = await initializeOverHttp(app, { cookie: cookieA });
+    expect(initialized.status).toBe(200);
+    expect(initialized.sessionId).toBeTruthy();
+    const sessionId = initialized.sessionId!;
+
+    for (const cookie of [undefined, 'unrelated=1']) {
+      const post = await app.request('/mcp', {
+        method: 'POST',
+        headers: sessionRequestHeaders(sessionId, cookie),
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 2, method: 'tools/call',
+          params: { name: 'explain', arguments: { invoiceId } },
+        }),
+      });
+      const postBody = await post.text();
+      expect(post.status).toBe(404);
+      expect(postBody).not.toContain('PRIVATE WORKSPACE A MARKER');
+
+      const get = await app.request('/mcp', {
+        method: 'GET',
+        headers: {
+          accept: 'text/event-stream',
+          'mcp-session-id': sessionId,
+          'mcp-protocol-version': '2025-03-26',
+          ...(cookie ? { cookie } : {}),
+        },
+      });
+      expect(get.status).toBe(404);
+      await get.body?.cancel();
+
+      const deletion = await app.request('/mcp', {
+        method: 'DELETE',
+        headers: {
+          'mcp-session-id': sessionId,
+          'mcp-protocol-version': '2025-03-26',
+          ...(cookie ? { cookie } : {}),
+        },
+      });
+      expect(deletion.status).toBe(404);
+    }
+
+    const ownerRequest = await requestToolsList(app, sessionId, cookieA);
     expect(ownerRequest.status).toBe(200);
     await ownerRequest.body?.cancel();
   });

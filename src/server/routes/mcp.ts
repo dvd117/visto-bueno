@@ -30,6 +30,7 @@ interface McpSession {
   server: McpServer;
   transport: WebStandardStreamableHTTPServerTransport;
   workspaceId: string;
+  requiresWorkspaceCookie: boolean;
   lastActivityAt: number;
 }
 
@@ -81,6 +82,13 @@ function cookieNamesDifferentWorkspace(cookieHeader: string | undefined, workspa
     .filter((value) => value.startsWith('workspace_id='))
     .map((value) => value.slice('workspace_id='.length)) ?? [];
   return values.some((value) => value !== workspaceId);
+}
+
+function cookieIncludesWorkspace(cookieHeader: string | undefined, workspaceId: string): boolean {
+  const values = cookieHeader?.split(';').map((value) => value.trim())
+    .filter((value) => value.startsWith('workspace_id='))
+    .map((value) => value.slice('workspace_id='.length)) ?? [];
+  return values.length > 0 && values.every((value) => value === workspaceId);
 }
 
 export function createMcpRoute(options: McpRouteOptions): {
@@ -144,7 +152,10 @@ export function createMcpRoute(options: McpRouteOptions): {
 
     if (sessionId && !session) return sessionNotFound();
     if (session) {
-      if (cookieNamesDifferentWorkspace(c.req.header('cookie'), session.workspaceId)) return sessionNotFound();
+      const cookie = c.req.header('cookie');
+      if (session.requiresWorkspaceCookie
+        ? !cookieIncludesWorkspace(cookie, session.workspaceId)
+        : cookieNamesDifferentWorkspace(cookie, session.workspaceId)) return sessionNotFound();
       if (!workspaceExists(session.workspaceId) || Date.now() - session.lastActivityAt >= MCP_SESSION_IDLE_TTL_MS) {
         closeSession(sessionId!, session);
         return sessionNotFound();
@@ -206,6 +217,7 @@ export function createMcpRoute(options: McpRouteOptions): {
         server,
         transport: null as unknown as WebStandardStreamableHTTPServerTransport,
         workspaceId,
+        requiresWorkspaceCookie: !workspace.isNew,
         lastActivityAt: Date.now(),
       };
       const currentSession = sessionState;
