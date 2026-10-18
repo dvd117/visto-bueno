@@ -1,14 +1,10 @@
 import { Hono, type Context } from 'hono';
-import { z } from 'zod';
+import { clientSwitchRequestSchema } from '../../shared/api-schemas';
 import type { ClientDirectory, ClientSummary } from '../../shared/api';
 import type { Db } from '../db/db';
 import { getOwnedWorkspaceClient, listOwnedWorkspaceClients, readCompanyProfile } from '../db/workspace';
 import type { ServerEnv } from '../middleware/workspace';
 import { activeClientCookie } from '../middleware/workspace';
-
-const clientSwitchSchema = z.object({
-  clientId: z.string().min(1).max(80).regex(/^[A-Za-z0-9_-]+$/),
-}).strict();
 
 function parseBody(c: Context<ServerEnv>): unknown {
   try {
@@ -45,7 +41,7 @@ export function createClientRoutes({ db }: { db: Db }): Hono<ServerEnv> {
   });
 
   routes.post('/clients/switch', (c) => {
-    const parsed = clientSwitchSchema.safeParse(parseBody(c));
+    const parsed = clientSwitchRequestSchema.safeParse(parseBody(c));
     if (!parsed.success) return c.json({ error: 'invalid_request', message: 'Elige un cliente válido.' }, 400);
     const client = getOwnedWorkspaceClient(db, c.get('ownerId'), parsed.data.clientId);
     if (!client) return c.json({ error: 'not_found', message: 'No encontré ese espacio de trabajo.' }, 404);

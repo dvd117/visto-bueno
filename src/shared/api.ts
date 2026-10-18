@@ -191,6 +191,9 @@ export interface ClientDirectory {
   clients: ClientSummary[];
 }
 
+export interface ClientSwitchRequest { clientId: string }
+export interface ClientSwitchResponse { activeId: string }
+
 /** POST /api/process (response is an SSE stream of ProcessEvent) */
 export interface ProcessRequest { ids?: string[]; mode?: 'replay' | 'live'; examples?: true }
 

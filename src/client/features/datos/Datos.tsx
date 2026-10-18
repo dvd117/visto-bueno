@@ -300,7 +300,7 @@ const impactRows: Array<{ key: keyof CompanyPreview['counts']; label: string }> 
 
 const controlClass = 'datos-control w-full border border-line bg-page px-3 py-2 text-ink focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink';
 const choiceClass = 'inline-flex min-h-11 cursor-pointer items-center gap-2 border border-line px-3 py-2 text-sm text-ink has-[:disabled]:cursor-default has-[:disabled]:text-soft focus-within:outline focus-within:outline-[3px] focus-within:outline-offset-2 focus-within:outline-ink';
-const buttonClass = 'min-h-11 bg-ink px-4 py-2 font-semibold text-white focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-50';
+const buttonClass = 'datos-save-button min-h-11 bg-ink px-4 py-2 font-semibold text-white focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-50';
 
 function formFromRecord(record: CompanyRecord): CompanyFormValues {
   return {
