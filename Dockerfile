@@ -1,4 +1,4 @@
-FROM node:22-alpine AS deps
+FROM node:22.23.4-alpine AS deps
 WORKDIR /app
 RUN apk add --no-cache python3 make g++
 COPY package*.json ./
@@ -13,7 +13,7 @@ FROM deps AS prod-deps
 WORKDIR /app
 RUN npm prune --omit=dev
 
-FROM node:22-alpine AS runtime
+FROM node:22.23.4-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
